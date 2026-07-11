@@ -1,0 +1,1100 @@
+@use "sass:color";
+@use "./variables.scss" as *;
+
+:root {
+  --cpu-primary: #{$cpu-primary};
+  --cpu-primary-light: #{$cpu-primary-light};
+  --cpu-primary-dark: #{$cpu-primary-dark};
+  --cpu-gold: #{$cpu-gold};
+  --cpu-warn: #{$cpu-warn};
+  --cpu-danger: #{$cpu-danger};
+  --cpu-success: #{$cpu-success};
+  --cpu-bg: #{$cpu-bg};
+  --cpu-card: #{$cpu-card};
+  --cpu-glass-bg: #{$cpu-glass-bg};
+  --cpu-glass-blur: #{$cpu-glass-blur};
+  --cpu-shadow-sm: #{$cpu-shadow-sm};
+  --cpu-shadow-md: #{$cpu-shadow-md};
+  --cpu-shadow-lg: #{$cpu-shadow-lg};
+  --cpu-shadow-hover: #{$cpu-shadow-hover};
+  --cpu-surface: #ffffff;
+  --cpu-surface-soft: #f8fafc;
+  --cpu-surface-subtle: #f1f5f9;
+  --cpu-border: #e5e7eb;
+  --cpu-border-soft: #eef0f4;
+  --cpu-text: #0f172a;           // Slate 900
+  --cpu-text-secondary: #64748b; // Slate 500
+  --cpu-text-muted: #94a3b8;
+  --cpu-dialog-radius: 12px;
+  --cpu-dialog-width: 420px;
+  --cpu-dialog-max-width: 560px;
+  --cpu-dialog-side-gap: 16px;
+  --cpu-dialog-viewport-width: calc(100dvw - 32px);
+  --cpu-dialog-max-height: calc(100dvh - 48px);
+  --el-color-primary: #{$cpu-primary};
+  --el-color-primary-light-3: #{color.adjust($cpu-primary, $lightness: 8%)};
+  --el-color-primary-light-5: #{color.adjust($cpu-primary, $lightness: 16%)};
+  --el-color-primary-light-7: #{color.adjust($cpu-primary, $lightness: 24%)};
+  --el-color-primary-light-8: #{color.adjust($cpu-primary, $lightness: 28%)};
+  --el-color-primary-light-9: #{color.adjust($cpu-primary, $lightness: 32%)};
+  --el-color-primary-dark-2: #{color.adjust($cpu-primary, $lightness: -6%)};
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --cpu-primary: #36d0b7;
+  --cpu-primary-light: #5ee4cc;
+  --cpu-primary-dark: #0f766e;
+  --cpu-gold: #fbbf24;
+  --cpu-warn: #fb923c;
+  --cpu-danger: #f87171;
+  --cpu-success: #34d399;
+  --cpu-bg: #101c19;
+  --cpu-card: #16231f;
+  --cpu-surface: #1a2925;
+  --cpu-surface-soft: #20312c;
+  --cpu-surface-subtle: #263a34;
+  --cpu-glass-bg: rgba(22, 35, 31, 0.84);
+  --cpu-border: rgba(163, 186, 179, 0.30);
+  --cpu-border-soft: rgba(163, 186, 179, 0.20);
+  --cpu-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --cpu-shadow-md: 0 14px 34px rgba(0, 0, 0, 0.28);
+  --cpu-shadow-lg: 0 24px 68px rgba(0, 0, 0, 0.34);
+  --cpu-shadow-hover: 0 28px 76px rgba(0, 0, 0, 0.40);
+  --cpu-text: #eef8f5;
+  --cpu-text-secondary: #abc5be;
+  --cpu-text-muted: #819d95;
+  --el-bg-color: var(--cpu-surface);
+  --el-bg-color-page: var(--cpu-bg);
+  --el-bg-color-overlay: #1f302b;
+  --el-border-color: var(--cpu-border);
+  --el-border-color-light: var(--cpu-border-soft);
+  --el-border-color-lighter: rgba(163, 186, 179, 0.14);
+  --el-fill-color: #1f302b;
+  --el-fill-color-light: #263a34;
+  --el-fill-color-lighter: #2d443d;
+  --el-fill-color-extra-light: #20312c;
+  --el-fill-color-blank: var(--cpu-surface);
+  --el-text-color-primary: var(--cpu-text);
+  --el-text-color-regular: #d2e4df;
+  --el-text-color-secondary: var(--cpu-text-secondary);
+  --el-text-color-placeholder: #829990;
+  --el-mask-color: rgba(4, 12, 10, 0.52);
+  --el-box-shadow-light: var(--cpu-shadow-md);
+  --el-color-primary: var(--cpu-primary);
+  --el-color-primary-light-3: #2ebba7;
+  --el-color-primary-light-5: #1f8f81;
+  --el-color-primary-light-7: rgba(54, 208, 183, 0.24);
+  --el-color-primary-light-8: rgba(54, 208, 183, 0.16);
+  --el-color-primary-light-9: rgba(54, 208, 183, 0.10);
+  --el-color-primary-dark-2: #7ff0dc;
+  color-scheme: dark;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--cpu-bg);
+  color: var(--cpu-text);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+  touch-action: pan-y manipulation;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+html {
+  overscroll-behavior: none;
+  touch-action: pan-y manipulation;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+a,
+[role="button"],
+.el-button,
+.el-radio-button__inner,
+.el-tabs__item,
+.el-dropdown,
+.el-select,
+.el-input__wrapper {
+  touch-action: manipulation;
+}
+
+img,
+svg,
+canvas {
+  -webkit-user-drag: none;
+}
+
+.cpu-page {
+  padding: 20px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.cpu-card {
+  background: var(--cpu-card);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: var(--cpu-shadow-sm);
+  border: 1px solid var(--cpu-border-soft);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.cpu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--cpu-shadow-md);
+}
+
+.cpu-card + .cpu-card {
+  margin-top: 16px;
+}
+
+.cpu-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.01em;
+}
+
+.cpu-section-title::before {
+  content: "";
+  width: 4px;
+  height: 18px;
+  background: linear-gradient(180deg, var(--cpu-primary-light), var(--cpu-primary));
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(20, 143, 123, 0.2);
+}
+
+.cpu-muted {
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--cpu-primary);
+  --el-button-border-color: var(--cpu-primary);
+  --el-button-hover-bg-color: #{$cpu-primary-light};
+  --el-button-hover-border-color: #{$cpu-primary-light};
+}
+
+.el-menu-item.is-active,
+.el-sub-menu.is-active > .el-sub-menu__title {
+  color: var(--cpu-primary) !important;
+}
+
+.el-message {
+  left: auto !important;
+  right: 18px !important;
+  transform: none !important;
+  max-width: min(420px, calc(100dvw - 32px));
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+}
+
+.el-overlay-dialog,
+.el-overlay-message-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px var(--cpu-dialog-side-gap);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.el-overlay-dialog .el-dialog,
+.el-overlay-message-box .el-message-box {
+  margin: 0 auto !important;
+  transform: none;
+  border-radius: var(--cpu-dialog-radius);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+  overflow: hidden;
+}
+
+.el-overlay-dialog .el-dialog {
+  width: min(var(--el-dialog-width, var(--cpu-dialog-width)), var(--cpu-dialog-viewport-width)) !important;
+  max-width: min(var(--cpu-dialog-max-width), var(--cpu-dialog-viewport-width));
+  max-height: var(--cpu-dialog-max-height);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--el-bg-color-overlay);
+}
+
+.el-overlay-message-box .el-message-box {
+  width: min(var(--el-messagebox-width, var(--cpu-dialog-width)), var(--cpu-dialog-viewport-width)) !important;
+  max-width: min(var(--cpu-dialog-max-width), var(--cpu-dialog-viewport-width));
+  max-height: var(--cpu-dialog-max-height);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.el-dialog__header,
+.el-message-box__header {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 18px 20px 12px;
+}
+
+.el-dialog__title,
+.el-message-box__title {
+  color: var(--cpu-text);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.el-dialog__headerbtn,
+.el-message-box__headerbtn {
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+}
+
+.el-overlay-dialog .el-dialog__body,
+.el-overlay-message-box .el-message-box__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 20px 16px;
+  color: var(--el-text-color-regular);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.el-overlay-message-box .el-message-box__content {
+  padding-top: 2px;
+}
+
+.el-dialog__body p:first-child,
+.el-message-box__message p:first-child {
+  margin-top: 0;
+}
+
+.el-dialog__body p:last-child,
+.el-message-box__message p:last-child {
+  margin-bottom: 0;
+}
+
+.el-dialog__footer,
+.el-message-box__btns {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--cpu-border-soft);
+}
+
+.el-dialog__footer .el-button + .el-button,
+.el-message-box__btns .el-button + .el-button {
+  margin-left: 0;
+}
+
+.el-dialog__footer .el-button,
+.el-message-box__btns .el-button {
+  min-width: 84px;
+}
+
+.el-message-box__message {
+  color: var(--el-text-color-regular);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.el-message-box__input {
+  padding-top: 10px;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--cpu-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cpu-text-muted); }
+
+html[data-theme="dark"] {
+  .el-button--primary {
+    --el-button-text-color: #05201c;
+    --el-button-hover-text-color: #05201c;
+  }
+
+  .el-button--primary.is-plain {
+    --el-button-text-color: var(--cpu-primary);
+    --el-button-bg-color: rgba(54, 208, 183, 0.08);
+    --el-button-border-color: rgba(54, 208, 183, 0.45);
+    --el-button-hover-text-color: #05201c;
+    --el-button-hover-bg-color: var(--cpu-primary);
+    --el-button-hover-border-color: var(--cpu-primary);
+    --el-button-active-text-color: #05201c;
+    --el-button-active-bg-color: var(--cpu-primary);
+    --el-button-active-border-color: var(--cpu-primary);
+  }
+
+  .el-button--primary.is-text {
+    --el-button-text-color: var(--cpu-primary);
+    --el-button-bg-color: transparent;
+    --el-button-border-color: transparent;
+    --el-button-hover-text-color: var(--cpu-primary-light);
+    --el-button-hover-bg-color: rgba(54, 208, 183, 0.12);
+    --el-button-hover-border-color: transparent;
+    --el-button-active-text-color: var(--cpu-primary-light);
+    --el-button-active-bg-color: rgba(54, 208, 183, 0.16);
+    --el-button-active-border-color: transparent;
+  }
+
+  .el-button.is-text:not(.is-disabled):hover,
+  .el-button.is-text:not(.is-disabled):focus {
+    background-color: rgba(54, 208, 183, 0.12);
+  }
+
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner {
+    background-color: var(--cpu-surface);
+    box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
+  }
+
+  .el-input__inner,
+  .el-textarea__inner {
+    color: var(--cpu-text);
+  }
+
+  .el-popper,
+  .el-dropdown__popper,
+  .el-select__popper {
+    border-color: var(--cpu-border-soft);
+    box-shadow: var(--cpu-shadow-md);
+  }
+
+  .el-table {
+    --el-table-bg-color: var(--cpu-surface);
+    --el-table-tr-bg-color: var(--cpu-surface);
+    --el-table-header-bg-color: var(--cpu-surface-soft);
+    --el-table-row-hover-bg-color: var(--cpu-surface-subtle);
+    --el-table-border-color: var(--cpu-border-soft);
+    color: var(--el-text-color-regular);
+  }
+
+  .el-tabs__item,
+  .el-form-item__label {
+    color: var(--cpu-text-secondary);
+  }
+
+  .el-tabs__item.is-active {
+    color: var(--cpu-primary);
+  }
+
+  .el-alert {
+    background-color: var(--cpu-surface-subtle);
+  }
+
+  .cpu-card,
+  .service-card,
+  .tool-card,
+  .quick-card,
+  .board-card,
+  .topic-card,
+  .reply-card,
+  .message-card,
+  .setting-card,
+  .settings-action-row,
+  .qq-channel-card,
+  .settings-card,
+  .settings-panel,
+  .admin-section,
+  .admin-card,
+  .filter-panel,
+  .mobile-card,
+  .manage-panel,
+  .manage-head,
+  .panel,
+  .panel-card,
+  .section-card,
+  .feature-card,
+  .config-card,
+  .info-card,
+  .form-card,
+  .summary-card,
+  .history-card,
+  .list-card,
+  .item-card,
+  .file-card,
+  .task-card,
+  .question-card,
+  .answer-card,
+  .lookup-card,
+  .grade-card,
+  .tool-shell,
+  .missing-card,
+  .market-error,
+  .goods,
+  .message-list .row,
+  .questionnaire-builder-dialog,
+  .questionnaire-builder-dialog .el-dialog__header,
+  .type-palette,
+  .editor-card,
+  .field-editor,
+  .inspector-card,
+  .mobile-publish-card,
+  .grade-upload-panel,
+  .grade-preview-box,
+  .field-rule-list div,
+  .questionnaire-row-card,
+  .related-grade-item,
+  .rich-editor,
+  .toolbar-scroll,
+  .notice-card,
+  .wall-card,
+  .wall-hero,
+  .wall-loading,
+  .wall-item,
+  .hero-stats div,
+  .reminder-head,
+  .reminder-panel,
+  .reminder-item,
+  .app-card,
+  .app-icon,
+  .retry-card,
+  .error-card,
+  .gpa-tool,
+  .service-reco,
+  .pyfa-card,
+  .sem-stat,
+  .summary-card,
+  .course-card,
+  .pin-section,
+  .pinned-list,
+  .auto-load-sentinel,
+  .qq-share-card,
+  .qq-forward-card,
+  .stat,
+  .block,
+  .field-card,
+  .result-card,
+  .overview-card,
+  .notice-detail,
+  .profile-card,
+  .page-error {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page .el-tabs__header {
+    border-color: var(--cpu-border-soft) !important;
+  }
+
+  .admin-page .el-tabs__nav-wrap::after {
+    background-color: var(--cpu-border-soft) !important;
+  }
+
+  .admin-page .el-tabs__content {
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(
+    .ov-card,
+    .panel,
+    .section,
+    .section-panel,
+    .feature-section,
+    .feature-card,
+    .source-card,
+    .feed-card,
+    .board-row,
+    .topic-card,
+    .user-row,
+    .config-card,
+    .setting-panel,
+    .media-card,
+    .storage-card,
+    .log-card,
+    .order-card,
+    .stat-card,
+    .rule-card,
+    .review-card,
+    .sync-card,
+    .backup-card,
+    .card,
+    .table-card,
+    .list-card,
+    .result-card,
+    .history-card,
+    .empty-card
+  ) {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(
+    .section-desc,
+    .desc,
+    .meta,
+    .note,
+    .hint,
+    .sub,
+    .field,
+    .path,
+    .status-copy,
+    .empty-desc,
+    .helper,
+    .copy,
+    .tip
+  ) {
+    color: var(--cpu-text-secondary) !important;
+  }
+
+  .admin-page :is(
+    .section-title,
+    .panel-title,
+    .card-title,
+    .name,
+    .ann-title,
+    .source-title,
+    .feature-title,
+    .topic-title,
+    .user-name,
+    .config-title
+  ) {
+    color: var(--cpu-text) !important;
+  }
+
+  .cpu-muted,
+  .hint,
+  .tip,
+  .note,
+  .help,
+  .muted,
+  .page-sub,
+  .desc,
+  .description,
+  .summary,
+  .meta,
+  .time,
+  .count,
+  .field-tip,
+  .form-tip,
+  .sub,
+  .lbl,
+  .notice-meta,
+  .manage-head p,
+  .builder-titlebar span,
+  .palette-title span,
+  .type-palette small,
+  .section-head p,
+  .questionnaire-summary span,
+  .upload-copy p,
+  .field-rule-list small,
+  .grade-preview-head span,
+  .form-head p,
+  .side-note p,
+  .questionnaire-list p,
+  .related-grade-main small,
+  .draft-note {
+    color: var(--cpu-text-secondary) !important;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  .title,
+  .name,
+  .section-title,
+  .card-title,
+  .item-title,
+  .manage-head h2,
+  .builder-titlebar b,
+  .type-palette h4,
+  .fields-head h4,
+  .section-head h3,
+  .questionnaire-summary b,
+  .upload-copy h4,
+  .field-rule-list span,
+  .grade-preview-head b,
+  .form-head h3,
+  .side-note h3,
+  .questionnaire-list h3,
+  .related-grade-main b,
+  .quick-title,
+  .head-name,
+  .page-title,
+  .draft-title {
+    color: var(--cpu-text) !important;
+  }
+
+  .el-card,
+  .el-dialog,
+  .el-message-box,
+  .el-drawer,
+  .el-popover,
+  .el-picker-panel {
+    background-color: var(--cpu-surface) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .questionnaire-builder-overlay {
+    background: var(--cpu-bg) !important;
+  }
+
+  .questionnaire-builder-dialog {
+    --builder-primary-soft: rgba(59, 130, 246, 0.14);
+    --builder-border: var(--cpu-border-soft);
+    --builder-muted: var(--cpu-text-secondary);
+  }
+
+  .editor-toolbar,
+  .rich-editor.toolbar-static,
+  .rich-editor.toolbar-static .editor-toolbar,
+  .type-palette button,
+  .builder-back,
+  .field input,
+  .field select,
+  .field textarea,
+  .choice-item,
+  .rating-btn,
+  .plain-action,
+  .note-list span {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .el-divider {
+    border-color: var(--cpu-border-soft);
+  }
+
+  .el-checkbox,
+  .el-radio,
+  .el-switch__label,
+  .el-descriptions__label,
+  .el-descriptions__content {
+    color: var(--cpu-text-secondary);
+  }
+
+  .el-tag--info,
+  .el-tag.el-tag--info {
+    --el-tag-bg-color: var(--cpu-surface-subtle);
+    --el-tag-border-color: var(--cpu-border-soft);
+    --el-tag-text-color: var(--cpu-text-secondary);
+  }
+
+  .topic-row:hover,
+  .list-row:hover,
+  .list-item:hover,
+  .ann-item:hover,
+  .board-card:hover,
+  .item-card:hover {
+    background: var(--cpu-surface-soft) !important;
+  }
+
+  table,
+  th,
+  td {
+    border-color: var(--cpu-border-soft) !important;
+  }
+
+  th,
+  tr:nth-child(even) td {
+    background: var(--cpu-surface-soft) !important;
+  }
+
+  .notice-content,
+  .el-empty__description {
+    color: var(--el-text-color-regular) !important;
+  }
+
+  .notice-draft,
+  .review-state.done {
+    background: var(--cpu-surface-soft) !important;
+    border-color: var(--cpu-border-soft) !important;
+  }
+
+  .search-page,
+  .tools-page,
+  .tool-detail-page,
+  .questionnaire-page,
+  .file-submit-page,
+  .grade-lookup-page,
+  .pdf-tool-panel,
+  .tool-manage-page {
+    color: var(--cpu-text);
+  }
+
+  .file-submit-page,
+  .grade-lookup-page,
+  .questionnaire-editor,
+  .questionnaire-builder-overlay {
+    background: var(--cpu-bg) !important;
+  }
+
+  .search-page :is(.course-row, .svc-row),
+  .tools-page :is(.tools-hero, .tools-panel, .tool-card),
+  .tool-detail-page :is(.tool-shell, .missing-card, .form-card, .side-note, .questionnaire-list, .related-grade-item),
+  .questionnaire-page :is(.fill-card, .field-card, .back-btn, .rating-field button),
+  .file-submit-page :is(.submit-head, .submit-card, .file-rule-box, .pdf-tool-shortcut, .file-list div),
+  .grade-lookup-page :is(.grade-sheet, .record-panel, .feedback-panel, .panel-head, .record-row, .back-btn),
+  .pdf-tool-panel :is(.pdf-login-panel, .mode-button, .upload-panel, .settings-panel, .drop-zone, .file-row, .control-grid input, .control-grid select, .result-strip),
+  .tool-manage-page :is(
+    .admin-section,
+    .access-setting,
+    .manager-row,
+    .questionnaire-summary div,
+    .grade-upload-panel,
+    .field-rule-list div,
+    .grade-uploader .el-upload-dragger,
+    .grade-preview-box,
+    .grade-preview-table-wrap,
+    .questionnaire-row-card,
+    .file-collection-card,
+    .file-template-bar,
+    .file-field-row,
+    .rename-builder,
+    .expected-list-box,
+    .rename-insert-grid,
+    .rename-token,
+    .file-download-list button,
+    .preview-field,
+    .preview-rating span,
+    .stat-card,
+    .response-card,
+    .metric-grid div,
+    .text-samples p
+  ),
+  .questionnaire-builder-dialog :is(
+    .el-dialog__header,
+    .el-dialog__body,
+    .builder-topbar,
+    .type-palette,
+    .editor-card,
+    .field-editor,
+    .builder-side,
+    .inspector-card,
+    .mobile-publish-card,
+    .branch-editor,
+    .type-palette button,
+    .builder-back
+  ),
+  .responsive-tool-dialog :is(.file-manager-card, .file-manager-actions button) {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .tool-manage-page :is(
+    .grade-upload-panel,
+    .rename-insert-grid,
+    .file-template-bar,
+    .field-rule-list div,
+    .file-tool-action,
+    .file-download-list button
+  ),
+  .questionnaire-builder-dialog :is(.mobile-publish-card, .branch-editor),
+  .pdf-tool-panel :is(.drop-zone, .result-strip),
+  .file-submit-page :is(.file-rule-box, .pdf-tool-shortcut),
+  .grade-lookup-page :is(.panel-head),
+  .tool-detail-page :is(.side-note, .related-grade-icon) {
+    background: var(--cpu-surface-subtle) !important;
+  }
+
+  .tool-manage-page :is(
+    .section-head p,
+    .questionnaire-summary span,
+    .upload-copy p,
+    .field-rule-list small,
+    .grade-preview-head span,
+    .q-title-cell span,
+    .q-row-meta,
+    .file-template-bar span,
+    .config-field small,
+    .rename-example,
+    .rename-token-label,
+    .file-download-list small,
+    .preview-head p,
+    .preview-field p,
+    .responses-title span,
+    .stat-head span,
+    .response-head span,
+    .metric-grid span,
+    .answer-row span
+  ),
+  .tool-detail-page :is(.head-main p, .form-head p, .side-note p, .questionnaire-list p, .field, .field small, .note-list span, .related-grade-main small),
+  .questionnaire-page :is(.fill-head p, .field-title p, .rating-field span),
+  .file-submit-page :is(.submit-head p, .file-rule-box span, .pdf-tool-shortcut span, .file-list small),
+  .grade-lookup-page :is(.lookup-head p, .panel-head span, .record-row span, .feedback-loading, .feedback-state),
+  .pdf-tool-panel :is(.pdf-login-panel p, .mode-button small, .drop-zone span, .file-main small, .panel-heading p, .result-strip),
+  .responsive-tool-dialog :is(.responses-title span, .file-manager-main small) {
+    color: var(--cpu-text-secondary) !important;
+  }
+
+  .tool-manage-page :is(
+    .section-head h3,
+    .questionnaire-summary b,
+    .upload-copy h4,
+    .field-rule-list span,
+    .grade-preview-head b,
+    .q-title-cell b,
+    .file-template-bar b,
+    .file-field-head,
+    .compact-field span,
+    .config-field span,
+    .rename-head b,
+    .preview-head h2,
+    .preview-label,
+    .responses-title b,
+    .stat-head b,
+    .response-head b,
+    .choice-stat-row b,
+    .metric-grid b
+  ),
+  .tool-detail-page :is(.head-title-row h2, .form-head h3, .side-note h3, .questionnaire-list h3, .related-grade-main b),
+  .questionnaire-page :is(.fill-head h2, .field-title b),
+  .file-submit-page :is(.submit-head h2, .submit-field span, .file-rule-box b, .pdf-tool-shortcut b),
+  .grade-lookup-page :is(.lookup-head h2, .panel-head h3, .record-row b),
+  .pdf-tool-panel :is(.pdf-login-panel h3, .mode-button span, .drop-zone strong, .file-main b, .panel-heading h3),
+  .responsive-tool-dialog :is(.responses-title b, .file-manager-main strong) {
+    color: var(--cpu-text) !important;
+  }
+
+  .search-page :is(.course-row, .svc-row),
+  .tool-manage-page :is(.grade-preview-table th, .grade-preview-table td, .stat-head, .response-head),
+  .grade-lookup-page :is(.lookup-head, .panel-head, .record-row),
+  .questionnaire-page .fill-head {
+    border-color: var(--cpu-border-soft) !important;
+  }
+
+  .search-page :is(.course-row:hover, .svc-row:hover),
+  .grade-lookup-page .record-row:hover,
+  .tool-manage-page :is(.file-tool-action:hover, .file-menu-action:hover, .rename-token:hover, .file-download-list button:hover),
+  .responsive-tool-dialog .file-manager-actions button:hover {
+    background: var(--cpu-surface-subtle) !important;
+  }
+
+  .tool-manage-page :is(.file-menu-action, .file-tool-action:disabled, .file-menu-action:disabled),
+  .file-submit-page .file-list button:disabled,
+  .questionnaire-page .rating-field button:disabled {
+    background: var(--cpu-surface-soft) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text-muted) !important;
+  }
+
+  .tool-manage-page :is(.file-tool-action, .file-menu-action, .related-grade-action),
+  .tool-detail-page :is(.back-btn:hover, .related-grade-action),
+  .file-submit-page :is(.back-link, .file-list button),
+  .grade-lookup-page :is(.back-btn:hover, .head-copy > span),
+  .pdf-tool-panel :is(.file-actions button) {
+    color: var(--cpu-primary) !important;
+  }
+
+  .admin-page :is(
+    .meta-row,
+    .setup-guide > div,
+    .status-box,
+    .bind-token,
+    .record-card,
+    .status-card,
+    .action-card,
+    .site-config,
+    .trust-field,
+    .trust-subcard,
+    .feature-row,
+    .storage-drive-box,
+    .migration-result,
+    .storage-field,
+    .storage-meta,
+    .summary-pill,
+    .toggle-pill,
+    .paths code,
+    .ai-form,
+    .prompt-card,
+    .storage-layout,
+    .danger-card
+  ) {
+    background: var(--cpu-card) !important;
+    border-color: var(--cpu-border-soft) !important;
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(.summary-pill, .toggle-pill, .paths code, .setup-guide > div, .prompt-card, .storage-drive-box, .migration-result) {
+    background: var(--cpu-surface-subtle) !important;
+  }
+
+  .admin-page :is(.storage-error, .migration-error-row, .danger-card) {
+    background: rgba(245, 158, 11, 0.12) !important;
+    border-color: rgba(245, 158, 11, 0.28) !important;
+  }
+
+  .admin-page :is(
+    .section-desc,
+    .field-label,
+    .field-inline-label,
+    .desc,
+    .hint,
+    .storage-meta,
+    .storage-hint,
+    .drive-desc,
+    .result-sub,
+    .record-meta,
+    .log-meta,
+    .restore-file-hint
+  ) {
+    color: var(--cpu-text-secondary) !important;
+  }
+
+  .admin-page :is(.result-title, .value, .restore-file, .subcard-title, .file-path) {
+    color: var(--cpu-text) !important;
+  }
+
+  .admin-page :is(.value.path, code) {
+    color: var(--cpu-primary-light) !important;
+  }
+
+  .app-icon {
+    background: rgba(241, 245, 249, 0.92) !important;
+    border: 1px solid rgba(226, 232, 240, 0.86) !important;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.72) !important;
+    color: #0f172a !important;
+  }
+
+  .app-icon img {
+    filter: saturate(1.05) contrast(1.08);
+  }
+
+  .app-icon .icon-fallback {
+    color: #0f766e !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    font-size: 13px;
+  }
+
+  .cpu-page {
+    padding: 12px;
+  }
+
+  .cpu-card {
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.035);
+  }
+
+  .el-button {
+    min-height: 38px;
+  }
+
+  .el-button--small {
+    min-height: 32px;
+  }
+
+  .el-input__wrapper,
+  .el-select__wrapper {
+    min-height: 40px;
+  }
+
+  .el-radio-group {
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .el-radio-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .el-radio-button__inner {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  .el-tabs__nav-wrap {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .el-tabs__nav-wrap::-webkit-scrollbar {
+    display: none;
+  }
+
+  .el-table {
+    --el-table-row-hover-bg-color: var(--cpu-surface-subtle);
+  }
+
+  .el-table__body-wrapper,
+  .el-table__header-wrapper,
+  .el-scrollbar__wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :root {
+    --cpu-dialog-radius: 10px;
+    --cpu-dialog-side-gap: 12px;
+    --cpu-dialog-viewport-width: calc(100dvw - 24px);
+    --cpu-dialog-max-height: calc(100dvh - 24px);
+  }
+
+  .el-overlay-dialog,
+  .el-overlay-message-box {
+    padding: 12px var(--cpu-dialog-side-gap);
+  }
+
+  .el-overlay-dialog .el-dialog,
+  .el-overlay-message-box .el-message-box {
+    transform: none;
+  }
+
+  .el-dialog__header,
+  .el-message-box__header {
+    padding: 16px 16px 10px;
+  }
+
+  .el-dialog__headerbtn,
+  .el-message-box__headerbtn {
+    top: 10px;
+    right: 10px;
+  }
+
+  .el-overlay-dialog .el-dialog__body,
+  .el-overlay-message-box .el-message-box__content {
+    padding: 0 16px 14px;
+    font-size: 13px;
+  }
+
+  .el-dialog__footer,
+  .el-message-box__btns {
+    padding: 10px 16px 16px;
+  }
+
+  .el-dialog__footer .el-button,
+  .el-message-box__btns .el-button {
+    min-width: 0;
+  }
+
+  .el-message {
+    right: 12px !important;
+    max-width: calc(100dvw - 24px);
+  }
+}

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest-v3.webmanifest?v=20260530" />
+    <!-- iOS 添加到主屏幕：标题 + 图标（与 Android manifest 一致） -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-750x1334.png?v=20260530" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-828x1792.png?v=20260530" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1125x2436.png?v=20260530" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1170x2532.png?v=20260530" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1179x2556.png?v=20260530" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1242x2688.png?v=20260530" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1290x2796.png?v=20260530" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1536x2048.png?v=20260530" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1668x2388.png?v=20260530" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-2048x2732.png?v=20260530" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#168776" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="XJTLU 校园服务" />
+    <meta name="application-name" content="XJTLU 校园服务" />
+    <script>
+      (() => {
+        const storageKey = "cpu-appearance-mode-v1";
+        let mode = "system";
+        try {
+          const stored = localStorage.getItem(storageKey);
+          if (stored === "light" || stored === "dark" || stored === "system") mode = stored;
+        } catch {}
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const resolved = mode === "system" ? (prefersDark ? "dark" : "light") : mode;
+        const root = document.documentElement;
+        root.dataset.theme = resolved;
+        root.dataset.appearanceMode = mode;
+        root.classList.toggle("dark", resolved === "dark");
+        root.style.colorScheme = resolved;
+        const themeColor = document.querySelector("meta[name='theme-color']");
+        if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#0f766e" : "#168776");
+      })();
+    </script>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        min-height: 100%;
+        background: #edf4ff;
+      }
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+      body:not([data-cpu-app-ready="1"]) {
+        overflow: hidden;
+      }
+      #app {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+      .app-launch-screen {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 18px;
+        background:
+          radial-gradient(circle at 18% 0%, rgba(174, 211, 255, 0.56), transparent 30%),
+          radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.42), transparent 28%),
+          linear-gradient(180deg, #edf4ff 0%, #f7fbff 42%, #f8fafc 100%);
+        color: #172033;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        pointer-events: none;
+        z-index: 0;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+      }
+      body[data-cpu-app-ready="1"] .app-launch-screen {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .app-launch-logo {
+        width: 84px;
+        height: 84px;
+        border-radius: 0;
+        display: block;
+        box-shadow: 0 14px 36px rgba(22, 135, 118, 0.22);
+      }
+      .app-launch-title {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.15;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+      .app-launch-subtitle {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.45;
+        color: #667085;
+      }
+      html[data-theme="dark"] body {
+        background: #07110f;
+      }
+      html[data-theme="dark"] .app-launch-screen {
+        background: linear-gradient(180deg, #07110f 0%, #0b1715 48%, #101816 100%);
+        color: #e5f4f1;
+      }
+      html[data-theme="dark"] .app-launch-subtitle {
+        color: #8ea6a0;
+      }
+      html[data-theme="dark"] .app-launch-logo {
+        box-shadow: 0 14px 42px rgba(16, 185, 129, 0.18);
+      }
+    </style>
+    <title>XJTLU 校园服务 · 西交利物浦大学校园互助与服务平台</title>
+    <meta name="description" content="面向西交利物浦大学学生的校园互助与服务平台" />
+  </head>
+  <body>
+    <div class="app-launch-screen" id="boot-screen" aria-label="XJTLU 校园服务正在启动">
+      <img class="app-launch-logo" src="/apple-touch-icon-v3.png?v=20260530-hw" alt="" />
+      <h1 class="app-launch-title">XJTLU 校园服务</h1>
+      <p class="app-launch-subtitle">正在打开你的校园服务</p>
+    </div>
+    <div id="app">
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

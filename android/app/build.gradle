@@ -1,0 +1,59 @@
+plugins {
+    id "com.android.application"
+}
+
+dependencies {
+    implementation "androidx.core:core:1.13.1"
+}
+
+def defaultAppUrl = "https://cpu.lizmt.cn/schedule"
+def resolvedAppUrl = (project.findProperty("appUrl") ?: defaultAppUrl).toString()
+def resolvedApplicationId = (project.findProperty("applicationId") ?: "cn.lizmt.cpuweb.schedule").toString()
+def resolvedAppName = (project.findProperty("appName") ?: "药大拾间").toString()
+def releaseStoreFile = (project.findProperty("releaseStoreFile") ?: "").toString()
+def releaseStorePassword = (project.findProperty("releaseStorePassword") ?: "").toString()
+def releaseKeyAlias = (project.findProperty("releaseKeyAlias") ?: "").toString()
+def releaseKeyPassword = (project.findProperty("releaseKeyPassword") ?: "").toString()
+
+def escapeJavaString = { value ->
+    value.replace("\\", "\\\\").replace("\"", "\\\"")
+}
+
+android {
+    namespace "cn.lizmt.cpuweb.schedule"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId resolvedApplicationId
+        minSdk 23
+        targetSdk 35
+        versionCode 24
+        versionName "3.0.3"
+
+        buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
+        resValue "string", "app_name", resolvedAppName
+    }
+
+    signingConfigs {
+        release {
+            if (releaseStoreFile) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (releaseStoreFile) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+}

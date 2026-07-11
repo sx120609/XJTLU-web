@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+android/.gradle/
+android/**/build/
+*.apk
+!web/public/downloads/
+!web/public/downloads/CPU-Web.apk
+!web/public/downloads/CPU-Web-V*.apk
+!web/public/downloads/CPU-Web-Android-V*.apk
+*.aab
+
+# Environment
+.env
+.env.local
+.env.*.local
+local.properties
+*.jks
+*.keystore
+
+# Database
+*.db
+*.db-journal
+server/filestore/data/
+server/filestore/uploads/
+
+# 教务代登录调试快照（可能含 session cookie / 真实 HTML）
+server/.debug/
+.debug/
+server/.tmp/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+install.log
+
+# Editor & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+.vite/
+__pycache__/
+*.pyc
+
+# Misc
+coverage/
+.nyc_output/
+desktop/release/药大刷课助手 Setup 0.1.0.exe
+desktop/release/win-unpacked/药大刷课助手.exe

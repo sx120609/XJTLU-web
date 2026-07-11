@@ -1,0 +1,172 @@
+import { createRouter, createWebHistory } from "vue-router";
+import { ElMessage } from "element-plus";
+import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
+import type { FeatureKey } from "@/api/site";
+
+const MainLayout = () => import("@/layouts/MainLayout.vue");
+
+/**
+ * 受功能开关控制的路由名 → feature key。
+ * 动态板块 / 帖子详情由服务端根据所属板块类型继续拦截，避免直接输入 URL 绕过。
+ */
+const FEATURE_GATED: Record<string, FeatureKey> = {
+  forum: "forum",
+  "forum-hot": "forum",
+  "forum-latest": "forum",
+  post: "forum",
+  "edit-post": "forum",
+  market: "market",
+  "market-item": "market",
+  "market-publish": "market",
+  "market-edit": "market",
+  "market-mine": "market",
+  "market-seller": "market",
+  "market-messages": "market",
+  coursereview: "coursereview",
+  course: "coursereview",
+};
+
+const COMMUNITY_ACCESS_GATED = new Set([
+  "forum-hot",
+  "forum-latest",
+  "market",
+  "market-item",
+  "market-publish",
+  "market-edit",
+  "market-mine",
+  "market-seller",
+  "market-messages",
+  "coursereview",
+  "course",
+  "post",
+  "edit-post",
+]);
+
+const LEGACY_FILE_COLLECTION_SUBMIT_PREFIX = "/services/tools/file-collections/";
+const BlankRouteView = { render: () => null };
+
+function firstRouteValue(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export const router = createRouter({
+  history: createWebHistory(),
+  scrollBehavior(to, from, savedPosition) {
+    // 浏览器前进/后退：恢复历史滚动位置
+    if (savedPosition) return savedPosition;
+    // 锚点
+    if (to.hash) return { el: to.hash, behavior: "smooth" };
+    // 其他情况：回顶
+    return { top: 0 };
+  },
+  routes: [
+    { path: "/login", name: "login", component: () => import("@/views/Login.vue"), meta: { public: true, title: "登录" } },
+    { path: "/register", name: "register", component: () => import("@/views/Register.vue"), meta: { public: true, title: "注册" } },
+    {
+      path: "/",
+      component: MainLayout,
+      redirect: "/home",
+      children: [
+        { path: "home", name: "home", component: () => import("@/views/Home.vue"), meta: { title: "首页", public: true } },
+        { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), meta: { title: "论坛", public: true } },
+        { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), meta: { title: "热榜", public: true } },
+        { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), meta: { title: "最新内容", public: true } },
+        { path: "forum/b/:slug", name: "board", component: () => import("@/views/forum/Board.vue"), meta: { title: "板块", public: true } },
+        { path: "forum/topic/:id", name: "topic", component: () => import("@/views/forum/Topic.vue"), meta: { title: "帖子", public: true } },
+        { path: "post", name: "post", component: () => import("@/views/forum/Post.vue"), meta: { title: "发帖" } },
+        { path: "post/:id/edit", name: "edit-post", component: () => import("@/views/forum/Post.vue"), meta: { title: "编辑帖子" } },
+        { path: "market", name: "market", component: () => import("@/views/market/Index.vue"), meta: { title: "商城", public: true } },
+        { path: "market/item/:id", name: "market-item", component: () => import("@/views/market/Detail.vue"), meta: { title: "商品详情", public: true } },
+        { path: "market/publish", name: "market-publish", component: () => import("@/views/market/Publish.vue"), meta: { title: "发布商品" } },
+        { path: "market/item/:id/edit", name: "market-edit", component: () => import("@/views/market/Publish.vue"), meta: { title: "编辑商品" } },
+        { path: "market/mine", name: "market-mine", component: () => import("@/views/market/Mine.vue"), meta: { title: "我的交易" } },
+        { path: "market/seller", name: "market-seller", component: () => import("@/views/market/Seller.vue"), meta: { title: "卖家中心" } },
+        { path: "market/messages", name: "market-messages", component: () => import("@/views/market/Messages.vue"), meta: { title: "交易消息" } },
+        { path: "coursereview", name: "coursereview", component: () => import("@/views/coursereview/Index.vue"), meta: { title: "课程点评", public: true } },
+        { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
+        { path: "services", name: "services", component: () => import("@/views/services/Index.vue"), meta: { title: "校园服务", public: true } },
+        { path: "academic", name: "academic", component: () => import("@/views/academic/Index.vue"), meta: { title: "我的教务" } },
+        { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
+        { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
+        { path: "services/tools/qqbot-reminders", redirect: "/messages/qqbot-reminders" },
+        { path: "services/tools/filestore", name: "service-filestore", component: () => import("@/views/services/FileStoreEmbed.vue"), meta: { title: "文件收集" } },
+        { path: "services/tools/filestore-beta", name: "service-filestore-beta", component: () => import("@/views/services/FileStoreBeta.vue"), meta: { title: "文件收集 beta", fullWidthContent: true } },
+        { path: "services/tools/filestore-beta/submit/:slug", name: "service-filestore-beta-submit", component: () => import("@/views/services/FileStoreBetaSubmit.vue"), meta: { title: "文件提交 beta", public: true, fullWidthContent: true } },
+        { path: "services/tools/filestore-beta/status/:slug", name: "service-filestore-beta-status", component: () => import("@/views/services/FileStoreBetaStatus.vue"), meta: { title: "成功名单 beta", public: true, fullWidthContent: true } },
+        { path: "services/tools/:slug", name: "service-tool-detail", component: () => import("@/views/services/ToolDetail.vue"), meta: { title: "校园小工具", public: true } },
+        { path: "services/tools/questionnaires/:slug", name: "questionnaire-fill", component: () => import("@/views/services/QuestionnaireFill.vue"), meta: { title: "填写问卷", public: true } },
+        { path: "services/tools/grade-checks/:slug", name: "grade-check-lookup", component: () => import("@/views/services/GradeCheckLookup.vue"), meta: { title: "成绩核对" } },
+        { path: "services/tools/file-collections/:slug", name: "file-collection-submit", component: BlankRouteView, meta: { title: "文件提交", public: true } },
+        { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
+        { path: "search", name: "search", component: () => import("@/views/search/Result.vue"), meta: { title: "搜索结果", public: true } },
+        { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },
+        { path: "messages/qqbot-reminders", name: "message-qqbot-reminders", component: () => import("@/views/services/QqBotReminders.vue"), meta: { title: "小工具提醒规则" } },
+        { path: "profile", name: "profile", component: () => import("@/views/profile/Index.vue"), meta: { title: "我的" } },
+        { path: "sponsor-wall", name: "sponsor-wall", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "鸣谢墙", public: true } },
+        { path: "u/:id", name: "user", component: () => import("@/views/profile/User.vue"), meta: { title: "用户", public: true } },
+        { path: "admin", name: "admin", component: () => import("@/views/admin/Index.vue"), meta: { title: "管理后台", requireMod: true } },
+      ],
+    },
+    { path: "/:pathMatch(.*)*", component: () => import("@/views/NotFound.vue"), meta: { public: true } },
+  ],
+});
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore();
+  const site = useSiteStore();
+  // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测真实会话。
+  if (!auth.ready) await auth.fetchMe({ probe: true });
+  if (to.meta.title) document.title = `${to.meta.title} · ${site.siteName}`;
+
+  const requestedManageTool = firstRouteValue(to.query.tool);
+  if (to.name === "service-tools-manage" && requestedManageTool === "file_collect") {
+    return { name: "service-filestore" };
+  }
+
+  if (to.fullPath.startsWith(LEGACY_FILE_COLLECTION_SUBMIT_PREFIX)) {
+    const target = to.fullPath.slice(LEGACY_FILE_COLLECTION_SUBMIT_PREFIX.length);
+    window.location.replace(`/filestore/submit/${target}`);
+    return false;
+  }
+
+  // 功能开关 gate：admin / mod 不受限（便于在关闭期间巡查）
+  const featureName = to.name ? FEATURE_GATED[String(to.name)] : undefined;
+  if (featureName && !site.loaded) await site.fetch();
+  if (featureName && !site.features[featureName]) {
+    if (auth.token && !auth.user) await auth.fetchMe();
+    const isStaff = auth.user?.role === "admin" || auth.user?.role === "mod";
+    if (!isStaff) {
+      ElMessage.info("该功能当前不可用");
+      return { name: "home" };
+    }
+  }
+
+  if (to.name && COMMUNITY_ACCESS_GATED.has(String(to.name))) {
+    if (auth.token && !auth.user) await auth.fetchMe();
+    if (!auth.canAccessForum) {
+      return { name: "forum", query: { redirect: to.fullPath } };
+    }
+  }
+
+  // 公开页：游客也能看
+  if (to.meta.public) {
+    if (auth.token && !auth.user) void auth.fetchMe();
+    return true;
+  }
+  // 需登录
+  if (!auth.token) {
+    return { name: "login", query: { redirect: to.fullPath } };
+  }
+  if (!auth.user) {
+    await auth.fetchMe();
+    if (!auth.user) return { name: "login", query: { redirect: to.fullPath } };
+  }
+  // 管理后台：仅 mod / admin 可进
+  if (to.meta.requireMod) {
+    if (auth.user?.role !== "admin" && auth.user?.role !== "mod") {
+      return { name: "home" };
+    }
+  }
+  return true;
+});
