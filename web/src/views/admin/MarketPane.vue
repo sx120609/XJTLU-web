@@ -102,4 +102,5 @@ onMounted(load);
 @media(max-width:600px){.category-card>header{flex-direction:column}.category-form-grid{grid-template-columns:1fr}}
 .commission-card{border-color:var(--cpu-border-soft);background:var(--cpu-primary-soft)}.commission-card p,.category-card p,.pane-head p{color:var(--cpu-text-secondary)}.summary article{border-color:var(--cpu-border-soft);background:var(--cpu-surface-soft)}.summary span,.el-table small{color:var(--cpu-text-secondary)}.category-card{border-color:var(--cpu-border-soft);background:var(--cpu-card)}.category-card .el-switch+.el-switch{margin-left:18px}
 :global(html[data-theme="dark"]) .commission-card{box-shadow:inset 0 0 0 1px rgba(45,212,191,.05)}
+.commission-card{border-color:var(--cpu-border-soft)!important;background:var(--cpu-primary-soft)!important}.category-card{border-color:var(--cpu-border-soft)!important;background:var(--cpu-card)!important}
 </style>

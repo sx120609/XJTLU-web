@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, unlink } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -13,8 +14,28 @@ import {
   isDatabaseMaintenanceActive,
 } from "./maintenance";
 
-const PG_DUMP_COMMAND = process.env.PG_DUMP_BIN || "pg_dump";
-const PG_RESTORE_COMMAND = process.env.PG_RESTORE_BIN || "pg_restore";
+function bundledPostgresCommand(executable: "pg_dump" | "pg_restore") {
+  if (process.platform !== "win32") return executable;
+  const appData = String(process.env.LOCALAPPDATA || "").trim();
+  if (!appData) return executable;
+  const root = path.join(appData, "XJTLU-web");
+  try {
+    const candidates = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^postgresql-/i.test(entry.name))
+      .map((entry) => entry.name)
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    for (const directory of candidates) {
+      const command = path.join(root, directory, "pgsql", "bin", `${executable}.exe`);
+      if (existsSync(command)) return command;
+    }
+  } catch {
+    // Fall back to PATH when the app-managed PostgreSQL directory is absent.
+  }
+  return executable;
+}
+
+const PG_DUMP_COMMAND = process.env.PG_DUMP_BIN || bundledPostgresCommand("pg_dump");
+const PG_RESTORE_COMMAND = process.env.PG_RESTORE_BIN || bundledPostgresCommand("pg_restore");
 const DATABASE_RESTORE_UPLOAD_ACCEPT = ".dump,.backup,.tar";
 const DATABASE_RESTORE_UPLOAD_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 
