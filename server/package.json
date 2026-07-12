@@ -1,8 +1,8 @@
 {
-  "name": "cpu-web-server",
+  "name": "xjtlu-web-server",
   "version": "0.1.0",
   "private": true,
-  "description": "CPU-web 后端：Express + Prisma + PostgreSQL",
+  "description": "XJTLU-web 后端：Express + Prisma + PostgreSQL",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

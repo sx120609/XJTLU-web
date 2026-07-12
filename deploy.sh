@@ -25,9 +25,9 @@
 #   ./deploy.sh agent-restart    # 重启出站教务 Agent
 #   ./deploy.sh agent-logs       # 查看出站教务 Agent 日志
 #
-# 默认监听端口：23333（避开 3000 / 8000 / 8080 等常见端口冲突）
+# 默认监听端口：24333（与 CPU-web 的 23333 隔离）
 # 自定义端口：PORT=12345 ./deploy.sh
-# 代理默认端口：23334；自定义端口：PROXY_PORT=12345 ./deploy.sh proxy-init
+# 数据代理默认端口：24334；自定义端口：PROXY_PORT=12345 ./deploy.sh proxy-init
 # 后台进程：pm2 管理；开机自启需要再跑一次 `pm2 startup` + `pm2 save`
 
 set -euo pipefail
@@ -45,10 +45,10 @@ err()  { echo "${R}[deploy]${N} $*" >&2; exit 1; }
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 SERVICE_NAME="xjtlu-web"
-PROXY_SERVICE_NAME="cpu-jwxt-proxy"
-AGENT_SERVICE_NAME="cpu-jwxt-agent"
-PORT="${PORT:-23333}"
-PROXY_PORT="${PROXY_PORT:-23334}"
+PROXY_SERVICE_NAME="xjtlu-data-proxy"
+AGENT_SERVICE_NAME="xjtlu-data-agent"
+PORT="${PORT:-24333}"
+PROXY_PORT="${PROXY_PORT:-24334}"
 ENV_FILE="server/.env"
 CMD_ARG_1="${2:-}"
 CMD_ARG_2="${3:-}"
@@ -192,6 +192,24 @@ postgres_url_field() {
       process.exit(1);
     }
   ' "$url" "$field" 2>/dev/null || true
+}
+
+assert_xjtlu_database_url() {
+  local url="$1"
+  [ -z "$url" ] && return 0
+  local database
+  database="$(postgres_url_field "$url" database)"
+  [ "$database" != "cpu_web" ] || err "拒绝使用 CPU-web 数据库 cpu_web；请为 XJTLU-web 使用 xjtlu_web"
+}
+
+assert_isolated_runtime_config() {
+  [ "$PORT" != "23333" ] || err "端口 23333 保留给 CPU-web；XJTLU-web 默认使用 24333"
+  [ "$PROXY_PORT" != "23334" ] || err "端口 23334 保留给 CPU-web；XJTLU-web 默认使用 24334"
+  local prefix db_url
+  prefix="$(env_get REDIS_PREFIX)"
+  [ "$prefix" != "cpu-web" ] || err "拒绝使用 CPU-web 的 Redis 前缀 cpu-web；请使用 xjtlu-web"
+  db_url="$(configured_database_url)"
+  assert_xjtlu_database_url "$db_url"
 }
 
 postgres_url_is_local() {
@@ -355,7 +373,7 @@ postgres_init_password() {
   if [ -n "${POSTGRES_APP_PASSWORD:-}" ]; then
     printf '%s' "$POSTGRES_APP_PASSWORD"
   else
-    openssl rand -hex 24 2>/dev/null || echo "cpuweb-pg-$(date +%s)"
+    openssl rand -hex 24 2>/dev/null || echo "xjtluweb-pg-$(date +%s)"
   fi
 }
 
@@ -414,7 +432,8 @@ ensure_node() {
       # 杀掉所有 pm2 进程（旧 Node 二进制要被替换）
       if command -v pm2 >/dev/null 2>&1; then
         log "停止现有 pm2 进程，准备升级 Node"
-        pm2 kill || true
+        # Never stop unrelated PM2 applications (for example CPU-web) on a shared host.
+        pm2 stop "$SERVICE_NAME" >/dev/null 2>&1 || true
       fi
       install_node
     else
@@ -481,6 +500,7 @@ TRUST_PROXY_HOPS="0"
 REDIS_ENABLED="true"
 REDIS_URL=""
 REDIS_PREFIX="xjtlu-web"
+XJTLU_PORTAL_SESSION_IDLE_MS="31536000000"
 MEDIA_STORAGE_PROVIDER="local"
 MEDIA_STORAGE_IMAGE_PROVIDER="local"
 MEDIA_STORAGE_VIDEO_PROVIDER="local"
@@ -498,6 +518,9 @@ EOF
   fi
   if ! grep -q '^REDIS_PREFIX=' "$ENV_FILE" 2>/dev/null; then
     echo 'REDIS_PREFIX="xjtlu-web"' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^XJTLU_PORTAL_SESSION_IDLE_MS=' "$ENV_FILE" 2>/dev/null; then
+    echo 'XJTLU_PORTAL_SESSION_IDLE_MS="31536000000"' >> "$ENV_FILE"
   fi
   if ! grep -q '^TRUST_PROXY_HOPS=' "$ENV_FILE" 2>/dev/null; then
     echo 'TRUST_PROXY_HOPS="0"' >> "$ENV_FILE"
@@ -598,6 +621,7 @@ do_build_agent() {
 do_db_init() {
   local db_url user_count
   db_url="$(configured_database_url)"
+  assert_xjtlu_database_url "$db_url"
   is_postgres_url "$db_url" || err "当前 deploy.sh 仅支持 PostgreSQL。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
   ensure_local_postgres_url_ready "$db_url"
   log "同步 PostgreSQL schema"
@@ -626,6 +650,7 @@ do_postgres_config() {
   local input_url
   input_url="$(postgres_input_url)"
   if [ -n "$input_url" ]; then
+    assert_xjtlu_database_url "$input_url"
     env_set DATABASE_URL "$input_url"
     env_set POSTGRES_DATABASE_URL "$input_url"
     log "已写入 DATABASE_URL / POSTGRES_DATABASE_URL：$(mask_postgres_url "$input_url")"
@@ -716,16 +741,16 @@ do_redis_config() {
   fi
   echo ""
   echo "   可执行："
-  echo "     ./deploy.sh redis-config 'redis://127.0.0.1:6379/0'"
+  echo "     ./deploy.sh redis-config 'redis://127.0.0.1:6379/1'"
   echo "   或者："
-  echo "     REDIS_URL='redis://127.0.0.1:6379/0' ./deploy.sh redis-config"
+  echo "     REDIS_URL='redis://127.0.0.1:6379/1' ./deploy.sh redis-config"
 }
 
 do_redis_init() {
   ensure_env
   ensure_redis
   local db_index
-  db_index="${REDIS_DB_INDEX:-${CMD_ARG_1:-0}}"
+  db_index="${REDIS_DB_INDEX:-${CMD_ARG_1:-1}}"
   [[ "$db_index" =~ ^[0-9]+$ ]] || err "Redis DB index 必须是非负整数：$db_index"
   local url="redis://127.0.0.1:6379/${db_index}"
   env_set REDIS_ENABLED "true"
@@ -738,6 +763,7 @@ do_redis_init() {
 }
 
 do_start() {
+  assert_isolated_runtime_config
   ensure_node
   ensure_pm2
   log "通过 pm2 启动 $SERVICE_NAME（端口 $PORT）"
@@ -774,6 +800,7 @@ do_start() {
 }
 
 do_proxy_start() {
+  assert_isolated_runtime_config
   ensure_node
   ensure_pm2
   log "通过 pm2 启动 $PROXY_SERVICE_NAME（端口 $PROXY_PORT）"

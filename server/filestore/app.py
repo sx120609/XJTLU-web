@@ -74,7 +74,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    port = int(os.environ.get("PORT", "8974"))
+    port = int(os.environ.get("PORT", "8975"))
     server = ThreadingHTTPServer(("127.0.0.1", port), AppHandler)
     print(f"Filestore static assets running at http://127.0.0.1:{port}")
     server.serve_forever()

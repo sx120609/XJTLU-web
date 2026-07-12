@@ -32,15 +32,16 @@
         :rules="rules"
         size="large"
         class="form"
-        @keyup.enter="auth.ssoMfa ? onMfaSubmit() : onSubmit()"
+        autocomplete="on"
+        @submit.prevent="auth.ssoMfa ? onMfaSubmit() : onSubmit()"
       >
         <el-form-item v-if="!auth.ssoMfa" prop="username">
-          <el-input v-model="form.username" placeholder="XJTLU 用户名" :disabled="auth.ssoLoading || captchaRefreshing">
+          <el-input v-model="form.username" name="username" autocomplete="username" placeholder="XJTLU 用户名" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item v-if="!auth.ssoMfa" prop="password">
-          <el-input v-model="form.password" type="password" show-password placeholder="密码" :disabled="auth.ssoLoading || captchaRefreshing">
+          <el-input v-model="form.password" name="password" type="password" show-password autocomplete="current-password" placeholder="密码" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
@@ -78,6 +79,8 @@
               <el-input
                 v-if="selectedMfaMethod.codeRequired"
                 v-model="mfaCode"
+                name="one-time-code"
+                autocomplete="one-time-code"
                 inputmode="numeric"
                 :maxlength="selectedMfaMethod.codeLength"
                 :placeholder="selectedMfaMethod.type === 'otp' ? '输入动态口令 OTP' : '输入验证码'"
@@ -88,20 +91,23 @@
               <el-input
                 v-if="selectedMfaMethod.passwordRequired"
                 v-model="mfaPassword"
+                name="mfa-password"
                 type="password"
                 show-password
+                autocomplete="current-password"
                 placeholder="该认证方式还需要 XJTLU 密码"
                 :disabled="auth.ssoLoading"
               />
               <div class="mfa-actions">
                 <el-button
                   v-if="selectedMfaMethod.type !== 'otp'"
+                  native-type="button"
                   :disabled="auth.ssoLoading || mfaCooldown > 0"
                   @click="sendMfaCode"
                 >
                   {{ mfaCooldown > 0 ? `${mfaCooldown}s 后可重发` : '发送验证码' }}
                 </el-button>
-                <el-button type="primary" :loading="auth.ssoLoading" @click="onMfaSubmit">验证并登录</el-button>
+                <el-button native-type="submit" type="primary" :loading="auth.ssoLoading">验证并登录</el-button>
               </div>
             </div>
           </div>
@@ -168,7 +174,7 @@
           </el-button>
         </el-form-item>
         <el-form-item v-if="!auth.ssoMfa">
-          <el-button type="primary" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing || sliderChecking" @click="onSubmit">
+          <el-button native-type="submit" type="primary" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing || sliderChecking">
             {{ reconnectMode ? "重新连接" : "登 录" }}
           </el-button>
         </el-form-item>
@@ -182,10 +188,10 @@
         <div class="dev-tip">
           仅用于本地开发与调试；生产环境固定使用 XJTLU 统一认证。
         </div>
-        <el-form size="default" class="dev-form" @keyup.enter="onDevSubmit">
-          <el-input v-model="dev.username" placeholder="用户名" :disabled="dev.loading" />
-          <el-input v-model="dev.password" type="password" show-password placeholder="密码" :disabled="dev.loading" />
-          <el-button :loading="dev.loading" :disabled="dev.loading" @click="onDevSubmit">登录</el-button>
+        <el-form size="default" class="dev-form" autocomplete="on" @submit.prevent="onDevSubmit">
+          <el-input v-model="dev.username" name="username" autocomplete="username" placeholder="用户名" :disabled="dev.loading" />
+          <el-input v-model="dev.password" name="password" type="password" show-password autocomplete="current-password" placeholder="密码" :disabled="dev.loading" />
+          <el-button native-type="submit" :loading="dev.loading" :disabled="dev.loading">登录</el-button>
         </el-form>
         <div class="dev-accounts">
           <button type="button" @click="fillDev('alice', '123456')">alice / 123456</button>
@@ -473,9 +479,6 @@ async function onSubmit() {
     ok = await auth.ssoLogin(form.username, form.password, form.captcha || undefined, remember.value);
   } catch {
     return; // API 拦截器已展示错误
-  } finally {
-    // 风控挑战仍在继续时只把密码保留在当前页面内存，服务端不会保存明文。
-    if (ok || (!auth.ssoVerification && !auth.ssoMfa)) form.password = "";
   }
   if (ok) {
     savedCredsPresent.value = hasCreds();

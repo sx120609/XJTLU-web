@@ -69,6 +69,8 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   let fetchCount = 0;
+  let activeHomeRequests = 0;
+  let maxActiveHomeRequests = 0;
 
   globalThis.fetch = async (input, init = {}) => {
     fetchCount += 1;
@@ -99,7 +101,13 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
       assert.match(cookies, /EBRIDGE_SESSION=ready/);
       return new Response(`<html><head><title>User Redirect</title></head><body><script>window.location.href="siw_portal.url?home";</script></body></html>`);
     }
-    if (url.search === "?home") return new Response(portalHtml);
+    if (url.search === "?home") {
+      activeHomeRequests += 1;
+      maxActiveHomeRequests = Math.max(maxActiveHomeRequests, activeHomeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeHomeRequests -= 1;
+      return new Response(portalHtml);
+    }
     if (url.search === "?records") return new Response(recordsHtml);
     if (url.search === "?timetable") return new Response(timetableHtml);
     if (url.search === "?personal") return new Response(personalTimetableHtml);
@@ -128,7 +136,11 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
     username: "student.name24",
     displayName: "Test Student",
   });
-  const overview = await getXjtluAcademicOverview(1991);
+  const [overview, schedule] = await Promise.all([
+    getXjtluAcademicOverview(1991),
+    getXjtluAcademicSchedule(1991),
+  ]);
+  assert.equal(maxActiveHomeRequests, 1, "same-user eBridge requests must not race cookie snapshots");
   assert.deepEqual(overview.student, { id: "2469480", name: "Test Student" });
   assert.equal(overview.academicYear, "2025/26");
   assert.equal(overview.grades.length, 3);
@@ -191,7 +203,6 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
     area: "Green-3",
     entrance: "Ground floor",
   });
-  const schedule = await getXjtluAcademicSchedule(1991);
   assert.equal(schedule.parsed.currentSemester, "2025/26-S2");
   assert.equal(schedule.parsed.weeks.length, 13);
   assert.equal(schedule.calendar.semesterStart, "2026-03-02");

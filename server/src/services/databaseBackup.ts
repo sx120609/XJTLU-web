@@ -108,7 +108,7 @@ function backupStamp(date = new Date()) {
 }
 
 function postgresBackupFileName(date = new Date()) {
-  return `cpu-web-db-backup-${backupStamp(date)}.dump`;
+  return `xjtlu-web-db-backup-${backupStamp(date)}.dump`;
 }
 
 export function databaseRestoreUploadLimitBytes() {
@@ -304,7 +304,7 @@ export async function createDatabaseBackupSnapshot() {
     throw new Error(`当前环境未找到 ${PG_DUMP_COMMAND}，无法导出 PostgreSQL 备份`);
   }
 
-  const tempDir = await mkdtemp(path.join(tmpdir(), "cpu-web-db-backup-"));
+  const tempDir = await mkdtemp(path.join(tmpdir(), "xjtlu-web-db-backup-"));
   const snapshotPath = path.join(tempDir, `postgres-${randomUUID()}.dump`);
   await runPgDump(snapshotPath);
   return {

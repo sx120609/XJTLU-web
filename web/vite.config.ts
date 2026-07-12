@@ -5,7 +5,7 @@ import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 import path from "node:path";
 
-const apiTarget = process.env.VITE_API_TARGET || "http://localhost:3000";
+const apiTarget = process.env.VITE_API_TARGET || "http://localhost:3011";
 
 export default defineConfig({
   plugins: [

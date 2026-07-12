@@ -5,7 +5,7 @@ import { errorHandler } from "./middleware/error";
 import { proxyJwxtRouter } from "./routes/proxyJwxt";
 
 const app = express();
-const port = Number(process.env.PROXY_PORT ?? 23334);
+const port = Number(process.env.PROXY_PORT ?? 24334);
 
 app.use(express.json({ limit: "1mb" }));
 if (isDev) app.use(morgan("dev"));

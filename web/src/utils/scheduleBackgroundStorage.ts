@@ -1,4 +1,4 @@
-const DB_NAME = "cpu-web-local-assets-v1";
+const DB_NAME = "xjtlu-web-local-assets-v1";
 const STORE_NAME = "assets";
 const BACKGROUND_KEY = "schedule-background-v1";
 

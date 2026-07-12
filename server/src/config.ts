@@ -294,9 +294,16 @@ const browserSessionAbsoluteMs = parseIntegerEnv(
   browserSessionIdleMs,
   2 * 365 * 24 * 60 * 60 * 1000,
 );
+const xjtluPortalSessionIdleMs = parseIntegerEnv(
+  "XJTLU_PORTAL_SESSION_IDLE_MS",
+  process.env.XJTLU_PORTAL_SESSION_IDLE_MS,
+  browserSessionAbsoluteMs,
+  browserSessionIdleMs,
+  2 * 365 * 24 * 60 * 60 * 1000,
+);
 
 export const config = {
-  port: Number(process.env.PORT ?? 3000),
+  port: Number(process.env.PORT ?? 3011),
   trustProxyHops: parseIntegerEnv("TRUST_PROXY_HOPS", process.env.TRUST_PROXY_HOPS, 0, 0, 10),
   xjtluSsoBeginGlobalLimit: parseIntegerEnv("XJTLU_SSO_BEGIN_GLOBAL_LIMIT", process.env.XJTLU_SSO_BEGIN_GLOBAL_LIMIT, 3_000, 1, 100_000),
   xjtluSsoSubmitGlobalLimit: parseIntegerEnv("XJTLU_SSO_SUBMIT_GLOBAL_LIMIT", process.env.XJTLU_SSO_SUBMIT_GLOBAL_LIMIT, 1_500, 1, 100_000),
@@ -327,7 +334,7 @@ export const config = {
     60_000,
   ),
   filestoreEnabled: process.env.FILESTORE_ENABLED !== "false",
-  filestorePort: Number(process.env.FILESTORE_PORT ?? 8974),
+  filestorePort: Number(process.env.FILESTORE_PORT ?? 8975),
   filestorePython: process.env.FILESTORE_PYTHON ?? "",
   mediaStorageProvider: (process.env.MEDIA_STORAGE_PROVIDER ?? "local").trim().toLowerCase(),
   mediaStorageImageProvider: (process.env.MEDIA_STORAGE_IMAGE_PROVIDER ?? "").trim().toLowerCase(),
@@ -343,6 +350,7 @@ export const config = {
   redisPrefix: (process.env.REDIS_PREFIX ?? "xjtlu-web").trim() || "xjtlu-web",
   browserSessionIdleMs,
   browserSessionAbsoluteMs,
+  xjtluPortalSessionIdleMs,
   corsAllowedOrigins: parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS),
   androidAppDownloadUrl: (
     process.env.ANDROID_APP_DOWNLOAD_URL

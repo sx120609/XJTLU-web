@@ -107,13 +107,13 @@ python app.py
 默认访问地址：
 
 ```text
-http://127.0.0.1:8974
+http://127.0.0.1:8975
 ```
 
 可通过环境变量修改默认端口：
 
 ```powershell
-$env:PORT="8974"
+$env:PORT="8975"
 python app.py
 ```
 

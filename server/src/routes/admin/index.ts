@@ -115,7 +115,7 @@ import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 
 export const adminRouter = Router();
-const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
+const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "xjtlu-web-db-restore-upload");
 mkdirSync(DATABASE_RESTORE_UPLOAD_DIR, { recursive: true });
 
 const databaseRestoreUpload = multer({

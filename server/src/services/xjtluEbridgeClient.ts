@@ -5,6 +5,7 @@ import { Errors, HttpError } from "../utils/response";
 import {
   deleteEphemeralValue,
   getEphemeralValue,
+  runWithDistributedLock,
   setEphemeralValue,
 } from "./cache";
 import { buildRedisKey } from "./redis";
@@ -15,11 +16,11 @@ const TIMETABLE_ORIGIN = "https://timetableplus.xjtlu.edu.cn";
 const EBRIDGE_RUN_PREFIX = "/urd/sits.urd/run/";
 const EBRIDGE_LOGIN_URL = `${EBRIDGE_ORIGIN}${EBRIDGE_RUN_PREFIX}SIW_LGN`;
 const EBRIDGE_SSO_URL = `${EBRIDGE_ORIGIN}${EBRIDGE_RUN_PREFIX}siw_sso.openid`;
-const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const SESSION_PREFIX = buildRedisKey("school-auth", "xjtlu", "ebridge-session");
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36";
+const sessionOperationTails = new Map<number, Promise<void>>();
 
 type CookieMap = Record<string, string>;
 
@@ -166,7 +167,36 @@ function openSession(value: string): EbridgeSession | null {
 }
 
 async function saveSession(userId: number, session: EbridgeSession) {
-  await setEphemeralValue(sessionKey(userId), sealSession(session), SESSION_TTL_MS);
+  await setEphemeralValue(sessionKey(userId), sealSession(session), config.xjtluPortalSessionIdleMs);
+}
+
+/**
+ * eBridge may rotate cookies while reading pages. Serializing operations for the
+ * same user prevents concurrent overview/schedule requests from writing an old
+ * cookie snapshot over a newer one.
+ */
+async function withSerializedSession<T>(userId: number, task: () => Promise<T>) {
+  const previous = sessionOperationTails.get(userId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.catch(() => undefined).then(() => gate);
+  sessionOperationTails.set(userId, tail);
+  await previous.catch(() => undefined);
+  try {
+    for (let attempt = 0; attempt < 150; attempt += 1) {
+      const locked = await runWithDistributedLock(
+        `xjtlu-ebridge-session:${userId}`,
+        120_000,
+        task,
+      );
+      if (locked.acquired) return locked.result as T;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw Errors.conflict("eBridge 数据正在同步，请稍后重试");
+  } finally {
+    release();
+    if (sessionOperationTails.get(userId) === tail) sessionOperationTails.delete(userId);
+  }
 }
 
 async function loadSession(userId: number) {
@@ -923,7 +953,7 @@ export async function getXjtluEbridgeStatus(userId: number, verify = false) {
   }
 }
 
-export async function getXjtluAcademicOverview(userId: number) {
+async function getXjtluAcademicOverviewUnlocked(userId: number) {
   const session = await requireSession(userId);
   try {
     const home = await fetchPage(session, session.homeUrl);
@@ -941,19 +971,23 @@ export async function getXjtluAcademicOverview(userId: number) {
       records.grades = mergeComponentMarks(records.grades, parseXjtluComponentMarks(componentMarksPage.html));
     }
     const exams = parseXjtluExamTimetable(timetablePage.html);
-    await saveSession(userId, session);
-    return {
+    const overview = {
       ...records,
       exams,
       updatedAt: new Date().toISOString(),
     };
+    if (!overview.student?.id && !overview.student?.name) {
+      throw new HttpError(502, 5605, "eBridge 学业记录结构暂时无法识别，请稍后重试");
+    }
+    await saveSession(userId, session);
+    return overview;
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) await deleteEphemeralValue(sessionKey(userId));
     throw error;
   }
 }
 
-export async function getXjtluAcademicSchedule(userId: number) {
+async function getXjtluAcademicScheduleUnlocked(userId: number) {
   const session = await requireSession(userId);
   try {
     const home = await fetchPage(session, session.homeUrl);
@@ -981,8 +1015,7 @@ export async function getXjtluAcademicSchedule(userId: number) {
         return { value, label: `第 ${value} 周`, current: value === String(calendar.currentWeek) };
       },
     );
-    await saveSession(userId, session);
-    return {
+    const schedule = {
       parsed: {
         semesters: [{ value: semester.value, label: semester.display, current: true }],
         weeks,
@@ -997,10 +1030,29 @@ export async function getXjtluAcademicSchedule(userId: number) {
         activityCount: activities.length,
       },
     };
+    if (
+      !schedule.parsed.currentSemester
+      || schedule.parsed.semesters.length === 0
+      || schedule.parsed.weeks.length === 0
+      || !schedule.calendar.semesterStart
+      || !schedule.calendar.semesterEnd
+    ) {
+      throw new HttpError(502, 5605, "eBridge 课表结构暂时无法识别，请稍后重试");
+    }
+    await saveSession(userId, session);
+    return schedule;
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) await deleteEphemeralValue(sessionKey(userId));
     throw error;
   }
+}
+
+export function getXjtluAcademicOverview(userId: number) {
+  return withSerializedSession(userId, () => getXjtluAcademicOverviewUnlocked(userId));
+}
+
+export function getXjtluAcademicSchedule(userId: number) {
+  return withSerializedSession(userId, () => getXjtluAcademicScheduleUnlocked(userId));
 }
 
 export async function clearXjtluEbridgeSession(userId: number) {

@@ -94,7 +94,7 @@
             </div>
             <div class="storage-field">
               <span class="field-label">远端根目录</span>
-              <el-input v-model="oneDriveChinaRootPath" maxlength="240" placeholder="cpu-web-media" />
+              <el-input v-model="oneDriveChinaRootPath" maxlength="240" placeholder="xjtlu-web-media" />
             </div>
           </div>
 

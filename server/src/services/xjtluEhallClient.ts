@@ -14,7 +14,6 @@ const UIM_ORIGIN = "https://uim.xjtlu.edu.cn";
 const EHALL_LOGIN_URL = `${EHALL_ORIGIN}/auth-protocol-core/login?service=${encodeURIComponent(`${EHALL_ORIGIN}/login`)}`;
 const EHALL_HOME_URL = `${EHALL_ORIGIN}/default/index.html#/hall`;
 const EHALL_STUDENT_HOME_URL = `${EHALL_ORIGIN}/default/index.html#/homeXS`;
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const ALL_SERVICE_ITEM_CARD_ID = "CUS_CARD_ALLSERVICEITEM";
@@ -115,7 +114,7 @@ function openSession(value: string): EhallSession | null {
 }
 
 async function saveSession(userId: number, session: EhallSession) {
-  await setEphemeralValue(sessionKey(userId), sealSession(session), SESSION_TTL_MS);
+  await setEphemeralValue(sessionKey(userId), sealSession(session), config.xjtluPortalSessionIdleMs);
 }
 
 async function loadSession(userId: number) {

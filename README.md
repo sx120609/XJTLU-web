@@ -124,7 +124,7 @@ cp server/.env.example server/.env
 核心配置示例：
 
 ```env
-PORT=3000
+PORT=3011
 NODE_ENV=development
 DATABASE_URL="postgresql://user:password@127.0.0.1:5432/xjtlu_web?schema=public"
 JWT_SECRET="please-change-this-in-production"
@@ -139,10 +139,10 @@ SSO_LOGIN_LOCAL_WEIGHT=1
 SSO_LOGIN_TIMEOUT_MS=15000
 SSO_LOGIN_FAILURE_COOLDOWN_MS=30000
 PROXY_AUTH=""
-PROXY_PORT=23334
+PROXY_PORT=24334
 
 FILESTORE_ENABLED=true
-FILESTORE_PORT=8974
+FILESTORE_PORT=8975
 FILESTORE_PYTHON=""
 
 MEDIA_STORAGE_PROVIDER="local"
@@ -153,7 +153,7 @@ ONEDRIVE_CN_TENANT_ID=""
 ONEDRIVE_CN_CLIENT_ID=""
 ONEDRIVE_CN_CLIENT_SECRET=""
 ONEDRIVE_CN_DRIVE_ID=""
-ONEDRIVE_CN_ROOT_PATH="cpu-web-media"
+ONEDRIVE_CN_ROOT_PATH="xjtlu-web-media"
 ```
 
 ### 3. 初始化数据库
@@ -182,8 +182,8 @@ npm run dev
 默认地址：
 
 - 前端：<http://localhost:5173>
-- 后端：<http://localhost:3000>
-- 健康检查：<http://localhost:3000/api/health>
+- 后端：<http://localhost:3011>
+- 健康检查：<http://localhost:3011/api/health>
 - Filestore 嵌入入口：<http://localhost:5173/filestore>
 
 Vite 已代理以下路径到后端：
@@ -254,11 +254,14 @@ Vite 已代理以下路径到后端：
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `PORT` | `3000` | 主服务端口 |
+| `PORT` | `3011` | 本地开发主服务端口；部署脚本默认使用 `24333` |
 | `NODE_ENV` | `development` | 生产环境请设为 `production` |
 | `DATABASE_URL` | 无 | PostgreSQL 连接串 |
 | `JWT_SECRET` | `xjtlu-web-dev-secret` | 站内 JWT 签名密钥 |
 | `JWT_EXPIRES_IN` | `7d` | 站内登录 token 有效期 |
+| `BROWSER_SESSION_IDLE_MS` | `1800000` | 未勾选保持登录时的会话空闲时长 |
+| `BROWSER_SESSION_ABSOLUTE_MS` | `31536000000` | 勾选保持登录后的滑动会话时长 |
+| `XJTLU_PORTAL_SESSION_IDLE_MS` | `31536000000` | eHall / eBridge 加密会话滑动保存时长；上游 Cookie 自身失效后仍需重新认证 |
 | `TRUST_PROXY_HOPS` | `0` | 可信反向代理层数；Node 直连保持 `0`，单层 Nginx/Caddy 设为 `1` |
 | `XJTLU_SSO_BEGIN_GLOBAL_LIMIT` | `3000 / 5 分钟` | 全部署登录初始化上限 |
 | `XJTLU_SSO_SUBMIT_GLOBAL_LIMIT` | `1500 / 10 分钟` | 全部署密码提交上限 |
@@ -281,9 +284,9 @@ Vite 已代理以下路径到后端：
 | `SSO_LOGIN_TIMEOUT_MS` | `JWXT_PROXY_TIMEOUT_MS` | 登录池单节点请求超时（毫秒） |
 | `SSO_LOGIN_FAILURE_COOLDOWN_MS` | `30000` | 登录节点失败后的临时冷却时间（毫秒） |
 | `PROXY_AUTH` | 空 | 教务代理端校验密钥 |
-| `PROXY_PORT` | `23334` | 教务代理监听端口 |
+| `PROXY_PORT` | `24334` | 数据代理监听端口，与 CPU-web 隔离 |
 | `FILESTORE_ENABLED` | `true` | 是否启用嵌入式 Filestore |
-| `FILESTORE_PORT` | `8974` | Filestore 静态页面服务端口 |
+| `FILESTORE_PORT` | `8975` | Filestore 静态页面服务端口 |
 | `FILESTORE_PYTHON` | 自动探测 | 指定 Python 可执行文件 |
 | `MEDIA_STORAGE_PROVIDER` | `local` | 媒体资源默认存储后端；可设为 `local` 或 `onedrive-cn`，未单独指定图片/视频时作为回退值 |
 | `MEDIA_STORAGE_IMAGE_PROVIDER` | 空 | 图片资源存储后端；可单独设为 `local` 或 `onedrive-cn` |
@@ -293,7 +296,7 @@ Vite 已代理以下路径到后端：
 | `ONEDRIVE_CN_CLIENT_ID` | 空 | 世纪互联应用注册的客户端 ID |
 | `ONEDRIVE_CN_CLIENT_SECRET` | 空 | 世纪互联应用注册的客户端密钥 |
 | `ONEDRIVE_CN_DRIVE_ID` | 空 | SharePoint 文档库或 OneDrive 对应的 Drive ID |
-| `ONEDRIVE_CN_ROOT_PATH` | 空 | 远端根目录下的存储子路径，例如 `cpu-web-media` |
+| `ONEDRIVE_CN_ROOT_PATH` | 空 | 远端根目录下的存储子路径，例如 `xjtlu-web-media` |
 | `PG_DUMP_BIN` | `pg_dump` | 后台数据库备份使用的命令路径 |
 
 补充说明：
@@ -314,7 +317,7 @@ Node 直接对外提供服务时保持 `TRUST_PROXY_HOPS=0`。若前面恰好有
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:3000;
+    proxy_pass http://127.0.0.1:24333;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -323,6 +326,23 @@ location / {
 ```
 
 新项目应使用独立数据库、域名、`JWT_SECRET` 与 `REDIS_PREFIX=xjtlu-web`，不要直接复用旧 CPU 项目的用户、JWT 或 Redis 数据。
+
+### 与 CPU-web 同机部署隔离
+
+默认部署配置已经使用独立命名空间，两个项目可以在同一台机器运行：
+
+| 资源 | XJTLU-web 默认值 | CPU-web 默认值 |
+|---|---|---|
+| PM2 主进程 | `xjtlu-web` | `cpu-web` |
+| PM2 数据代理 / Agent | `xjtlu-data-proxy` / `xjtlu-data-agent` | `cpu-jwxt-proxy` / `cpu-jwxt-agent` |
+| 主服务端口 | `24333` | `23333` |
+| 数据代理端口 | `24334` | `23334` |
+| Filestore 端口 | `8975` | `8974` |
+| PostgreSQL 数据库 / 用户 | `xjtlu_web` / `xjtlu_web_app` | `cpu_web` / `cpu_web_app` |
+| Redis DB / 前缀 | `1` / `xjtlu-web` | `0` / `cpu-web` |
+| 数据库备份前缀 | `xjtlu-web-db-backup-` | `cpu-web-db-backup-` |
+
+部署脚本不会执行 `pm2 kill`，升级或重启 XJTLU-web 时不会主动停止 CPU-web。仓库当前没有 Docker Compose；如由外部容器平台部署，请继续使用独立的 Compose project/container 名和独立 volume。
 
 ## 部署
 
@@ -356,7 +376,7 @@ chmod +x deploy.sh
 
 部署脚本默认行为：
 
-- 主服务端口：`23333`
+- 主服务端口：`24333`
 - Node 版本：按 Node 20+ 处理
 - 进程管理：`pm2`
 

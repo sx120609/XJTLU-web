@@ -7,6 +7,17 @@ const CRED_STORAGE = "xjtlu-sso-creds-v1";
 const LEGACY_CPU_KEY_STORAGE = "cpu-jwxt-key-v1";
 const LEGACY_CPU_CRED_STORAGE = "cpu-jwxt-creds-v1";
 
+function storageAvailable() {
+  try {
+    const key = "__xjtlu_storage_probe__";
+    localStorage.setItem(key, "1");
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function purgeLegacyCpuCreds() {
   try {
     localStorage.removeItem(LEGACY_CPU_CRED_STORAGE);
@@ -28,6 +39,7 @@ function b64decode(value: string) {
 }
 
 async function getOrCreateKey() {
+  if (!storageAvailable()) throw new Error("browser storage is unavailable");
   let raw = localStorage.getItem(KEY_STORAGE);
   let bytes: Uint8Array;
   if (!raw) {
@@ -40,6 +52,7 @@ async function getOrCreateKey() {
 }
 
 export async function saveCreds(username: string, password: string) {
+  if (!username || !password || !storageAvailable()) return;
   purgeLegacyCpuCreds();
   const key = await getOrCreateKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -55,12 +68,14 @@ export async function saveCreds(username: string, password: string) {
     plain as unknown as BufferSource,
   );
   localStorage.setItem(CRED_STORAGE, JSON.stringify({
+    version: 1,
     iv: b64encode(iv),
     data: b64encode(new Uint8Array(encrypted)),
   }));
 }
 
 export async function loadCreds(): Promise<{ username: string; password: string } | null> {
+  if (!storageAvailable()) return null;
   purgeLegacyCpuCreds();
   const raw = localStorage.getItem(CRED_STORAGE);
   if (!raw) return null;
@@ -84,6 +99,7 @@ export async function loadCreds(): Promise<{ username: string; password: string 
 
 export function hasCreds() {
   purgeLegacyCpuCreds();
+  if (!storageAvailable()) return false;
   try { return Boolean(localStorage.getItem(CRED_STORAGE)); } catch { return false; }
 }
 
