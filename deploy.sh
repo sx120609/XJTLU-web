@@ -635,6 +635,8 @@ do_db_init() {
   else
     log "检测到 PostgreSQL 已有数据（User: $user_count），跳过 seed"
   fi
+  log "清理旧 CPU-web 公告源与服务数据"
+  npm run db:cleanup:xjtlu --prefix server
   log "数据库初始化完成后再次生成 Prisma Client"
   npm run prisma:generate --prefix server
 }
@@ -770,7 +772,7 @@ do_start() {
   # 用 ecosystem-less 模式：直接 start 命令
   cd server
   if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
-    pm2 restart "$SERVICE_NAME" --update-env
+    NODE_ENV=production PORT="$PORT" pm2 restart "$SERVICE_NAME" --update-env
   else
     NODE_ENV=production PORT=$PORT pm2 start "node dist/index.js" \
       --name "$SERVICE_NAME" \
@@ -806,7 +808,7 @@ do_proxy_start() {
   log "通过 pm2 启动 $PROXY_SERVICE_NAME（端口 $PROXY_PORT）"
   cd server
   if pm2 describe "$PROXY_SERVICE_NAME" >/dev/null 2>&1; then
-    pm2 restart "$PROXY_SERVICE_NAME" --update-env
+    NODE_ENV=production PROXY_PORT="$PROXY_PORT" pm2 restart "$PROXY_SERVICE_NAME" --update-env
   else
     NODE_ENV=production PROXY_PORT=$PROXY_PORT pm2 start "node dist/proxy.js" \
       --name "$PROXY_SERVICE_NAME" \
@@ -861,18 +863,29 @@ do_agent_start() {
 }
 
 do_stop()    { ensure_pm2; pm2 stop "$SERVICE_NAME"; }
-do_restart() { ensure_node; ensure_pm2; pm2 restart "$SERVICE_NAME" --update-env; }
+do_restart() {
+  assert_isolated_runtime_config
+  ensure_node
+  ensure_pm2
+  NODE_ENV=production PORT="$PORT" pm2 restart "$SERVICE_NAME" --update-env
+}
 do_logs()    { ensure_pm2; pm2 logs "$SERVICE_NAME"; }
 do_status()  { ensure_pm2; pm2 status; }
 
 do_proxy_stop()    { ensure_pm2; pm2 stop "$PROXY_SERVICE_NAME"; }
-do_proxy_restart() { ensure_node; ensure_pm2; pm2 restart "$PROXY_SERVICE_NAME" --update-env; }
+do_proxy_restart() {
+  assert_isolated_runtime_config
+  ensure_node
+  ensure_pm2
+  NODE_ENV=production PROXY_PORT="$PROXY_PORT" pm2 restart "$PROXY_SERVICE_NAME" --update-env
+}
 do_proxy_logs()    { ensure_pm2; pm2 logs "$PROXY_SERVICE_NAME"; }
 do_agent_stop()    { ensure_pm2; pm2 stop "$AGENT_SERVICE_NAME"; }
 do_agent_restart() { ensure_node; ensure_pm2; ensure_agent_env; pm2 restart "$AGENT_SERVICE_NAME" --update-env; }
 do_agent_logs()    { ensure_pm2; pm2 logs "$AGENT_SERVICE_NAME"; }
 
 do_update() {
+  assert_isolated_runtime_config
   if [ -d .git ]; then
     log "拉取最新代码"
     git pull --ff-only || warn "git pull 失败，继续部署当前代码"
@@ -886,6 +899,7 @@ do_update() {
 }
 
 do_proxy_update() {
+  assert_isolated_runtime_config
   if [ -d .git ]; then
     log "拉取最新代码"
     git pull --ff-only || warn "git pull 失败，继续部署当前代码"

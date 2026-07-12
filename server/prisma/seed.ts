@@ -82,36 +82,9 @@ async function main() {
 
   // ============ 爬虫源（创建后 Board 引用） ============
   console.log("🕷️  创建学校爬虫源...");
-  const feeds = await Promise.all([
-    prisma.schoolFeedSource.create({
-      data: {
-        slug: "jwc-notice", name: "教务处通知",
-        homepage: "http://jwc.cpu.edu.cn/", listUrl: "http://jwc.cpu.edu.cn/851/list{page}.htm",
-        pageSize: 14, maxPages: 2, cronMinutes: 15, botUserId: bot.id,
-      },
-    }),
-    prisma.schoolFeedSource.create({
-      data: {
-        slug: "xgc-notice", name: "学工处通知",
-        homepage: "http://xgc.cpu.edu.cn/", listUrl: "http://xgc.cpu.edu.cn/18011/list{page}.htm",
-        pageSize: 14, maxPages: 2, cronMinutes: 15, botUserId: bot.id,
-      },
-    }),
-    prisma.schoolFeedSource.create({
-      data: {
-        slug: "yjsy-notice", name: "研究生院通知",
-        homepage: "http://yjsy.cpu.edu.cn/", listUrl: "http://yjsy.cpu.edu.cn/6305/list{page}.htm",
-        pageSize: 14, maxPages: 2, cronMinutes: 20, botUserId: bot.id,
-      },
-    }),
-    prisma.schoolFeedSource.create({
-      data: {
-        slug: "yjszs-notice", name: "研究生招生网通知",
-        homepage: "https://yjszs.cpu.edu.cn/", listUrl: "https://yjszs.cpu.edu.cn/",
-        pageSize: 12, maxPages: 1, cronMinutes: 20, botUserId: bot.id,
-      },
-    }),
-  ]);
+  // XJTLU announcements are synchronized through XjtluAnnouncement after an
+  // administrator authorizes the eHall session. Do not seed CPU crawler feeds.
+  const feeds: Array<{ id: number; slug: string; name: string; homepage: string }> = [];
 
   // ============ 板块 ============
   console.log("🏛️  创建板块...");

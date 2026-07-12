@@ -106,23 +106,6 @@
               </a>
             </li>
           </ul>
-          <ul v-else-if="summary?.announce?.length" class="announce-list">
-            <li
-              v-for="t in summary.announce"
-              :key="'ann-' + t.id"
-              role="button"
-              tabindex="0"
-              @click="openTopic(t.id)"
-              @keydown.enter.prevent="openTopic(t.id)"
-              @keydown.space.prevent="openTopic(t.id)"
-            >
-              <div class="ann-title">{{ t.title }}</div>
-              <div class="ann-meta">
-                <span class="ann-source">{{ t.board?.name }}</span>
-                <span>{{ fmtRelative(t.createdAt) }}</span>
-              </div>
-            </li>
-          </ul>
           <el-empty v-else-if="!ehallNoticesLoading" description="暂无公告，稍后再来看看" />
         </section>
 

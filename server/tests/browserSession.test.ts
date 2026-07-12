@@ -66,3 +66,34 @@ test("browser auth uses an opaque HttpOnly cookie and enforces CSRF", async () =
   requestOriginAndCsrfProtection(request, {} as any, (error?: unknown) => { nextError = error; });
   assert.equal((nextError as { status?: number })?.status, 403);
 });
+
+test("browser auth accepts the configured public site origin behind a reverse proxy", async () => {
+  const { allowedOrigins, requestOriginAndCsrfProtection } = await import("../src/middleware/browserSession");
+  const request = {
+    protocol: "http",
+    get(name: string) {
+      const values: Record<string, string> = {
+        host: "127.0.0.1:24333",
+        "x-forwarded-proto": "http",
+      };
+      return values[name.toLowerCase()] || "";
+    },
+  } as any;
+
+  const origins = allowedOrigins(request, "https://campus.example.edu");
+  assert.equal(origins.has("http://127.0.0.1:24333"), true);
+  assert.equal(origins.has("https://campus.example.edu"), true);
+
+  request.method = "POST";
+  request.get = (name: string) => {
+    const values: Record<string, string> = {
+      host: "127.0.0.1:24333",
+      origin: "https://campus.example.edu",
+      "sec-fetch-site": "same-origin",
+    };
+    return values[name.toLowerCase()] || "";
+  };
+  let nextError: unknown;
+  requestOriginAndCsrfProtection(request, {} as any, (error?: unknown) => { nextError = error; });
+  assert.equal(nextError, undefined);
+});

@@ -46,7 +46,7 @@ homeRouter.get("/summary", async (req, res, next) => {
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const publicSummary = await withCache(
       "home",
-      ["summary", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-xjtlu-v2", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
@@ -63,7 +63,17 @@ homeRouter.get("/summary", async (req, res, next) => {
             },
           }) : Promise.resolve([]),
           prisma.topic.findMany({
-            where: { hidden: false, board: { readOnly: true, slug: { not: WEIWALL_BOARD_SLUG } } },
+            where: {
+              hidden: false,
+              board: {
+                readOnly: true,
+                slug: { not: WEIWALL_BOARD_SLUG },
+                OR: [
+                  { feedSourceId: null },
+                  { feedSource: { is: { enabled: true } } },
+                ],
+              },
+            },
             orderBy: { createdAt: "desc" },
             take: 8,
             include: { board: { select: { slug: true, name: true } }, tags: { include: { tag: true } } },

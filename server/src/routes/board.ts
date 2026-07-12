@@ -23,8 +23,14 @@ boardRouter.get("/", async (req, res, next) => {
     }
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const allowedTypes = forumAccessEnabled ? enabledBoardTypes() : ["announce"];
-    const boards = await withCache("boards", ["list", forumAccessEnabled ? "forum-enabled" : "announce-only"], 5 * 60_000, async () => prisma.board.findMany({
-      where: { type: { in: allowedTypes } },
+    const boards = await withCache("boards", ["list-xjtlu-v2", forumAccessEnabled ? "forum-enabled" : "announce-only"], 5 * 60_000, async () => prisma.board.findMany({
+      where: {
+        type: { in: allowedTypes },
+        OR: [
+          { feedSourceId: null },
+          { feedSource: { is: { enabled: true } } },
+        ],
+      },
       orderBy: { order: "asc" },
       include: {
         feedSource: { select: { name: true, homepage: true, lastRunAt: true, enabled: true } },
@@ -47,7 +53,7 @@ boardRouter.get("/:slug", async (req, res, next) => {
         role = token.role;
       } catch { /* ignore */ }
     }
-    const board = await withCache("boards", ["detail", req.params.slug], 5 * 60_000, async () => prisma.board.findUnique({
+    const board = await withCache("boards", ["detail-xjtlu-v2", req.params.slug], 5 * 60_000, async () => prisma.board.findUnique({
       where: { slug: req.params.slug },
       select: {
         id: true,
@@ -65,6 +71,9 @@ boardRouter.get("/:slug", async (req, res, next) => {
       },
     }));
     if (!board) return res.status(404).json({ code: 4004, data: null, message: "板块不存在" });
+    if (board.feedSource && !board.feedSource.enabled) {
+      return res.status(404).json({ code: 4004, data: null, message: "板块不存在" });
+    }
     if (!isBoardTypeEnabled(board.type)) throw Errors.forbidden(featureClosedMessage(board.type));
     await ensureCanReadBoardType(board.type, userId, role);
     ok(res, board);
