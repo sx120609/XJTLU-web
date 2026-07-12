@@ -3,7 +3,7 @@
     <header class="page-head">
       <div>
         <div class="eyebrow">XJTLU e-Bridge</div>
-        <h2>🎓 教务数据</h2>
+        <h2><el-icon><School /></el-icon><span>教务数据</span></h2>
         <p>课表、成绩和考试安排均实时读取自学校 eBridge；页面框架会先显示，数据随后自动填充。</p>
       </div>
       <div class="head-actions">
@@ -111,7 +111,7 @@ import {
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
 import { useAuthStore } from "@/stores/auth";
-import { Reading } from "@element-plus/icons-vue";
+import { Reading, School } from "@element-plus/icons-vue";
 
 const OFFICIAL_URL = "https://ebridge.xjtlu.edu.cn/urd/sits.urd/run/SIW_LGN";
 const EBRIDGE_SCHEDULE_CACHE_PREFIX = "xjtlu-ebridge-schedule-v1";
@@ -272,22 +272,24 @@ async function relogin() {
 .exam-main > div,
 .exam-tags { display: flex; align-items: center; }
 .page-head { justify-content: space-between; gap: 18px; }
-.eyebrow { margin-bottom: 4px; color: #6d28d9; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.page-head h2 { margin: 0; font-size: 24px; }
+.eyebrow { margin-bottom: 4px; color: var(--cpu-primary); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.page-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--cpu-text); font-size: 24px; }
+.page-head h2 .el-icon { color: var(--cpu-primary); font-size: 23px; }
 .page-head p { margin: 6px 0 0; color: var(--cpu-text-secondary); font-size: 13px; }
 .head-actions { gap: 10px; }
-.head-actions a { color: #6d28d9; font-size: 13px; text-decoration: none; }
+.head-actions a { color: var(--cpu-primary); font-size: 13px; font-weight: 600; text-decoration: none; }
+.head-actions a:hover { color: var(--cpu-primary-light); }
 .relogin-row { display: flex; justify-content: flex-end; }
 .identity-card,
 .data-card { padding: 20px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: var(--cpu-card); }
 .cpu-card { box-shadow: var(--cpu-shadow-sm); }
 .identity-card { gap: 13px; }
-.identity-card.session-info { border-color: #cdecdc; background: #ecfdf5; }
-.identity-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; color: var(--cpu-primary); background: rgba(22, 140, 120, .11); border: 1px solid rgba(22, 140, 120, .2); font-size: 25px; }
+.identity-card.session-info { border-color: color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft)); background: var(--cpu-primary-soft); }
+.identity-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; color: var(--cpu-primary); background: var(--cpu-card); border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft)); font-size: 25px; }
 .identity-card > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .identity-card strong { font-size: 16px; }
 .identity-card small { color: var(--cpu-text-secondary); }
-.identity-card em { padding: 4px 9px; border-radius: 999px; color: #047857; background: #d1fae5; font-size: 11px; font-style: normal; }
+.identity-card em { padding: 4px 9px; border-radius: 999px; color: var(--cpu-primary); background: var(--cpu-card); border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft)); font-size: 11px; font-style: normal; }
 .summary-grid { align-items: stretch; display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
 .summary-grid article { min-width: 0; padding: 15px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); }
 .summary-grid span,
@@ -320,7 +322,7 @@ async function relogin() {
 .table-skeleton span { height: 42px; border-radius: 8px; background: var(--cpu-surface-subtle); }
 .exam-skeleton { display: grid; gap: 10px; }
 .exam-skeleton span { height: 76px; border-radius: 12px; background: var(--cpu-surface-subtle); }
-.mark { color: #6d28d9; }
+.mark { color: var(--cpu-primary); }
 .data-note { margin: 14px 0 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.6; }
 .exam-list { display: flex; flex-direction: column; gap: 10px; }
 .exam-list article { align-items: stretch; gap: 15px; padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; }
@@ -329,13 +331,12 @@ async function relogin() {
 .exam-date span { color: var(--cpu-text-secondary); font-size: 11px; }
 .exam-main { min-width: 0; flex: 1; }
 .exam-main > div { gap: 9px; }
-.exam-main b { color: #6d28d9; font-size: 12px; }
+.exam-main b { color: var(--cpu-primary); font-size: 12px; }
 .exam-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .exam-main p { margin: 7px 0; color: var(--cpu-text-secondary); font-size: 12px; }
 .exam-tags { gap: 7px; flex-wrap: wrap; }
-.exam-tags span { padding: 3px 7px; border-radius: 999px; color: #475569; background: #f1f5f9; font-size: 10px; }
+.exam-tags span { padding: 3px 7px; border-radius: 999px; color: var(--cpu-text-secondary); background: var(--cpu-surface-subtle); font-size: 10px; }
 @keyframes academic-shimmer { to { transform: translateX(100%); } }
-:global(html[data-theme="dark"]) .identity-card.session-info { border-color: rgba(34, 197, 94, .28); background: rgba(20, 83, 45, .22); }
 @media (max-width: 850px) {
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
 }
