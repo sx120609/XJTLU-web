@@ -390,6 +390,50 @@ postgres_psql() {
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres -tAc "$sql"
 }
 
+postgres_restore_client_major() {
+  local command="$1"
+  "$command" --version 2>/dev/null | sed -nE 's/.* ([0-9]+)(\.[0-9]+)*/\1/p' | head -n 1
+}
+
+find_compatible_postgres_restore() {
+  local required_major="$1"
+  local command major
+  for command in "$(command -v pg_restore 2>/dev/null || true)" /usr/lib/postgresql/*/bin/pg_restore; do
+    [ -n "$command" ] && [ -x "$command" ] || continue
+    major="$(postgres_restore_client_major "$command")"
+    if [[ "$major" =~ ^[0-9]+$ ]] && [ "$major" -ge "$required_major" ]; then
+      printf '%s' "$command"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_postgres_backup_client() {
+  local required_major="${POSTGRES_BACKUP_CLIENT_MAJOR:-16}"
+  local compatible
+  compatible="$(find_compatible_postgres_restore "$required_major" || true)"
+  if [ -n "$compatible" ]; then
+    log "PostgreSQL 备份客户端已就绪：$($compatible --version | head -n 1)"
+    return 0
+  fi
+  command -v sudo >/dev/null 2>&1 || err "恢复新版备份需要 PostgreSQL ${required_major} 客户端，请先安装 postgresql-client-${required_major}"
+
+  log "安装 PostgreSQL ${required_major} 客户端以兼容新版备份"
+  sudo apt-get update
+  if ! apt-cache show "postgresql-client-${required_major}" >/dev/null 2>&1; then
+    sudo apt-get install -y postgresql-common ca-certificates
+    [ -x /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh ] \
+      || err "未找到 PostgreSQL 官方 PGDG 仓库配置工具"
+    sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+    sudo apt-get update
+  fi
+  sudo apt-get install -y "postgresql-client-${required_major}"
+  compatible="$(find_compatible_postgres_restore "$required_major" || true)"
+  [ -n "$compatible" ] || err "PostgreSQL ${required_major} 客户端安装后仍未找到 pg_restore"
+  log "PostgreSQL 恢复客户端已安装：$($compatible --version | head -n 1)"
+}
+
 ensure_postgres() {
   if command -v psql >/dev/null 2>&1; then
     log "PostgreSQL 客户端已安装：$(psql --version | head -n 1)"
@@ -403,6 +447,7 @@ ensure_postgres() {
   fi
 
   ensure_postgres_started
+  ensure_postgres_backup_client
 }
 
 ensure_redis() {

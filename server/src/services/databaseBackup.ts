@@ -14,28 +14,38 @@ import {
   isDatabaseMaintenanceActive,
 } from "./maintenance";
 
-function bundledPostgresCommand(executable: "pg_dump" | "pg_restore") {
-  if (process.platform !== "win32") return executable;
-  const appData = String(process.env.LOCALAPPDATA || "").trim();
-  if (!appData) return executable;
-  const root = path.join(appData, "XJTLU-web");
+function postgresCommandCandidates(
+  executable: "pg_dump" | "pg_restore",
+  configuredCommand: string | undefined,
+) {
+  const candidates: string[] = [];
+  if (configuredCommand?.trim()) candidates.push(configuredCommand.trim());
+
+  const root = process.platform === "win32"
+    ? path.join(String(process.env.LOCALAPPDATA || "").trim(), "XJTLU-web")
+    : "/usr/lib/postgresql";
   try {
-    const candidates = readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && /^postgresql-/i.test(entry.name))
+    const directories = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && (
+        process.platform === "win32" ? /^postgresql-/i.test(entry.name) : /^\d+(?:\.\d+)*$/.test(entry.name)
+      ))
       .map((entry) => entry.name)
       .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-    for (const directory of candidates) {
-      const command = path.join(root, directory, "pgsql", "bin", `${executable}.exe`);
-      if (existsSync(command)) return command;
+    for (const directory of directories) {
+      const command = process.platform === "win32"
+        ? path.join(root, directory, "pgsql", "bin", `${executable}.exe`)
+        : path.join(root, directory, "bin", executable);
+      if (existsSync(command)) candidates.push(command);
     }
   } catch {
-    // Fall back to PATH when the app-managed PostgreSQL directory is absent.
+    // Fall back to PATH when no versioned PostgreSQL client directory exists.
   }
-  return executable;
+  candidates.push(executable);
+  return [...new Set(candidates)];
 }
 
-const PG_DUMP_COMMAND = process.env.PG_DUMP_BIN || bundledPostgresCommand("pg_dump");
-const PG_RESTORE_COMMAND = process.env.PG_RESTORE_BIN || bundledPostgresCommand("pg_restore");
+const PG_DUMP_COMMANDS = postgresCommandCandidates("pg_dump", process.env.PG_DUMP_BIN);
+const PG_RESTORE_COMMANDS = postgresCommandCandidates("pg_restore", process.env.PG_RESTORE_BIN);
 const DATABASE_RESTORE_UPLOAD_ACCEPT = ".dump,.backup,.tar";
 const DATABASE_RESTORE_UPLOAD_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 
@@ -191,9 +201,9 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim() ? error.message.trim() : fallback;
 }
 
-async function validatePgRestoreArchive(sourcePath: string) {
+async function validatePgRestoreArchive(command: string, sourcePath: string) {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(PG_RESTORE_COMMAND, ["--list", sourcePath], {
+    const child = spawn(command, ["--list", sourcePath], {
       windowsHide: true,
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -219,7 +229,33 @@ async function validatePgRestoreArchive(sourcePath: string) {
   });
 }
 
-async function runPgDump(targetPath: string) {
+async function firstAvailableCommand(candidates: string[]) {
+  for (const command of candidates) {
+    if (await commandAvailable(command)) return command;
+  }
+  return null;
+}
+
+async function resolvePgRestoreForArchive(sourcePath: string) {
+  let lastValidationError: unknown = null;
+  let foundAvailableCommand = false;
+  for (const command of PG_RESTORE_COMMANDS) {
+    if (!(await commandAvailable(command))) continue;
+    foundAvailableCommand = true;
+    try {
+      await validatePgRestoreArchive(command, sourcePath);
+      return command;
+    } catch (error) {
+      lastValidationError = error;
+    }
+  }
+  if (!foundAvailableCommand) {
+    throw new Error("当前环境未找到 pg_restore，无法恢复 PostgreSQL 备份");
+  }
+  throw lastValidationError;
+}
+
+async function runPgDump(command: string, targetPath: string) {
   const { parsed, env, connectionArgs } = buildPostgresCommandContext();
   await new Promise<void>((resolve, reject) => {
     const args = [
@@ -233,7 +269,7 @@ async function runPgDump(targetPath: string) {
     ];
     args.push(parsed.database);
 
-    const child = spawn(PG_DUMP_COMMAND, args, {
+    const child = spawn(command, args, {
       windowsHide: true,
       env,
       stdio: ["ignore", "ignore", "pipe"],
@@ -254,7 +290,7 @@ async function runPgDump(targetPath: string) {
   });
 }
 
-async function runPgRestore(sourcePath: string) {
+async function runPgRestore(command: string, sourcePath: string) {
   const { parsed, env, connectionArgs } = buildPostgresCommandContext();
   await new Promise<void>((resolve, reject) => {
     const args = [
@@ -270,7 +306,7 @@ async function runPgRestore(sourcePath: string) {
       sourcePath,
     ];
 
-    const child = spawn(PG_RESTORE_COMMAND, args, {
+    const child = spawn(command, args, {
       windowsHide: true,
       env,
       stdio: ["ignore", "ignore", "pipe"],
@@ -321,8 +357,10 @@ export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
   }
 
   const raw = databaseUrl();
-  const pgDumpReady = await commandAvailable(PG_DUMP_COMMAND);
-  const pgRestoreReady = await commandAvailable(PG_RESTORE_COMMAND);
+  const pgDumpCommand = await firstAvailableCommand(PG_DUMP_COMMANDS);
+  const pgRestoreCommand = await firstAvailableCommand(PG_RESTORE_COMMANDS);
+  const pgDumpReady = Boolean(pgDumpCommand);
+  const pgRestoreReady = Boolean(pgRestoreCommand);
   const sizeBytes = await postgresDatabaseSize().catch(() => null);
   return {
     supported: pgDumpReady,
@@ -337,8 +375,8 @@ export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
     sizeBytes,
     updatedAt: null,
     downloadFileName: postgresBackupFileName(),
-    reason: pgDumpReady ? null : `当前环境未找到 ${PG_DUMP_COMMAND}，无法导出 PostgreSQL 备份`,
-    restoreReason: pgRestoreReady ? null : `当前环境未找到 ${PG_RESTORE_COMMAND}，无法恢复 PostgreSQL 备份`,
+    reason: pgDumpReady ? null : "当前环境未找到 pg_dump，无法导出 PostgreSQL 备份",
+    restoreReason: pgRestoreReady ? null : "当前环境未找到 pg_restore，无法恢复 PostgreSQL 备份",
     maxRestoreUploadBytes: DATABASE_RESTORE_UPLOAD_LIMIT_BYTES,
     restoreUploadAccept: DATABASE_RESTORE_UPLOAD_ACCEPT,
   };
@@ -348,13 +386,12 @@ export async function createDatabaseBackupSnapshot() {
   if (detectProvider() !== "postgresql") {
     throw new Error("当前服务端只支持 PostgreSQL 在线备份");
   }
-  if (!(await commandAvailable(PG_DUMP_COMMAND))) {
-    throw new Error(`当前环境未找到 ${PG_DUMP_COMMAND}，无法导出 PostgreSQL 备份`);
-  }
+  const pgDumpCommand = await firstAvailableCommand(PG_DUMP_COMMANDS);
+  if (!pgDumpCommand) throw new Error("当前环境未找到 pg_dump，无法导出 PostgreSQL 备份");
 
   const tempDir = await mkdtemp(path.join(tmpdir(), "xjtlu-web-db-backup-"));
   const snapshotPath = path.join(tempDir, `postgres-${randomUUID()}.dump`);
-  await runPgDump(snapshotPath);
+  await runPgDump(pgDumpCommand, snapshotPath);
   return {
     filePath: snapshotPath,
     tempDir,
@@ -376,10 +413,7 @@ export async function restoreDatabaseBackupSnapshot(input: {
   if (detectProvider() !== "postgresql") {
     throw new Error("当前服务端只支持 PostgreSQL 在线恢复");
   }
-  if (!(await commandAvailable(PG_RESTORE_COMMAND))) {
-    throw new Error(`当前环境未找到 ${PG_RESTORE_COMMAND}，无法恢复 PostgreSQL 备份`);
-  }
-  await validatePgRestoreArchive(input.filePath);
+  const pgRestoreCommand = await resolvePgRestoreForArchive(input.filePath);
   if (!beginDatabaseMaintenance("数据库恢复中，请稍后再试")) {
     throw new Error("数据库当前正在维护中，请稍后再试");
   }
@@ -389,7 +423,7 @@ export async function restoreDatabaseBackupSnapshot(input: {
 
   try {
     await prisma.$disconnect().catch(() => undefined);
-    await runPgRestore(input.filePath);
+    await runPgRestore(pgRestoreCommand, input.filePath);
   } catch (error) {
     restoreError = error;
   }
