@@ -273,7 +273,9 @@ test("XJTLU SSO pauses at official MFA and verifies Email, OTP, and SMS methods"
         redirectUri?: string;
       };
       if (payload.authType === "webLocalAuth") {
-        return Response.json({ code: "0", data: { redirect: "/esc-sso/login" } });
+        // The live ParaSSO service may skip /esc-sso/login and return the MFA
+        // page directly. This exact response used to be rejected as untrusted.
+        return Response.json({ code: "0", data: { redirect: "/login/mfaLogin.html" } });
       }
 
       submittedMfaTypes.push(payload.authType);

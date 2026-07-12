@@ -413,7 +413,7 @@ function isMfaRedirect(input: unknown) {
   try {
     const url = new URL(input, BASE_URL);
     return url.origin === BASE_URL
-      && url.pathname === "/esc-sso/login"
+      && (url.pathname === "/esc-sso/login" || url.pathname === "/login/mfaLogin.html")
       && !url.username
       && !url.password;
   } catch {
@@ -619,8 +619,14 @@ function readMfaMethods(input: unknown): {
 async function createMfaChallenge(
   pendingId: string,
   pending: PendingXjtluLogin,
+  redirect?: unknown,
 ): Promise<XjtluMfaChallenge | null> {
-  let currentUrl = new URL(MFA_ENTRY_URL);
+  // ParaSSO currently uses both an intermediate entry and a direct MFA page
+  // redirect. Start from the exact trusted URL it returned so a direct
+  // /login/mfaLogin.html response is not sent through the entry flow again.
+  let currentUrl = isMfaRedirect(redirect)
+    ? new URL(String(redirect), BASE_URL)
+    : new URL(MFA_ENTRY_URL);
   let referer = LOGIN_PAGE_URL;
   let reachedMfaPage = false;
   for (let hop = 0; hop < 8; hop += 1) {
@@ -805,7 +811,7 @@ export async function submitXjtluLogin(args: {
       return { ok: true, username } as XjtluLoginAttempt;
     }
     if (code === "0" && isMfaRedirect(redirect)) {
-      const mfa = await createMfaChallenge(pendingId, pending);
+      const mfa = await createMfaChallenge(pendingId, pending, redirect);
       if (!mfa) {
         await markAuthenticated(pendingId, pending, username);
         return { ok: true, username } as XjtluLoginAttempt;
@@ -1050,7 +1056,7 @@ export async function submitXjtluMfa(args: {
       return { ok: true, username: authenticatedUsername } as XjtluLoginAttempt;
     }
     if (resultCode === "0" && isMfaRedirect(redirect)) {
-      const mfa = await createMfaChallenge(pendingId, pending);
+      const mfa = await createMfaChallenge(pendingId, pending, redirect);
       if (!mfa) {
         const authenticatedUsername = pending.mfa.username;
         await markAuthenticated(pendingId, pending, authenticatedUsername);

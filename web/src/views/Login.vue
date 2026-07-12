@@ -48,7 +48,8 @@
           <div class="mfa-panel">
             <div class="mfa-head">
               <div>
-                <strong>Secondary Authentication</strong>
+                <span class="mfa-kicker">学校安全验证</span>
+                <strong>完成二次身份验证</strong>
                 <span>检测到异常登录活动，请完成 XJTLU 二次认证</span>
               </div>
               <el-button text :disabled="auth.ssoLoading" @click="restartPrimaryLogin">返回</el-button>
@@ -64,8 +65,10 @@
                 :disabled="auth.ssoLoading"
                 @click="selectMfaMethod(method.type)"
               >
-                <span class="mfa-method-icon">{{ method.type === 'email' ? '✉' : method.type === 'sms' ? '▣' : '***' }}</span>
-                <span>{{ method.label }}</span>
+                <span class="mfa-method-icon">
+                  <el-icon><Message v-if="method.type === 'email'" /><Key v-else-if="method.type === 'otp'" /><Cellphone v-else /></el-icon>
+                </span>
+                <span>{{ method.type === 'email' ? '邮箱验证码' : method.type === 'otp' ? '动态口令' : '短信验证码' }}</span>
               </button>
             </div>
             <div v-if="selectedMfaMethod" class="mfa-entry">
@@ -205,7 +208,7 @@
 import { ref, reactive, computed, onBeforeUnmount, onMounted, type CSSProperties } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
-import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
+import { User, Lock, Refresh, ArrowLeft, Message, Key, Cellphone } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { clearCreds, loadCreds, hasCreds } from "@/utils/credCrypto";
@@ -580,23 +583,35 @@ async function onDevSubmit() {
 .mfa-form-item :deep(.el-form-item__content) { display: block; }
 .mfa-panel {
   width: 100%;
-  padding: 16px;
-  border: 1px solid rgba(206, 87, 193, 0.42);
-  border-radius: 12px;
-  background: linear-gradient(145deg, rgba(1, 5, 68, 0.04), rgba(206, 87, 193, 0.08));
+  padding: 18px;
+  border: 1px solid var(--cpu-border);
+  border-radius: 14px;
+  background: var(--cpu-surface-soft);
+  box-shadow: var(--cpu-shadow-sm);
 }
 .brand-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .mfa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .mfa-head div { display: grid; gap: 3px; }
-.mfa-head strong { color: #010544; font-size: 15px; }
+.mfa-head strong { color: var(--cpu-text); font-size: 16px; }
 .mfa-head span { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.45; }
-.mfa-title { margin: 18px 0 10px; color: #ce57c1; font-size: 16px; font-weight: 700; }
+.mfa-head .mfa-kicker {
+  width: fit-content;
+  margin-bottom: 3px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+.mfa-title { margin: 18px 0 10px; color: var(--cpu-text); font-size: 14px; font-weight: 700; }
 .mfa-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
 .mfa-method {
   min-width: 0;
-  padding: 12px 6px 9px;
+  min-height: 96px;
+  padding: 12px 6px 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 9px;
+  border-radius: 11px;
   background: var(--cpu-card);
   color: var(--cpu-text);
   cursor: pointer;
@@ -605,14 +620,34 @@ async function onDevSubmit() {
   gap: 7px;
   font: inherit;
   font-size: 12px;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease;
 }
-.mfa-method:hover, .mfa-method.active { border-color: #ce57c1; box-shadow: 0 4px 16px rgba(206, 87, 193, 0.15); }
-.mfa-method.active { background: rgba(206, 87, 193, 0.08); }
+.mfa-method:hover { border-color: var(--cpu-primary); transform: translateY(-1px); box-shadow: var(--cpu-shadow-sm); }
+.mfa-method.active { border-color: var(--cpu-primary); background: var(--cpu-primary-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cpu-primary) 24%, transparent); }
 .mfa-method:disabled { cursor: wait; opacity: 0.65; }
-.mfa-method-icon { color: #4b167e; font-size: 23px; font-weight: 800; line-height: 1; }
+.mfa-method-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: 19px;
+  line-height: 1;
+}
+.mfa-method.active .mfa-method-icon { background: var(--cpu-primary); color: var(--cpu-card); }
 .mfa-entry { display: grid; gap: 10px; margin-top: 14px; }
-.mfa-destination { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.mfa-destination { margin: 0; padding: 9px 10px; border-radius: 8px; background: var(--cpu-primary-soft); color: var(--cpu-text-secondary); font-size: 12px; }
 .mfa-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.mfa-actions :deep(.el-button) { flex: 1; margin-left: 0; }
+
+:global(html[data-theme="dark"]) .mfa-panel {
+  background: color-mix(in srgb, var(--cpu-surface-soft) 88%, var(--cpu-card));
+  border-color: rgba(163, 186, 179, 0.26);
+}
+:global(html[data-theme="dark"]) .mfa-method { background: var(--cpu-surface); }
+:global(html[data-theme="dark"]) .mfa-method.active { background: var(--cpu-primary-soft); }
 
 .btn-submit { width: 100%; letter-spacing: 4px; }
 
