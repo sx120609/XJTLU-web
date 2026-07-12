@@ -66,6 +66,15 @@ export type DatabaseRestoreResult = {
   provider: "postgresql";
 };
 
+export type DatabaseRestoreFailureCode = "invalid-backup" | "restore-failed" | "database-unavailable";
+
+export class DatabaseRestoreFailure extends Error {
+  constructor(public readonly failureCode: DatabaseRestoreFailureCode, message: string) {
+    super(message);
+    this.name = "DatabaseRestoreFailure";
+  }
+}
+
 function databaseUrl() {
   return String(process.env.DATABASE_URL ?? "").trim().replace(/^"(.*)"$/, "$1");
 }
@@ -178,6 +187,38 @@ function summarizeCommandFailure(stderr: string, fallback: string) {
   return normalized || fallback;
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message.trim() ? error.message.trim() : fallback;
+}
+
+async function validatePgRestoreArchive(sourcePath: string) {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(PG_RESTORE_COMMAND, ["--list", sourcePath], {
+      windowsHide: true,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.once("error", (error) => {
+      reject(new DatabaseRestoreFailure(
+        "invalid-backup",
+        `无法检查备份文件：${errorMessage(error, "pg_restore 无法启动")}`,
+      ));
+    });
+    child.once("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const detail = summarizeCommandFailure(stderr, `pg_restore 无法读取该文件，退出码 ${code ?? "unknown"}`);
+      reject(new DatabaseRestoreFailure("invalid-backup", `备份文件格式无效或版本不兼容：${detail}`));
+    });
+  });
+}
+
 async function runPgDump(targetPath: string) {
   const { parsed, env, connectionArgs } = buildPostgresCommandContext();
   await new Promise<void>((resolve, reject) => {
@@ -222,6 +263,7 @@ async function runPgRestore(sourcePath: string) {
       "--no-owner",
       "--no-privileges",
       "--exit-on-error",
+      "--single-transaction",
       ...connectionArgs,
       "--dbname",
       parsed.database,
@@ -238,13 +280,19 @@ async function runPgRestore(sourcePath: string) {
     child.stderr.on("data", (chunk) => {
       stderr += String(chunk);
     });
-    child.once("error", (error) => reject(error));
+    child.once("error", (error) => reject(new DatabaseRestoreFailure(
+      "restore-failed",
+      `pg_restore 无法启动：${errorMessage(error, "未知错误")}`,
+    )));
     child.once("close", (code) => {
       if (code === 0) {
         resolve();
         return;
       }
-      reject(new Error(summarizeCommandFailure(stderr, `pg_restore 失败，退出码 ${code ?? "unknown"}`)));
+      reject(new DatabaseRestoreFailure(
+        "restore-failed",
+        `PostgreSQL 恢复失败：${summarizeCommandFailure(stderr, `pg_restore 退出码 ${code ?? "unknown"}`)}`,
+      ));
     });
   });
 }
@@ -331,6 +379,7 @@ export async function restoreDatabaseBackupSnapshot(input: {
   if (!(await commandAvailable(PG_RESTORE_COMMAND))) {
     throw new Error(`当前环境未找到 ${PG_RESTORE_COMMAND}，无法恢复 PostgreSQL 备份`);
   }
+  await validatePgRestoreArchive(input.filePath);
   if (!beginDatabaseMaintenance("数据库恢复中，请稍后再试")) {
     throw new Error("数据库当前正在维护中，请稍后再试");
   }
@@ -353,7 +402,12 @@ export async function restoreDatabaseBackupSnapshot(input: {
       loadStorageConfig().catch(() => undefined),
     ]);
   } catch (error) {
-    if (!restoreError) restoreError = error;
+    if (!restoreError) {
+      restoreError = new DatabaseRestoreFailure(
+        "database-unavailable",
+        `恢复后无法重新连接数据库：${errorMessage(error, "未知错误")}`,
+      );
+    }
   }
 
   endDatabaseMaintenance();

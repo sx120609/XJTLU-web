@@ -65,6 +65,7 @@ import {
 import {
   cleanupDatabaseBackupSnapshot,
   createDatabaseBackupSnapshot,
+  DatabaseRestoreFailure,
   databaseRestoreUploadLimitBytes,
   getDatabaseBackupStatus,
   restoreDatabaseBackupSnapshot,
@@ -240,6 +241,11 @@ adminRouter.post("/database/restore", adminOnly, (req, res, next) => {
       fileSizeBytes: file.size,
     }));
   } catch (e: any) {
+    if (e instanceof DatabaseRestoreFailure) {
+      console.error(`[database-restore:${e.failureCode}]`, e.message);
+      next(Errors.badRequest(e.message));
+      return;
+    }
     if (e?.message === "数据库当前正在维护中，请稍后再试") {
       next(Errors.conflict(e.message));
       return;
