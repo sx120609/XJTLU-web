@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { COMMUNITY_BOARD_DEFS, FORUM_BOARD_DEFS, FORUM_SECTION_ORDER } from "../src/services/defaultBoardCatalog";
 
 test("forum board catalog exposes exactly three ordered sections with four boards each", () => {
@@ -29,4 +31,13 @@ test("market board remains available to commerce without joining the forum grid"
   assert.ok(market);
   assert.equal(market.type, "market");
   assert.equal(market.section, undefined);
+});
+
+test("database seed keeps every forum board free of demo posts", () => {
+  const seedPath = fileURLToPath(new URL("../prisma/seed.ts", import.meta.url));
+  const seedSource = readFileSync(seedPath, "utf8");
+
+  assert.doesNotMatch(seedSource, /prisma\.topic\.create(?:Many)?\s*\(/);
+  assert.doesNotMatch(seedSource, /prisma\.reply\.create(?:Many)?\s*\(/);
+  assert.match(seedSource, /论坛初始保持空白/);
 });

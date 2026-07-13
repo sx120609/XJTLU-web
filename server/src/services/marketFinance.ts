@@ -9,3 +9,12 @@ export function calculateMarketOrderAmounts(amountCents: number, commissionBps: 
     sellerAmountCents: safeAmount - platformFeeCents,
   };
 }
+
+export function marketCommissionBpsForItem(
+  item: { category?: string | null; deliveryType?: string | null },
+  config: { learningMaterialCommissionBps?: number | null },
+) {
+  return item.category === "digital_goods" && item.deliveryType === "digital"
+    ? Math.min(5000, Math.max(0, Math.round(config.learningMaterialCommissionBps || 0)))
+    : 0;
+}

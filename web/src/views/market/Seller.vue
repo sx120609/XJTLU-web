@@ -26,7 +26,7 @@
         <article><span>交易中</span><b>¥{{ money(data.balance.pendingCents) }}</b><small>{{ data.stats.pendingDeliveryOrders }} 笔待交付</small></article>
         <article><span>冻结中</span><b>¥{{ money(data.balance.frozenCents) }}</b><small>退款、纠纷或暂缓结算</small></article>
         <article><span>累计结算</span><b>¥{{ money(data.balance.settledCents) }}</b><small>管理员已登记打款</small></article>
-        <article><span>累计佣金</span><b>¥{{ money(data.balance.commissionCents) }}</b><small>当前比例 {{ formatRate(data.config.commissionRate) }}</small></article>
+        <article><span>累计佣金</span><b>¥{{ money(data.balance.commissionCents) }}</b><small>实体 0% · 学习资料 {{ formatRate(data.config.learningMaterialCommissionRate) }}</small></article>
       </div>
     </section>
 
@@ -70,7 +70,8 @@
                 </div>
               </div>
               <footer>
-                <el-button v-if="order.conversation?.id" size="small" @click="openConversation(order.conversation.id)">联系买家</el-button>
+                <el-button v-if="order.deliveryType === 'digital'" size="small" @click="openMaterialSupport(order.id)">资料售后</el-button>
+                <el-button v-else-if="order.conversation?.id" size="small" @click="openConversation(order.conversation.id)">联系买家</el-button>
                 <el-button v-if="order.deliveryType !== 'digital' && ['paid','delivering'].includes(order.status)" size="small" @click="openMeetup(order)">交付安排</el-button>
                 <el-button v-if="order.deliveryType !== 'digital' && ['paid','delivering'].includes(order.status) && !order.sellerConfirmedAt" size="small" type="success" @click="confirmDelivered(order)">确认已交付</el-button>
               </footer>
@@ -155,7 +156,7 @@ const selectedOrder = ref<MarketOrder | null>(null);
 const meetup = reactive<{ time: Date | null; location: string; note: string }>({ time: null, location: "", note: "" });
 const payout = reactive({ method: "alipay" as "alipay" | "wxpay" | "bank", account: "", realName: "" });
 const data = reactive<MarketSellerDashboard>({
-  config: { commissionBps: 500, commissionRate: 5, updatedAt: "" },
+  config: { commissionBps: 0, commissionRate: 0, learningMaterialCommissionBps: 500, learningMaterialCommissionRate: 5, updatedAt: "" },
   stats: { activeListings: 0, reservedListings: 0, soldListings: 0, pendingDeliveryOrders: 0, pendingSettlementOrders: 0 },
   balance: { grossCents: 0, commissionCents: 0, pendingCents: 0, frozenCents: 0, availableCents: 0, settledCents: 0 },
   items: [], orders: [], settlements: [], timeline: [], payoutProfile: null,
@@ -186,6 +187,7 @@ function itemStatus(item: { status: string; listingType: string }) { if (item.li
 function timelineType(type: string) { return ({ payment: "买家付款", settlement: "结算记录", refunded: "订单退款" } as Record<string,string>)[type] || type; }
 function payoutMethod(method: string) { return ({ alipay: "支付宝", wxpay: "微信支付", bank: "银行卡" } as Record<string,string>)[method] || method; }
 function openConversation(id: number) { router.push({ name: "market-messages", query: { conversation: String(id) } }); }
+function openMaterialSupport(orderId: number) { router.push({ name: "market-learning-material-support", query: { order: String(orderId), side: "seller" } }); }
 function openMeetup(order: MarketOrder) { selectedOrder.value = order; meetup.time = order.meetupTime ? new Date(order.meetupTime) : null; meetup.location = order.meetupLocation || ""; meetup.note = ""; meetupOpen.value = true; }
 async function saveMeetup() {
   if (!selectedOrder.value) return;

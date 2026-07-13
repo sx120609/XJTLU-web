@@ -93,6 +93,12 @@ model User {
   marketRefundRequests MarketRefund[] @relation("MarketRefundRequester")
   marketSettlements MarketSettlement[] @relation("MarketSettlementSeller")
   marketPayoutProfile MarketPayoutProfile?
+  learningMaterialTypesCreated LearningMaterialType[] @relation("LearningMaterialTypeCreator")
+  learningMaterialVersionsCreated LearningMaterialVersion[] @relation("LearningMaterialVersionCreator")
+  learningMaterialAccesses LearningMaterialAccess[]
+  learningMaterialSupportTicketsAsBuyer LearningMaterialSupportTicket[] @relation("LearningMaterialSupportBuyer")
+  learningMaterialSupportTicketsAsSeller LearningMaterialSupportTicket[] @relation("LearningMaterialSupportSeller")
+  learningMaterialSupportMessages LearningMaterialSupportMessage[] @relation("LearningMaterialSupportMessageSender")
 }
 
 // ============ 论坛核心 ============
@@ -934,6 +940,7 @@ model MarketItem {
   orders        MarketOrder[]
   conversations MarketConversation[]
   reports       MarketReport[]
+  learningMaterial LearningMaterialProfile?
 
   @@index([status, createdAt])
   @@index([category, status, createdAt])
@@ -1023,6 +1030,8 @@ model MarketOrder {
   refunds      MarketRefund[]
   settlement   MarketSettlement?
   reviews      MarketReview[]
+  learningMaterialAccess LearningMaterialAccess?
+  learningMaterialSupport LearningMaterialSupportTicket?
 
   @@index([buyerId, status, createdAt])
   @@index([sellerId, status, createdAt])
@@ -1177,10 +1186,11 @@ model MarketPayoutProfile {
 
 // 商城全局交易配置。佣金使用基点保存：100 = 1%，避免浮点金额误差。
 model MarketConfig {
-  id            Int      @id @default(1)
-  commissionBps Int      @default(500)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                            Int      @id @default(1)
+  commissionBps                 Int      @default(0)
+  learningMaterialCommissionBps Int      @default(500)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 }
 
 model MarketCategory {
@@ -1197,6 +1207,156 @@ model MarketCategory {
   updatedAt       DateTime @updatedAt
 
   @@index([enabled, sort])
+}
+
+// ============ 靠浦特色学习资料 ============
+
+model LearningMaterialType {
+  id             Int      @id @default(autoincrement())
+  name           String
+  normalizedName String   @unique
+  source         String   @default("builtin") // builtin / seller
+  status         String   @default("approved") // pending / approved / rejected / merged
+  enabled        Boolean  @default(true)
+  sort           Int      @default(0)
+  createdById    Int?
+  mergedIntoId   Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdBy  User?                     @relation("LearningMaterialTypeCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  mergedInto LearningMaterialType?     @relation("LearningMaterialTypeMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom LearningMaterialType[]    @relation("LearningMaterialTypeMerge")
+  materials  LearningMaterialProfile[]
+
+  @@index([status, enabled, sort])
+  @@index([createdById, status])
+}
+
+model LearningMaterialProfile {
+  id                   Int       @id @default(autoincrement())
+  itemId               Int       @unique
+  typeId               Int?
+  courseCode           String?
+  college              String?
+  major                String?
+  applicableSemester   String?
+  declaredFormats      String    @default("[]")
+  pageCount            Int?
+  versionLabel         String?
+  language             String?
+  originalityKind      String?
+  originalityStatement String?
+  rightsConfirmedAt    DateTime?
+  activeVersionId      Int?      @unique
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  item          MarketItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type          LearningMaterialType?     @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  activeVersion LearningMaterialVersion?  @relation("LearningMaterialActiveVersion", fields: [activeVersionId], references: [id], onDelete: SetNull)
+  versions      LearningMaterialVersion[] @relation("LearningMaterialVersions")
+
+  @@index([courseCode, applicableSemester])
+  @@index([typeId, applicableSemester])
+  @@index([college, major])
+}
+
+model LearningMaterialVersion {
+  id            Int       @id @default(autoincrement())
+  profileId     Int
+  versionNumber Int
+  label         String    @default("")
+  releaseNotes  String    @default("")
+  status        String    @default("draft") // draft / active / retired
+  createdById   Int
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  profile   LearningMaterialProfile  @relation("LearningMaterialVersions", fields: [profileId], references: [id], onDelete: Cascade)
+  activeFor LearningMaterialProfile? @relation("LearningMaterialActiveVersion")
+  createdBy User                     @relation("LearningMaterialVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  files     LearningMaterialFile[]
+  accesses  LearningMaterialAccess[]
+
+  @@unique([profileId, versionNumber])
+  @@index([profileId, status, createdAt])
+}
+
+model LearningMaterialFile {
+  id           Int      @id @default(autoincrement())
+  versionId    Int
+  originalName String
+  storedName   String
+  relativePath String   @unique
+  mimeType     String   @default("application/octet-stream")
+  fileSize     Int
+  format       String
+  pageCount    Int?
+  sha256       String
+  status       String   @default("active") // active / blocked / removed
+  createdAt    DateTime @default(now())
+
+  version LearningMaterialVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId, status])
+  @@index([sha256])
+}
+
+model LearningMaterialAccess {
+  id             Int       @id @default(autoincrement())
+  orderId        Int       @unique
+  versionId      Int
+  userId         Int
+  grantedAt      DateTime  @default(now())
+  revokedAt      DateTime?
+  lastAccessedAt DateTime?
+  downloadCount  Int       @default(0)
+
+  order   MarketOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  version LearningMaterialVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  user    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, grantedAt])
+  @@index([versionId, userId])
+}
+
+model LearningMaterialSupportTicket {
+  id            Int       @id @default(autoincrement())
+  orderId       Int       @unique
+  buyerId       Int
+  sellerId      Int
+  category      String
+  status        String    @default("open") // open / waiting_buyer / waiting_seller / escalated / resolved / closed
+  responseDueAt DateTime?
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  order    MarketOrder                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  buyer    User                             @relation("LearningMaterialSupportBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller   User                             @relation("LearningMaterialSupportSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  messages LearningMaterialSupportMessage[]
+
+  @@index([buyerId, status, updatedAt])
+  @@index([sellerId, status, updatedAt])
+  @@index([status, responseDueAt])
+}
+
+model LearningMaterialSupportMessage {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  senderId  Int?
+  kind      String   @default("user") // user / system
+  content   String
+  createdAt DateTime @default(now())
+
+  ticket LearningMaterialSupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender User?                         @relation("LearningMaterialSupportMessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

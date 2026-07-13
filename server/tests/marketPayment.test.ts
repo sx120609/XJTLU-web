@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { amountCentsToMoney, moneyToAmountCents, signEpayParams, verifyEpayParams } from "../src/services/epay";
-import { calculateMarketOrderAmounts } from "../src/services/marketFinance";
+import { calculateMarketOrderAmounts, marketCommissionBpsForItem } from "../src/services/marketFinance";
 
 test("market EasyPay callbacks use deterministic signing and reject tampering", () => {
   const key = "market-test-merchant-key";
@@ -39,4 +39,11 @@ test("market commission is locked in integer cents for each order", () => {
   assert.equal(calculateMarketOrderAmounts(1, 500).sellerAmountCents, 1);
   assert.equal(calculateMarketOrderAmounts(10_000, 0).platformFeeCents, 0);
   assert.equal(calculateMarketOrderAmounts(10_000, 90_000).platformFeeCents, 5_000);
+});
+
+test("physical second-hand goods are free while learning materials use their own commission", () => {
+  const config = { learningMaterialCommissionBps: 1250 };
+  assert.equal(marketCommissionBpsForItem({ category: "books", deliveryType: "physical" }, config), 0);
+  assert.equal(marketCommissionBpsForItem({ category: "digital_goods", deliveryType: "digital" }, config), 1250);
+  assert.equal(marketCommissionBpsForItem({ category: "other", deliveryType: "digital" }, config), 0);
 });

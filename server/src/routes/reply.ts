@@ -14,6 +14,7 @@ import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
+import { containsOffPlatformContact } from "../services/learningMaterials";
 
 export const replyRouter = Router();
 
@@ -40,6 +41,8 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     });
     const canSeeHiddenTopic = Boolean(req.user?.userId && (req.user.userId === topic?.authorId || req.user.role === "admin" || req.user.role === "mod"));
     if (!topic || (topic.hidden && !canSeeHiddenTopic)) throw Errors.notFound("帖子不存在");
+    const topicMetadata = (() => { try { return JSON.parse(topic.metadata || "{}"); } catch { return {}; } })();
+    if (topicMetadata.learningMaterial && containsOffPlatformContact(content)) throw Errors.badRequest("学习资料公开问答不能发送联系方式、外部链接或私下交易信息");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, userId, req.user?.role);
     if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
@@ -252,6 +255,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
             id: true,
             locked: true,
             hidden: true,
+            metadata: true,
             board: { select: { type: true } },
           },
         },
@@ -259,6 +263,8 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       },
     });
     if (!reply || !reply.topic || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
+    const topicMetadata = (() => { try { return JSON.parse(reply.topic.metadata || "{}"); } catch { return {}; } })();
+    if (topicMetadata.learningMaterial && containsOffPlatformContact(req.body.content)) throw Errors.badRequest("学习资料公开问答不能发送联系方式、外部链接或私下交易信息");
     const isOwner = reply.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();

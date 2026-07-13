@@ -19,6 +19,9 @@
     "forum:recount-stats": "tsx scripts/recount-forum-stats.ts",
     "market:check-db": "tsx scripts/check-market-db.ts",
     "market:smoke": "tsx scripts/smoke-market.ts",
+    "materials:check-db": "tsx scripts/check-learning-materials-db.ts",
+    "materials:smoke": "tsx scripts/smoke-learning-materials.ts",
+    "materials:verify": "npm run test:materials && npm run typecheck && npm run materials:check-db",
     "db:migrate": "prisma db push --skip-generate",
     "db:cleanup:xjtlu": "tsx scripts/cleanup-xjtlu-legacy.ts",
     "db:seed": "tsx prisma/seed.ts",
@@ -27,7 +30,8 @@
     "prisma:generate": "prisma generate",
     "test": "npm run test:xjtlu-sso",
     "test:integration": "node --import tsx --test tests/jwxtAgent.integration.test.ts tests/ssoLoginPool.integration.test.ts",
-    "test:xjtlu-sso": "node --import tsx --test tests/xjtluSsoClient.test.ts tests/xjtluEhallClient.test.ts tests/xjtluEbridgeClient.test.ts tests/gpaScale.test.ts tests/productRegression.test.ts tests/schoolAuthRateLimit.test.ts tests/xjtluOnlyRoutes.test.ts tests/browserSession.test.ts tests/marketPayment.test.ts tests/marketCatalog.test.ts tests/siteIdentity.test.ts tests/forumBoardCatalog.test.ts"
+    "test:xjtlu-sso": "node --import tsx --test tests/xjtluSsoClient.test.ts tests/xjtluEhallClient.test.ts tests/xjtluEbridgeClient.test.ts tests/gpaScale.test.ts tests/productRegression.test.ts tests/schoolAuthRateLimit.test.ts tests/xjtluOnlyRoutes.test.ts tests/browserSession.test.ts tests/marketPayment.test.ts tests/marketCatalog.test.ts tests/learningMaterials.test.ts tests/siteIdentity.test.ts tests/forumBoardCatalog.test.ts",
+    "test:materials": "node --import tsx --test tests/marketCatalog.test.ts tests/marketPayment.test.ts tests/learningMaterials.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

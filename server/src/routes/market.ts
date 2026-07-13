@@ -24,7 +24,7 @@ import {
   verifyEpayParams,
   type EpayPayType,
 } from "../services/epay";
-import { calculateMarketOrderAmounts } from "../services/marketFinance";
+import { calculateMarketOrderAmounts, marketCommissionBpsForItem } from "../services/marketFinance";
 import {
   categoryBelongsToCatalog,
   isLearningMaterialCategory,
@@ -32,6 +32,7 @@ import {
   splitMarketCategories,
   type MarketCatalogScope,
 } from "../services/marketCatalog";
+import { learningMaterialsRouter } from "./learningMaterials";
 
 export const marketRouter = Router();
 marketRouter.use(authOptional);
@@ -47,7 +48,8 @@ const ITEM_STATUSES = ["draft", "reviewing", "active", "reserved", "sold", "with
 const PAY_TYPES = ["alipay", "wxpay", "qqpay", "bank", "jdpay"] as const;
 const ORDER_TTL_MS = 15 * 60 * 1000;
 const MARKET_CONFIG_ID = 1;
-const DEFAULT_COMMISSION_BPS = 500;
+const DEFAULT_COMMISSION_BPS = 0;
+const DEFAULT_LEARNING_MATERIAL_COMMISSION_BPS = 500;
 const DEFAULT_CATEGORIES = [
   { slug: "digital", name: "数码 3C", icon: "💻", description: "手机、电脑、数码配件", fulfillmentType: "physical", imageRequired: true, sort: 10 },
   { slug: "books", name: "教材书籍", icon: "📚", description: "教材、课外书与纸质资料", fulfillmentType: "physical", imageRequired: true, sort: 20 },
@@ -211,14 +213,16 @@ async function getMarketConfig() {
   return prisma.marketConfig.upsert({
     where: { id: MARKET_CONFIG_ID },
     update: {},
-    create: { id: MARKET_CONFIG_ID, commissionBps: DEFAULT_COMMISSION_BPS },
+    create: { id: MARKET_CONFIG_ID, commissionBps: DEFAULT_COMMISSION_BPS, learningMaterialCommissionBps: DEFAULT_LEARNING_MATERIAL_COMMISSION_BPS },
   });
 }
 
-function serializeMarketConfig(config: { commissionBps: number; updatedAt: Date }) {
+function serializeMarketConfig(config: { commissionBps: number; learningMaterialCommissionBps: number; updatedAt: Date }) {
   return {
     commissionBps: config.commissionBps,
     commissionRate: config.commissionBps / 100,
+    learningMaterialCommissionBps: config.learningMaterialCommissionBps,
+    learningMaterialCommissionRate: config.learningMaterialCommissionBps / 100,
     updatedAt: config.updatedAt,
   };
 }
@@ -290,16 +294,7 @@ marketRouter.get("/meta", async (_req, res, next) => {
     });
   } catch (error) { next(error); }
 });
-
-marketRouter.get("/materials/meta", async (_req, res, next) => {
-  try {
-    await ensureMarketCategories();
-    const category = await prisma.marketCategory.findUnique({ where: { slug: "digital_goods" } });
-    if (!category || !category.enabled) throw Errors.notFound("特色学习资料分类不存在");
-    const itemCount = await prisma.marketItem.count({ where: { category: "digital_goods", status: "active" } });
-    ok(res, { category: { ...category, itemCount } });
-  } catch (error) { next(error); }
-});
+marketRouter.use("/materials", learningMaterialsRouter);
 
 async function listMarketItems(req: any, res: any, next: any, scope: MarketCatalogScope) {
   try {
@@ -357,7 +352,6 @@ async function listMarketItems(req: any, res: any, next: any, scope: MarketCatal
   } catch (error) { next(error); }
 }
 
-marketRouter.get("/materials/items", (req, res, next) => listMarketItems(req, res, next, "learning_materials"));
 marketRouter.get("/items", (req, res, next) => listMarketItems(req, res, next, "market"));
 
 marketRouter.get("/items/:id", async (req, res, next) => {
@@ -386,6 +380,9 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
     await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
     const input = req.body as z.infer<typeof itemInputSchema>;
+    if (input.catalog === "learning_materials" || isLearningMaterialCategory(input.category)) {
+      throw Errors.badRequest("学习资料必须通过靠浦特色学习资料专属发布接口创建");
+    }
     if (!categoryBelongsToCatalog(input.catalog, input.category)) {
       throw Errors.badRequest(input.catalog === "market" ? "电子资料请从靠浦特色学习资料发布" : "学习资料只能发布到靠浦特色学习资料");
     }
@@ -489,6 +486,9 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
     delete data.draft;
     delete data.digitalDelivery;
     const finalCategory = input.category ?? current.category;
+    if (isLearningMaterialCategory(current.category) || isLearningMaterialCategory(finalCategory)) {
+      throw Errors.badRequest("学习资料必须通过靠浦特色学习资料专属编辑接口修改");
+    }
     const catalogScope = input.catalog ?? (isLearningMaterialCategory(current.category) ? "learning_materials" : "market");
     if (!categoryBelongsToCatalog(catalogScope, finalCategory)) {
       throw Errors.badRequest(catalogScope === "market" ? "电子资料请从靠浦特色学习资料编辑" : "该商品不属于靠浦特色学习资料");
@@ -594,6 +594,7 @@ marketRouter.post("/items/:id/offers", authRequired, validate(offerSchema), asyn
     await ensureUserCanSpeak(buyerId);
     const item = await prisma.marketItem.findUnique({ where: { id: itemId }, include: { seller: { select: publicUserSelect } } });
     if (!item || item.status !== "active") throw Errors.badRequest("商品当前不可提交购买意向");
+    if (isLearningMaterialCategory(item.category)) throw Errors.badRequest("学习资料不接受议价或购买意向，请在资料专区直接购买");
     if (item.listingType !== "sell") throw Errors.badRequest("求购信息请先通过站内沟通联系发布者");
     if (item.sellerId === buyerId) throw Errors.badRequest("不能购买自己发布的商品");
     const priceCents = cents(req.body.price, false)!;
@@ -639,13 +640,19 @@ marketRouter.patch("/offers/:id", authRequired, validate(offerActionSchema), asy
       return ok(res, updated);
     }
     if (offer.item.status !== "active") throw Errors.badRequest("商品当前不可预订");
-    if (offer.item.deliveryType === "digital" && !offer.item.digitalDeliveryEncrypted) throw Errors.badRequest("该电子资料尚未配置线上交付内容");
+    if (offer.item.deliveryType === "digital" && !offer.item.digitalDeliveryEncrypted) {
+      const profile = await prisma.learningMaterialProfile.findUnique({ where: { itemId: offer.itemId } });
+      if (!profile?.activeVersionId) throw Errors.badRequest("该电子资料尚未发布可交付文件版本");
+    }
     const marketConfig = await getMarketConfig();
-    const orderAmounts = calculateMarketOrderAmounts(offer.priceCents, marketConfig.commissionBps);
+    const commissionBps = marketCommissionBpsForItem(offer.item, marketConfig);
+    const orderAmounts = calculateMarketOrderAmounts(offer.priceCents, commissionBps);
     const order = await prisma.$transaction(async (tx) => {
       await tx.marketOffer.update({ where: { id }, data: { status: "accepted" } });
-      await tx.marketOffer.updateMany({ where: { itemId: offer.itemId, id: { not: id }, status: "pending" }, data: { status: "rejected" } });
-      await tx.marketItem.update({ where: { id: offer.itemId }, data: { status: "reserved" } });
+      if (offer.item.deliveryType !== "digital") {
+        await tx.marketOffer.updateMany({ where: { itemId: offer.itemId, id: { not: id }, status: "pending" }, data: { status: "rejected" } });
+        await tx.marketItem.update({ where: { id: offer.itemId }, data: { status: "reserved" } });
+      }
       const created = await tx.marketOrder.create({
         data: {
           itemId: offer.itemId,
@@ -755,13 +762,23 @@ marketRouter.all("/payments/notify", async (req, res, next) => {
           sellerConfirmedAt: isDigital ? new Date() : null,
         },
       });
-      await tx.marketItem.update({ where: { id: order.itemId }, data: { status: "reserved" } });
+      if (!isDigital) await tx.marketItem.update({ where: { id: order.itemId }, data: { status: "reserved" } });
+      if (isDigital) {
+        const profile = await tx.learningMaterialProfile.findUnique({ where: { itemId: order.itemId } });
+        if (profile?.activeVersionId) {
+          await tx.learningMaterialAccess.upsert({
+            where: { orderId: order.id },
+            create: { orderId: order.id, versionId: profile.activeVersionId, userId: order.buyerId },
+            update: { versionId: profile.activeVersionId, userId: order.buyerId, revokedAt: null },
+          });
+        }
+      }
       newlyPaid = true;
     });
     if (newlyPaid && paidOrder) {
       const item = await prisma.marketItem.findUnique({ where: { id: paidOrder.itemId } });
       await Promise.all([
-        notify(paidOrder.buyerId, "商城订单支付成功", paidOrder.deliveryType === "digital" ? `「${item?.title || "商品"}」的电子资料已发放，请进入订单查看` : `「${item?.title || "商品"}」已支付，请与卖家确认交付安排`, `/market/mine?tab=orders`, { type: "market-paid", orderId: paidOrder.id }),
+        notify(paidOrder.buyerId, "商城订单支付成功", paidOrder.deliveryType === "digital" ? `「${item?.title || "商品"}」已进入我的资料库` : `「${item?.title || "商品"}」已支付，请与卖家确认交付安排`, paidOrder.deliveryType === "digital" ? `/market/learning-materials/library` : `/market/mine?tab=orders`, { type: "market-paid", orderId: paidOrder.id }),
         notify(paidOrder.sellerId, "买家已完成支付", paidOrder.deliveryType === "digital" ? `「${item?.title || "商品"}」已自动完成线上发货，等待买家确认` : `「${item?.title || "商品"}」已收到平台支付，请安排交付`, `/market/seller?tab=orders`, { type: "market-paid-seller", orderId: paidOrder.id }),
       ]);
     }
@@ -825,7 +842,7 @@ marketRouter.patch("/orders/:id", authRequired, validate(orderActionSchema), asy
       if (updated.buyerConfirmedAt && updated.sellerConfirmedAt) {
         updated = await prisma.$transaction(async (tx) => {
           const completed = await tx.marketOrder.update({ where: { id }, data: { status: "completed", completedAt: new Date() } });
-          await tx.marketItem.update({ where: { id: order.itemId }, data: { status: "sold", soldAt: new Date() } });
+          if (order.deliveryType !== "digital") await tx.marketItem.update({ where: { id: order.itemId }, data: { status: "sold", soldAt: new Date() } });
           await tx.marketSettlement.upsert({
             where: { orderId: id },
             create: { orderId: id, sellerId: order.sellerId, amountCents: order.sellerAmountCents, status: "available", availableAt: new Date() },
@@ -891,6 +908,7 @@ marketRouter.post("/items/:id/conversations", authRequired, validate(conversatio
     const buyerId = req.user!.userId;
     const item = await prisma.marketItem.findUnique({ where: { id: itemId } });
     if (!item || ["hidden", "withdrawn"].includes(item.status)) throw Errors.notFound("商品不存在");
+    if (isLearningMaterialCategory(item.category)) throw Errors.badRequest("学习资料购买前不开放私聊，请使用公开问答；购买后请使用订单售后");
     if (item.sellerId === buyerId) throw Errors.badRequest("不能与自己发起会话");
     const conversation = await prisma.marketConversation.upsert({
       where: { itemId_buyerId_sellerId: { itemId, buyerId, sellerId: item.sellerId } },
@@ -951,6 +969,7 @@ marketRouter.post("/conversations/:id/messages", authRequired, validate(messageS
     await ensureUserCanSpeak(req.user!.userId);
     const conversation = await prisma.marketConversation.findUnique({ where: { id }, include: { item: true } });
     if (!conversation || (conversation.buyerId !== req.user!.userId && conversation.sellerId !== req.user!.userId)) throw Errors.notFound("会话不存在");
+    if (isLearningMaterialCategory(conversation.item.category)) throw Errors.badRequest("学习资料普通私聊已关闭，请使用订单售后服务单");
     const message = await prisma.$transaction(async (tx) => {
       const created = await tx.marketMessage.create({ data: { conversationId: id, senderId: req.user!.userId, content: req.body.content } });
       await tx.marketConversation.update({ where: { id }, data: { lastMessageAt: created.createdAt } });
@@ -1223,15 +1242,15 @@ marketRouter.get("/admin/config", authRequired, async (req, res, next) => {
 });
 
 marketRouter.patch("/admin/config", authRequired, validate(z.object({
-  commissionRate: z.number().min(0).max(50),
+  learningMaterialCommissionRate: z.number().min(0).max(50),
 })), async (req, res, next) => {
   try {
     if (req.user!.role !== "admin") throw Errors.forbidden("需要管理员权限");
-    const commissionBps = Math.round(req.body.commissionRate * 100);
+    const learningMaterialCommissionBps = Math.round(req.body.learningMaterialCommissionRate * 100);
     const config = await prisma.marketConfig.upsert({
       where: { id: MARKET_CONFIG_ID },
-      update: { commissionBps },
-      create: { id: MARKET_CONFIG_ID, commissionBps },
+      update: { commissionBps: 0, learningMaterialCommissionBps },
+      create: { id: MARKET_CONFIG_ID, commissionBps: 0, learningMaterialCommissionBps },
     });
     ok(res, serializeMarketConfig(config));
   } catch (error) { next(error); }
@@ -1352,6 +1371,7 @@ marketRouter.patch("/admin/refunds/:id", authRequired, validate(adminRefundSchem
       if (req.body.status === "completed") {
         await tx.marketOrder.update({ where: { id: current.orderId }, data: { status: "refunded", refundedAt: new Date() } });
         await tx.marketItem.update({ where: { id: current.order.itemId }, data: { status: "active" } });
+        await tx.learningMaterialAccess.updateMany({ where: { orderId: current.orderId }, data: { revokedAt: new Date() } });
       } else if (req.body.status === "rejected" || req.body.status === "failed") {
         await tx.marketOrder.update({ where: { id: current.orderId }, data: { status: current.order.paidAt ? "paid" : "cancelled" } });
       }

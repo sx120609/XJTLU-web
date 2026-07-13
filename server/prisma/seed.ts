@@ -2,7 +2,7 @@
  * 靠浦 种子数据
  * 运行：npm run db:seed
  *
- * 包括：测试用户 + 机器人 + 板块 + 示例话题 + 课程 + 服务卡片 + 爬虫源
+ * 包括：测试用户 + 机器人 + 板块 + 课程 + 服务卡片 + 爬虫源
  * 注意：本脚本幂等 —— 重复运行会先清空所有业务数据。
  */
 import { PrismaClient } from "@prisma/client";
@@ -212,147 +212,7 @@ async function main() {
     });
   }
 
-  // ============ 示例话题 ============
-  console.log("💬 创建示例话题...");
-  const now = new Date();
-  const dt = (h: number) => new Date(now.getTime() - h * 3600 * 1000);
-
-  async function makeTopic(boardId: number, authorId: number, title: string, content: string, hoursAgo: number, metadata?: any, opts?: { pinned?: boolean; likes?: number; replies?: number }) {
-    return prisma.topic.create({
-      data: {
-        boardId, authorId, title, content,
-        metadata: JSON.stringify(metadata ?? {}),
-        pinned: opts?.pinned ?? false,
-        likeCount: opts?.likes ?? 0,
-        replyCount: opts?.replies ?? 0,
-        lastReplyAt: dt(Math.max(0, hoursAgo - 1)),
-        lastReplyById: authorId,
-        createdAt: dt(hoursAgo),
-        updatedAt: dt(hoursAgo),
-      },
-    });
-  }
-
-  // 灌水广场
-  const t1 = await makeTopic(general.id, alice.id,
-    "[置顶] 欢迎来到靠浦！请先看版规",
-    "## 欢迎\n\n这里是民间药大学生论坛，**与学校官方无关**。\n\n- 请理性发言，禁止人身攻击\n- 想发碎碎念或心情记录可以去树洞\n- 二手交易请到二手市场板块\n- 提问请到提问广场\n- 课程点评请到课程点评板块\n",
-    72, undefined, { pinned: true, likes: 18, replies: 4 });
-  const t2 = await makeTopic(general.id, bob.id,
-    "今晚的月亮真好看",
-    "走在玄武门校区，看到月亮特别圆。有人一起逛逛吗？",
-    5, undefined, { likes: 6 });
-  await makeTopic(treehole.id, carol.id,
-    "有人也会在忙的时候突然想安静一下吗",
-    "最近事情有点多，就想找个地方留一句：大家都辛苦了。看到这条的人今晚早点休息。",
-    14, undefined, { likes: 4, replies: 1 });
-  await makeTopic(life.id, carol.id,
-    "新生第一周食堂避雷指南",
-    "**第一食堂**：早上的鸡蛋灌饼 ⭐⭐⭐⭐⭐\n\n**第二食堂**：中午高峰排队 30 分钟起，建议 13:00 后再去\n\n**留学生餐厅**：菜单偏西餐，价格略高",
-    10, undefined, { likes: 9, replies: 2 });
-
-  // 提问
-  await makeTopic(question.id, alice.id,
-    "药理学期末复习重点谁能分享下？",
-    "如题，复习时间不够了，求重点。给红包 🧧",
-    3, { resolved: false, bounty: 10, tags: ["药理学", "期末"] });
-  await makeTopic(question.id, carol.id,
-    "教务系统打不开了，是只有我这样吗？",
-    "刚才登录提示「服务异常」，重启浏览器也没用。",
-    1, { resolved: true, bounty: 0 }, { replies: 3 });
-
-  // 二手
-  await makeTopic(market.id, bob.id,
-    "出二手《药理学（第 9 版）》——杨宝峰主编",
-    "九成新，无笔记，原价 89 出 50。\n面交：江宁校区西门菜鸟驿站",
-    8, { price: 50, condition: "九成新", tradeMode: "当面 / 包邮+5", images: [] });
-  await makeTopic(market.id, alice.id,
-    "求购 山地车 / 通勤车（江宁）",
-    "预算 300 以内，能骑就行。",
-    20, { price: 300, condition: "求购", tradeMode: "当面" });
-
-  // 课评
-  const cr1 = await makeTopic(coursereview.id, bob.id,
-    "PHA101 药理学（王明远）—— 推荐",
-    "## 总评\n王老师上课节奏快但条理清晰，期末是闭卷但题目偏向理解。\n\n## 体验\n- PPT 制作非常用心\n- 期末重点会在最后一次课点到\n- 给分中等偏上",
-    12, {
-      courseId: courses[0].id,
-      courseTeacherId: courseTeachers[0]["王明远"],
-      ratings: { difficulty: 3, reward: 5, recommend: 5, givingScore: 4 },
-      semester: "2024-2025-1",
-    });
-  // 课评要写入派生表 CourseRating
-  await prisma.courseRating.create({
-    data: {
-      topicId: cr1.id, courseId: courses[0].id,
-      courseTeacherId: courseTeachers[0]["王明远"],
-      authorId: bob.id,
-      difficulty: 3, reward: 5, recommend: 5, givingScore: 4, semester: "2024-2025-1",
-    },
-  });
-
-  const cr2 = await makeTopic(coursereview.id, alice.id,
-    "MAT101 高等数学下（孙立群）—— 慎选",
-    "节奏太快，难度大。期末挂科率高，建议提前预习。",
-    30, {
-      courseId: courses[4].id,
-      courseTeacherId: courseTeachers[4]["孙立群"],
-      ratings: { difficulty: 5, reward: 4, recommend: 2, givingScore: 2 },
-      semester: "2024-2025-2",
-    });
-  await prisma.courseRating.create({
-    data: {
-      topicId: cr2.id, courseId: courses[4].id,
-      courseTeacherId: courseTeachers[4]["孙立群"],
-      authorId: alice.id,
-      difficulty: 5, reward: 4, recommend: 2, givingScore: 2, semester: "2024-2025-2",
-    },
-  });
-
-  // 更新课程聚合
-  for (const c of [courses[0], courses[4]]) {
-    const agg = await prisma.courseRating.aggregate({
-      where: { courseId: c.id },
-      _count: true,
-      _avg: { difficulty: true, reward: true, recommend: true, givingScore: true },
-    });
-    await prisma.course.update({
-      where: { id: c.id },
-      data: {
-        ratingCount: agg._count,
-        avgDifficulty: agg._avg.difficulty ?? 0,
-        avgReward: agg._avg.reward ?? 0,
-        avgRecommend: agg._avg.recommend ?? 0,
-        avgScore: agg._avg.givingScore ?? 0,
-      },
-    });
-  }
-
-  // 新生入学
-  await makeTopic(freshman.id, bob.id,
-    "学长亲历：江宁→玄武门校车攻略",
-    "## 班次\n07:00 08:30 10:00 12:00 14:00 16:30 18:30 21:00\n\n## 票价\n免费（凭校园卡）\n\n## 注意\n周六周日班次同。雨天易堵，建议提前 20 分钟到。",
-    24);
-
-  // 示例回复（给 t1 加几条回复）
-  for (let i = 0; i < 4; i++) {
-    await prisma.reply.create({
-      data: {
-        topicId: t1.id,
-        authorId: [bob.id, carol.id, admin.id, bob.id][i],
-        content: ["签到 ✋", "新生表示已收藏", "管理员到此一游", "支持！"][i],
-        floor: i + 1,
-        createdAt: dt(70 - i * 6),
-      },
-    });
-  }
-
-  // 给 t2 加 2 条回复
-  await prisma.reply.create({
-    data: { topicId: t2.id, authorId: alice.id, content: "在哪里？我也想出来走走", floor: 1, createdAt: dt(4) },
-  });
-
-  // 更新各帖的 replyCount 与 lastReplyAt 已经在 makeTopic 时设置
+  // 论坛初始保持空白，真实内容由用户自行创建。
 
   // 更新 board.topicCount
   for (const slug of COMMUNITY_BOARD_DEFS.map((board) => board.slug)) {
@@ -369,10 +229,9 @@ async function main() {
     await prisma.user.update({ where: { id: u.id }, data: { postCount: pc, replyCount: rc } });
   }
 
-  // 示例通知
+  // 系统通知
   await prisma.notification.createMany({
     data: [
-      { userId: alice.id, category: "reply", level: "normal", title: "有人回复了你的帖子", content: "@夜归人 回复了「欢迎来到靠浦」", link: `/forum/topic/${t1.id}`, source: "论坛" },
       { userId: null, category: "system", level: "weak", title: "「靠浦」上线公测", content: "欢迎试用！本站为民间学生站，与学校官方无关。", source: "站务组" },
       { userId: null, category: "system", level: "normal", title: "版规公示", content: "请理性发言、不传播敏感内容、不发布违法信息。", source: "站务组" },
     ],
@@ -394,7 +253,7 @@ async function main() {
   console.log(`  板块: ${feeds.length} 个公告板（爬虫）+ ${COMMUNITY_BOARD_DEFS.length} 个 UGC 板块`);
   console.log(`  课程: 6 门`);
   console.log(`  服务卡片: ${services.length} 项`);
-  console.log(`  示例话题已发`);
+  console.log(`  话题: 0 条（初始为空）`);
 }
 
 main()

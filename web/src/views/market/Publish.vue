@@ -80,8 +80,7 @@ import { uploadApi } from "@/api/topic";
 const route = useRoute();
 const router = useRouter();
 const editingId = Number(route.params.id || 0);
-const forcedMaterialsMode = ref(false);
-const isMaterialsMode = computed(() => route.meta.marketCatalog === "learning-materials" || forcedMaterialsMode.value);
+const isMaterialsMode = computed(() => route.meta.marketCatalog === "learning-materials");
 const loading = ref(false);
 const submitting = ref(false);
 const uploading = ref(false);
@@ -106,23 +105,19 @@ onMounted(async () => {
         await router.replace("/market");
         return;
       }
-      if (existingItem.category === "digital_goods") forcedMaterialsMode.value = true;
+      if (existingItem.category === "digital_goods") {
+        await router.replace({ name: "market-learning-materials-edit", params: { id: existingItem.id } });
+        return;
+      }
       if (route.meta.marketCatalog === "learning-materials" && existingItem.category !== "digital_goods") {
         await router.replace({ name: "market-edit", params: { id: existingItem.id } });
         return;
       }
     }
 
-    if (isMaterialsMode.value) {
-      const meta = await marketApi.learningMaterialsMeta({ suppressErrorMessage: true });
-      categories.value = [meta.category];
-      form.category = "digital_goods";
-      form.tradeMode = "online";
-    } else {
-      const meta = await marketApi.meta({ suppressErrorMessage: true });
-      categories.value = meta.categories;
-      if (!categories.value.some((item) => item.slug === form.category) && categories.value.length) form.category = categories.value[0].slug;
-    }
+    const meta = await marketApi.meta({ suppressErrorMessage: true });
+    categories.value = meta.categories;
+    if (!categories.value.some((item) => item.slug === form.category) && categories.value.length) form.category = categories.value[0].slug;
 
     if (existingItem) {
       hasExistingDigitalDelivery.value = existingItem.hasDigitalDelivery;

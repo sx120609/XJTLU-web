@@ -101,7 +101,7 @@ export interface MarketOrder {
 }
 
 export interface MarketSellerDashboard {
-  config: { commissionBps: number; commissionRate: number; updatedAt: string };
+  config: { commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number; updatedAt: string };
   stats: {
     activeListings: number;
     reservedListings: number;
@@ -196,9 +196,7 @@ export type MarketListParams = {
 };
 
 export const marketApi = {
-  meta: (options?: RequestOptions) => request.get<{ categories: MarketCategoryOption[]; featuredLearningMaterials: MarketCategoryOption | null; conditions: string[]; tradeModes: string[]; listingTypes: string[]; payTypes: PayType[]; paymentEnabled: boolean; commissionBps: number; commissionRate: number }>("/market/meta", undefined, options),
-  learningMaterialsMeta: (options?: RequestOptions) => request.get<{ category: MarketCategoryOption }>("/market/materials/meta", undefined, options),
-  learningMaterials: (params?: Omit<MarketListParams, "category">, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: MarketItem[] }>("/market/materials/items", params, options),
+  meta: (options?: RequestOptions) => request.get<{ categories: MarketCategoryOption[]; featuredLearningMaterials: MarketCategoryOption | null; conditions: string[]; tradeModes: string[]; listingTypes: string[]; payTypes: PayType[]; paymentEnabled: boolean; commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number }>("/market/meta", undefined, options),
   items: (params?: MarketListParams, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: MarketItem[] }>("/market/items", params, options),
   item: (id: number, options?: RequestOptions) => request.get<MarketItem>(`/market/items/${id}`, undefined, options),
   createItem: (payload: MarketItemInput) => request.post<MarketItem>("/market/items", payload),
@@ -220,8 +218,8 @@ export const marketApi = {
   report: (itemId: number, payload: { reason: string; detail?: string }) => request.post<any>(`/market/items/${itemId}/reports`, payload),
   savePayoutProfile: (payload: { method: "alipay" | "wxpay" | "bank"; account: string; realName: string }) => request.patch<any>("/market/payout-profile", payload),
   adminOverview: (options?: RequestOptions) => request.get<any>("/market/admin/overview", undefined, options),
-  adminConfig: (options?: RequestOptions) => request.get<{ commissionBps: number; commissionRate: number; updatedAt: string }>("/market/admin/config", undefined, options),
-  adminUpdateConfig: (commissionRate: number) => request.patch<{ commissionBps: number; commissionRate: number; updatedAt: string }>("/market/admin/config", { commissionRate }),
+  adminConfig: (options?: RequestOptions) => request.get<{ commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number; updatedAt: string }>("/market/admin/config", undefined, options),
+  adminUpdateConfig: (learningMaterialCommissionRate: number) => request.patch<{ commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number; updatedAt: string }>("/market/admin/config", { learningMaterialCommissionRate }),
   adminCategories: (options?: RequestOptions) => request.get<MarketCategoryOption[]>("/market/admin/categories", undefined, options),
   adminCreateCategory: (payload: Omit<MarketCategoryOption, "id" | "itemCount">) => request.post<MarketCategoryOption>("/market/admin/categories", payload),
   adminUpdateCategory: (id: number, payload: Partial<Omit<MarketCategoryOption, "id" | "slug" | "itemCount">>) => request.patch<MarketCategoryOption>(`/market/admin/categories/${id}`, payload),
