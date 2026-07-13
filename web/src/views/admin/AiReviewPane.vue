@@ -506,9 +506,9 @@ const aiReviewProviderOptions = [
   { label: "火山方舟", value: "volcengine" },
 ];
 const form = reactive<SiteConfig>({
-  siteName: "XJTLU 校园服务",
-  siteSubtitle: "西交利物浦校园互助服务",
-  siteLogoUrl: "",
+  siteName: "靠浦",
+  siteSubtitle: "重塑校园生活的可能",
+  siteLogoUrl: "/brand/kaopu-mark.svg",
   siteOrigin: "",
   siteFilingNumber: "",
   aiReviewEnabled: false,

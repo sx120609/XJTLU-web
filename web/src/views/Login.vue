@@ -9,7 +9,7 @@
       </div>
 
       <div class="brand">
-        <div class="brand-logo"><img v-if="site.siteLogoUrl" :src="site.siteLogoUrl" alt="" /><template v-else>西</template></div>
+        <div class="brand-logo"><img :src="site.siteLogoUrl || '/brand/kaopu-mark.svg'" alt="靠浦" /></div>
         <div>
           <h1>{{ site.siteName }}</h1>
           <p>{{ site.siteSubtitle }}</p>
@@ -273,7 +273,6 @@ const loginHint = computed(() => {
   }
   const uses: string[] = [];
   if (site.features.forum) uses.push("发帖");
-  if (site.features.coursereview) uses.push("课评");
   uses.push("消息通知");
   return `完成 XJTLU 统一认证后会自动创建站内账号，可用于${uses.join("、")}，并同步建立融合门户与 eBridge 教务会话。`;
 });
@@ -563,8 +562,8 @@ async function onDevSubmit() {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #168776, #0f6557);
-  color: #e8a317;
+  background: #6d5ce7;
+  color: #fff;
   display: grid;
   place-items: center;
   font-family: serif;
@@ -572,7 +571,7 @@ async function onDevSubmit() {
   font-weight: 700;
 }
 
-.brand h1 { margin: 0; font-size: 20px; color: #168776; }
+.brand h1 { margin: 0; font-size: 20px; color: var(--cpu-primary); }
 .brand p { margin: 2px 0 0; font-size: 12px; color: var(--cpu-text-secondary); }
 
 .welcome { font-size: 18px; color: var(--cpu-text); margin: 6px 0 4px; font-weight: 600; }

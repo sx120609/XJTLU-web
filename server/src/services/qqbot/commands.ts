@@ -58,7 +58,7 @@ export function normalizeInboundCommandText(text: string) {
   let normalized = String(text || "").trim();
   if (!normalized) return "";
   for (let index = 0; index < 2; index += 1) {
-    const next = normalized.replace(/^(?:@?\s*)?(?:qqbot|药大拾间bot|助手|bot)\s*[，,:：-]?\s*/i, "").trim();
+    const next = normalized.replace(/^(?:@?\s*)?(?:qqbot|靠浦bot|药大拾间bot|助手|bot)\s*[，,:：-]?\s*/i, "").trim();
     if (!next || next === normalized) break;
     normalized = next;
   }

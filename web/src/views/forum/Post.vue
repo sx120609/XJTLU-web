@@ -11,19 +11,17 @@
     <div v-else v-loading="loading" class="cpu-card form">
       <el-form label-position="top" :model="form">
         <el-form-item label="选择板块" required>
-          <el-select v-model="form.boardSlug" placeholder="选择要发帖的板块" :disabled="!!editingId" @change="onBoardChange">
-            <el-option-group v-for="(group, label) in groupedBoards" :key="label" :label="label">
-              <el-option
-                v-for="b in group"
-                :key="b.slug"
-                :value="b.slug"
-                :label="`${b.icon ?? ''} ${b.name}`"
-                :disabled="b.readOnly"
-              >
-                <span class="option-icon">{{ b.icon }}</span>{{ b.name }}
-                <span class="option-note">{{ b.readOnly ? '不可发帖' : '' }}</span>
-              </el-option>
-            </el-option-group>
+          <el-select v-model="form.boardSlug" placeholder="选择要发帖的板块" :disabled="!!editingId">
+            <el-option
+              v-for="b in boards"
+              :key="b.slug"
+              :value="b.slug"
+              :label="`${b.icon ?? ''} ${b.name}`"
+              :disabled="b.readOnly"
+            >
+              <span class="option-icon">{{ b.icon }}</span>{{ b.name }}
+              <span class="option-note">{{ b.readOnly ? '不可发帖' : '' }}</span>
+            </el-option>
           </el-select>
           <div v-if="currentBoard" class="board-hint">
             {{ currentBoard.description }}
@@ -70,80 +68,6 @@
           <el-form-item label="悬赏（声望）">
             <el-input-number v-model="meta.bounty" :min="0" :max="999" :step="5" />
             <span class="cpu-muted" style="margin-left:8px">采纳回答者获得声望</span>
-          </el-form-item>
-        </template>
-
-        <!-- 课程点评特化 -->
-        <template v-if="boardType === 'coursereview'">
-          <el-form-item label="评价的课程" required>
-            <el-select
-              v-model="meta.courseId"
-              filterable
-              placeholder="搜课程名 / 代码"
-              :loading="coursesLoading"
-              :disabled="coursesLoading"
-              no-data-text="暂无课程数据"
-              @change="onCourseChange"
-            >
-              <el-option
-                v-for="c in courses"
-                :key="c.id"
-                :value="c.id"
-                :label="`${c.code} ${c.name}${c.teachers?.length ? ' - ' + c.teachers.map((t: any) => t.name).join('、') : ''}`"
-              >
-                <span>{{ c.code }} · {{ c.name }}</span>
-                <span class="option-note">
-                  {{ c.teachers?.length ? c.teachers.map((t: any) => t.name).join('、') : '暂无老师' }}
-                </span>
-              </el-option>
-            </el-select>
-            <div v-if="courseLoadError" class="field-error">
-              <span>{{ courseLoadError }}</span>
-              <button type="button" class="text-retry-btn" :disabled="coursesLoading" @click="loadCoursesForReview(true)">
-                重试
-              </button>
-            </div>
-          </el-form-item>
-          <el-form-item label="授课老师" required>
-            <div class="teacher-pick-row">
-              <el-select
-                v-model="meta.courseTeacherId"
-                placeholder="先选已知老师"
-                clearable
-                filterable
-                style="flex:1; min-width:160px"
-                :disabled="!meta.courseId"
-                @change="onPickKnownTeacher"
-              >
-                <el-option
-                  v-for="t in teacherOptions"
-                  :key="t.courseTeacherId"
-                  :value="t.courseTeacherId"
-                  :label="t.name"
-                />
-              </el-select>
-              <span class="or-text">或</span>
-              <el-input
-                v-model="meta.teacherName"
-                placeholder="输入老师姓名"
-                maxlength="40"
-                style="flex:1; min-width:160px"
-                :disabled="!meta.courseId"
-                @input="onTypeNewTeacher"
-              />
-            </div>
-            <div class="cpu-muted" style="margin-top:4px">
-              二选一。若列表里没有这位老师，直接在右侧输入即可。
-            </div>
-          </el-form-item>
-          <div class="rate-row">
-            <el-form-item label="难度"><el-rate v-model="meta.ratings.difficulty" /></el-form-item>
-            <el-form-item label="收获"><el-rate v-model="meta.ratings.reward" /></el-form-item>
-            <el-form-item label="推荐度"><el-rate v-model="meta.ratings.recommend" /></el-form-item>
-            <el-form-item label="给分"><el-rate v-model="meta.ratings.givingScore" /></el-form-item>
-          </div>
-          <el-form-item label="学期">
-            <el-input v-model="meta.semester" placeholder="例如 2024-2025-1" style="max-width:240px" />
           </el-form-item>
         </template>
 
@@ -309,7 +233,6 @@ import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
-import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
 
@@ -318,12 +241,8 @@ const router = useRouter();
 const auth = useAuthStore();
 
 const boards = ref<Board[]>([]);
-const courses = ref<Course[]>([]);
 const loading = ref(false);
 const loadError = ref("");
-const coursesLoading = ref(false);
-const coursesLoaded = ref(false);
-const courseLoadError = ref("");
 const submitting = ref(false);
 const editingId = computed(() => {
   if (!route.params.id) return null;
@@ -368,11 +287,6 @@ function defaultPostMeta() {
   condition: "九成新",
   tradeMode: "当面",
   bounty: 0,
-  courseId: undefined,
-  courseTeacherId: undefined,
-  teacherName: "",
-  ratings: { difficulty: 3, reward: 3, recommend: 3, givingScore: 3 },
-  semester: "",
   };
 }
 
@@ -404,8 +318,6 @@ const anonymousHint = computed(() => {
   return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
 });
 
-const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.courseId));
-const teacherOptions = computed(() => selectedCourse.value?.teachers ?? []);
 const submitDisabled = computed(() =>
   submitting.value ||
   loading.value ||
@@ -414,15 +326,6 @@ const submitDisabled = computed(() =>
   Boolean(auth.user?.topicSubmissionLocked)
 );
 
-const groupedBoards = computed(() => {
-  const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 学生共建": [], "📢 校园公告": [] };
-  for (const b of boards.value) {
-    if (b.type === "announce") groups["📢 校园公告"].push(b);
-    else if (["market", "question", "coursereview"].includes(b.type)) groups["🎒 学生共建"].push(b);
-    else groups["💬 综合讨论"].push(b);
-  }
-  return groups;
-});
 const mutedNotice = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}，当前不能发帖或编辑发言内容` : "你当前已被禁言，暂时不能发帖或编辑发言内容");
 
 watch(() => route.params.id, () => {
@@ -434,17 +337,12 @@ onBeforeUnmount(() => {
   window.clearTimeout(markupDraftTimer);
 });
 
-watch(boardType, async () => {
-  if (boardType.value === "coursereview") await loadCoursesForReview();
-});
-
 watch(() => route.query.board, async (value) => {
   if (editingId.value) return;
   const nextBoard = typeof value === "string" ? value : "";
   if (!nextBoard || nextBoard === form.boardSlug) return;
   form.boardSlug = nextBoard;
   normalizeSelectedBoard();
-  if (boardType.value === "coursereview") await loadCoursesForReview();
 });
 
 watch(() => currentBoard.value?.anonymousEnabled, (enabled) => {
@@ -455,7 +353,7 @@ watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId.value) form.anonymous = false;
 }, { immediate: true });
 
-watch(() => [form.boardSlug, form.title, form.anonymous, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
+watch(() => [form.boardSlug, form.title, form.anonymous, meta.price, meta.condition, meta.tradeMode, meta.bounty, editorMode.value], () => {
   scheduleFormDraftSave();
 }, { deep: true });
 
@@ -495,7 +393,6 @@ async function loadInitial() {
       restoreContentDraft();
     }
     normalizeSelectedBoard();
-    if (boardType.value === "coursereview") await loadCoursesForReview();
   } catch (error) {
     if (seq !== loadSeq) return;
     loadError.value = normalizePostLoadError(error);
@@ -523,26 +420,6 @@ function resetEditorStateForLoad() {
   Object.assign(meta, defaultPostMeta());
 }
 
-async function loadCoursesForReview(force = false) {
-  if (coursesLoading.value || (!force && coursesLoaded.value)) return;
-  coursesLoading.value = true;
-  courseLoadError.value = "";
-  try {
-    courses.value = await courseApi.list(undefined, false, { suppressErrorMessage: true });
-    coursesLoaded.value = true;
-  } catch (error) {
-    courses.value = [];
-    coursesLoaded.value = false;
-    courseLoadError.value = normalizeCourseListError(error);
-  } finally {
-    coursesLoading.value = false;
-  }
-}
-
-function onBoardChange() {
-  if (boardType.value === "coursereview") void loadCoursesForReview();
-}
-
 function getRequestStatus(error: unknown) {
   return typeof error === "object" && error !== null
     ? (error as { response?: { status?: number } }).response?.status
@@ -564,28 +441,11 @@ function normalizePostLoadError(error: unknown) {
   return getRequestMessage(error) || "发帖页加载失败，请稍后重试";
 }
 
-function normalizeCourseListError(error: unknown) {
-  const message = getRequestMessage(error);
-  return message ? `课程列表加载失败：${message}` : "课程列表加载失败，请稍后重试";
-}
-
 function normalizeSelectedBoard() {
   if (!form.boardSlug) return;
   if (!boards.value.length) return;
   if (boards.value.some((b) => b.slug === form.boardSlug)) return;
   form.boardSlug = "";
-}
-
-function onCourseChange() {
-  // 换课程时清掉老师选择，避免把上一门课的 courseTeacherId 误带过去
-  meta.courseTeacherId = undefined;
-  meta.teacherName = "";
-}
-function onPickKnownTeacher(v: number | undefined) {
-  if (v) meta.teacherName = ""; // 选了已有老师 → 清掉手输
-}
-function onTypeNewTeacher(v: string) {
-  if (v && v.trim()) meta.courseTeacherId = undefined; // 开始手输 → 清掉已选
 }
 
 function normalizeEditorMode(value: unknown): PostEditorMode | null {
@@ -795,17 +655,6 @@ function buildMetadata() {
   } else if (boardType.value === "question") {
     metadata.bounty = meta.bounty;
     metadata.resolved = false;
-  } else if (boardType.value === "coursereview") {
-    if (!meta.courseId) { ElMessage.warning("请选择课程"); return null; }
-    if (!meta.courseTeacherId && !meta.teacherName?.trim()) {
-      ElMessage.warning("请选择或填写授课老师");
-      return null;
-    }
-    metadata.courseId = meta.courseId;
-    if (meta.courseTeacherId) metadata.courseTeacherId = meta.courseTeacherId;
-    else metadata.teacherName = meta.teacherName.trim();
-    metadata.ratings = meta.ratings;
-    if (meta.semester) metadata.semester = meta.semester;
   }
   return metadata;
 }
@@ -1078,35 +927,6 @@ function notifyVideoReviewState(summary?: {
 }
 
 .board-hint { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 6px; }
-.field-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  color: #dc2626;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.text-retry-btn {
-  border: 0;
-  background: transparent;
-  color: #2563eb;
-  padding: 0;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.text-retry-btn:disabled {
-  color: var(--cpu-text-muted);
-  cursor: not-allowed;
-}
-
-.text-retry-btn:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.32);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
 
 .anonymous-box {
   width: 100%;
@@ -1138,22 +958,6 @@ function notifyVideoReviewState(summary?: {
 }
 .meta-row { display: flex; gap: 14px; flex-wrap: wrap; }
 .meta-row .el-form-item { min-width: 200px; flex: 1; }
-
-.rate-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-@media (max-width: 700px) { .rate-row { grid-template-columns: 1fr 1fr; } }
-
-.teacher-pick-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-.or-text { color: var(--cpu-text-muted); font-size: 12px; }
 
 .publish-preview {
   color: var(--cpu-text);
@@ -1248,24 +1052,6 @@ function notifyVideoReviewState(summary?: {
 
   .meta-row .el-form-item {
     min-width: 100%;
-  }
-
-  .rate-row {
-    grid-template-columns: 1fr;
-  }
-
-  .teacher-pick-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .or-text {
-    align-self: center;
-  }
-
-  .field-error {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .form-actions :deep(.el-form-item__content) {

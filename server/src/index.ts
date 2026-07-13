@@ -13,7 +13,7 @@ async function start() {
   const server = createServer(app);
 
   server.listen(config.port, async () => {
-    console.log(`🚀 XJTLU Campus Web 后端已启动:  http://localhost:${config.port}`);
+    console.log(`🚀 靠浦服务端已启动:  http://localhost:${config.port}`);
     console.log(`   健康检查:           http://localhost:${config.port}/api/health`);
     console.log(`   电费 API base:       ${process.env.DORM_ELECTRIC_BASE || "(未设，使用默认 http://sz.weicheng.wang:8899)"}`);
     const createdBoards = await ensureBuiltinBoards().catch((e) => {

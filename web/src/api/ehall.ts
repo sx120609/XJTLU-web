@@ -9,7 +9,7 @@ export interface EhallStatus {
 
 export interface EhallService {
   id: string;
-  kind: "item" | "service";
+  kind: "service";
   name: string;
   description: string;
   category: string;
@@ -19,6 +19,7 @@ export interface EhallService {
   permission: boolean;
   serviceStation: number;
   online: boolean;
+  featuredRank: number | null;
 }
 
 export interface EhallNotice {

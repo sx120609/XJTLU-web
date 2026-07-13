@@ -4,7 +4,7 @@
       <div class="filestore-head">
         <span class="filestore-mark">药</span>
         <div>
-          <div class="filestore-kicker">校园小工具</div>
+          <div class="filestore-kicker">校园工具</div>
           <h2>文件收集工作台</h2>
           <p>创建提交链接、查看记录和下载文件都在这里完成。</p>
         </div>

@@ -1,4 +1,4 @@
-export const APP_NAME = '药大拾间';
+export const APP_NAME = '靠浦';
 export const APP_URL = 'https://cpu.lizmt.cn/schedule?client=harmony-app&appVersionCode=17&appVersionName=2.0.8';
 export const APP_HOST = 'cpu.lizmt.cn';
 export const VERSION_CODE = 17;

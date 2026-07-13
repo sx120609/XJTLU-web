@@ -13,13 +13,32 @@ const SSO_ORIGIN = "https://sso.xjtlu.edu.cn";
 const UIM_ORIGIN = "https://uim.xjtlu.edu.cn";
 const EHALL_LOGIN_URL = `${EHALL_ORIGIN}/auth-protocol-core/login?service=${encodeURIComponent(`${EHALL_ORIGIN}/login`)}`;
 const EHALL_HOME_URL = `${EHALL_ORIGIN}/default/index.html#/hall`;
+const EHALL_APPS_URL = `${EHALL_ORIGIN}/default/index.html#/apps`;
 const EHALL_STUDENT_HOME_URL = `${EHALL_ORIGIN}/default/index.html#/homeXS`;
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const ALL_SERVICE_ITEM_CARD_ID = "CUS_CARD_ALLSERVICEITEM";
-const ALL_SERVICE_ITEM_CARD_WID = "5221461526271929";
 const NEWS_ANNOUNCEMENT_CARD_ID = "CUS_CARD_NEWSANNOUNCEMENT";
 const NEWS_ANNOUNCEMENT_CARD_WID = "7633185986201947";
+export const FEATURED_XJTLU_APPS = [
+  "西浦学习超市Core",
+  "e-Bridge",
+  "Timetable Plus",
+  "签到系统(AMS)",
+  "犀利网",
+  "图书馆座位预约系统",
+  "图书馆小组讨论室预约系统",
+  "试卷与论文系统",
+  "讨论室和静音舱预订",
+  "储物柜管理系统",
+  "学生宿舍管理系统",
+  "Shuttle Bus",
+  "打印服务",
+  "体育场地运营系统",
+  "专属自习教室预约系统",
+] as const;
+const FEATURED_XJTLU_APP_RANK = new Map<string, number>(
+  FEATURED_XJTLU_APPS.map((name, index) => [name, index]),
+);
 const SESSION_PREFIX = buildRedisKey("school-auth", "xjtlu", "ehall-session");
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36";
 
@@ -34,7 +53,7 @@ interface EhallSession {
 
 export interface XjtluEhallService {
   id: string;
-  kind: "item" | "service";
+  kind: "service";
   name: string;
   description: string;
   category: string;
@@ -44,6 +63,10 @@ export interface XjtluEhallService {
   permission: boolean;
   serviceStation: number;
   online: boolean;
+  featuredRank?: number | null;
+  pcAccessUrl?: string;
+  mobileAccessUrl?: string;
+  miniProgramUrl?: string;
 }
 
 export interface XjtluEhallNotice {
@@ -326,109 +349,6 @@ function booleanField(value: unknown, fallback = false) {
   return Boolean(value);
 }
 
-function flattenServices(input: unknown) {
-  const services = new Map<string, XjtluEhallService>();
-  const seen = new Set<unknown>();
-  const visit = (value: unknown, category = "") => {
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.length > 1 && trimmed.length <= MAX_BODY_BYTES && (trimmed.startsWith("{") || trimmed.startsWith("["))) {
-        try { visit(JSON.parse(trimmed), category); } catch { /* not embedded JSON */ }
-      }
-      return;
-    }
-    if (!value || typeof value !== "object" || seen.has(value)) return;
-    seen.add(value);
-    if (Array.isArray(value)) {
-      value.forEach((item) => visit(item, category));
-      return;
-    }
-    const record = value as Record<string, unknown>;
-    const nextCategory = stringField(record, "folderName", "categoryName", "columnName", "groupName") || category;
-    const id = stringField(record, "serviceWid", "serviceId");
-    const name = stringField(record, "serviceName", "name");
-    const looksLikeService = Boolean(id && name && (
-      "pcAccessUrl" in record
-      || "mobileAccessUrl" in record
-      || "serviceStation" in record
-      || "permission" in record
-      || "iconLink" in record
-      || "iconUrl" in record
-    ));
-    if (looksLikeService && !services.has(id)) {
-      services.set(id, {
-        id,
-        kind: "service",
-        name,
-        description: stringField(record, "serviceDesc", "description", "detail"),
-        category: nextCategory,
-        department: stringField(record, "departmentName", "deptName", "responsibleDept"),
-        icon: stringField(record, "iconLink", "iconUrl", "mobileIconLink"),
-        favorite: Boolean(record.favorite),
-        permission: record.permission !== false && record.permission !== 0,
-        serviceStation: numberField(record, "serviceStation", 0),
-        online: true,
-      });
-    }
-    Object.values(record).forEach((child) => visit(child, nextCategory));
-  };
-  visit(input);
-  return Array.from(services.values());
-}
-
-function flattenServiceItems(input: unknown) {
-  const items = new Map<string, XjtluEhallService>();
-  const seen = new Set<unknown>();
-  const visit = (value: unknown, category = "") => {
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.length > 1 && trimmed.length <= MAX_BODY_BYTES && (trimmed.startsWith("{") || trimmed.startsWith("["))) {
-        try { visit(JSON.parse(trimmed), category); } catch { /* not embedded JSON */ }
-      }
-      return;
-    }
-    if (!value || typeof value !== "object" || seen.has(value)) return;
-    seen.add(value);
-    if (Array.isArray(value)) {
-      value.forEach((item) => visit(item, category));
-      return;
-    }
-    const record = value as Record<string, unknown>;
-    const nextCategory = stringField(
-      record,
-      "categoryName",
-      "subjectName",
-      "folderName",
-      "columnName",
-      "groupName",
-    ) || category;
-    const id = stringField(record, "itemWid", "itemId");
-    const name = stringField(record, "itemName", "serviceItemName");
-    if (id && name && !items.has(id)) {
-      const permission = record.isAuthorized !== 0
-        && record.isAuthorized !== false
-        && record.permission !== 0
-        && record.permission !== false;
-      items.set(id, {
-        id,
-        kind: "item",
-        name,
-        description: stringField(record, "itemDesc", "itemDescription", "serviceDesc", "description", "detail"),
-        category: nextCategory,
-        department: stringField(record, "deptName", "departmentName", "responsibleDept", "unitName"),
-        icon: stringField(record, "iconLink", "iconUrl", "itemIcon", "mobileIconLink", "logoUrl"),
-        favorite: booleanField(record.favorite),
-        permission,
-        serviceStation: 0,
-        online: booleanField(record.onlineServiceType) && permission,
-      });
-    }
-    Object.values(record).forEach((child) => visit(child, nextCategory));
-  };
-  visit(input);
-  return Array.from(items.values());
-}
-
 function collectCardReferences(input: unknown) {
   const found = new Map<string, { cardId: string; cardWid: string; name: string; keys: string[] }>();
   const seen = new Set<unknown>();
@@ -463,21 +383,130 @@ function collectCardReferences(input: unknown) {
   return Array.from(found.values());
 }
 
-async function getAllServiceItemCard(session: EhallSession) {
+function flattenAppCatalog(input: unknown, fallbackCategory = "") {
+  const apps = new Map<string, XjtluEhallService>();
+  const seen = new Set<unknown>();
+  const visit = (value: unknown, category = fallbackCategory) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length > 1 && trimmed.length <= MAX_BODY_BYTES && (trimmed.startsWith("{") || trimmed.startsWith("["))) {
+        try { visit(JSON.parse(trimmed), category); } catch { /* not embedded JSON */ }
+      }
+      return;
+    }
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, category));
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    const nextCategory = stringField(
+      record,
+      "categoryName",
+      "navName",
+      "groupName",
+      "folderName",
+      "columnName",
+      "typeName",
+    ) || category;
+    const serviceId = stringField(record, "serviceWid", "serviceId");
+    const genericId = stringField(record, "appWid", "appId");
+    const id = serviceId || genericId;
+    const name = stringField(
+      record,
+      "serviceName",
+      "appName",
+      "applicationName",
+      "name",
+      "title",
+    );
+    const hasAppShape = Boolean(id && name && (
+      serviceId
+      || genericId
+      || "pcAccessUrl" in record
+      || "mobileAccessUrl" in record
+      || "iconLink" in record
+      || "iconUrl" in record
+      || "appIcon" in record
+    ));
+    if (hasAppShape && !apps.has(id)) {
+      const permission = record.permission !== 0
+        && record.permission !== false
+        && record.hasPermission !== 0
+        && record.hasPermission !== false
+        && record.isAuthorized !== 0
+        && record.isAuthorized !== false;
+      apps.set(id, {
+        id,
+        kind: "service",
+        name,
+        description: stringField(record, "serviceDesc", "appDesc", "description", "detail"),
+        category: nextCategory,
+        department: stringField(record, "departmentName", "deptName", "responsibleDept", "unitName"),
+        icon: stringField(
+          record,
+          "iconLink",
+          "iconUrl",
+          "pcIconUrl",
+          "mobileIconLink",
+          "mobileIconUrl",
+          "appIcon",
+          "logoUrl",
+        ),
+        favorite: booleanField(record.favorite ?? record.isFavorite ?? record.collected),
+        permission,
+        serviceStation: numberField(record, "serviceStation", 0),
+        online: permission,
+        pcAccessUrl: stringField(record, "pcAccessUrl"),
+        mobileAccessUrl: stringField(record, "mobileAccessUrl"),
+        miniProgramUrl: stringField(record, "miniProgramUrl"),
+      });
+    }
+    Object.values(record).forEach((child) => visit(child, nextCategory));
+  };
+  visit(input);
+  return Array.from(apps.values());
+}
+
+async function fetchAppsPageCatalog(session: EhallSession) {
   const query = new URLSearchParams({
-    pageCode: "hall",
-    originalUrl: EHALL_HOME_URL,
+    pageCode: "apps",
+    originalUrl: EHALL_APPS_URL,
     lang: "zh_CN",
   });
   const pageView = await fetchEhallEnvelope(session, `/getPageView?${query.toString()}`, {
-    headers: { localPageUrl: encodeURIComponent(EHALL_HOME_URL) },
+    headers: { localPageUrl: encodeURIComponent(EHALL_APPS_URL) },
   });
-  const reference = collectCardReferences(pageView.data)
-    .find((card) => card.cardId === ALL_SERVICE_ITEM_CARD_ID);
-  return {
-    cardId: reference?.cardId || ALL_SERVICE_ITEM_CARD_ID,
-    cardWid: reference?.cardWid || ALL_SERVICE_ITEM_CARD_WID,
-  };
+  if (String(pageView.errcode ?? "") !== "0") {
+    if (pageView.errmsg === "notLogin") throw Errors.unauthorized("融合门户连接已失效，请重新连接学校服务");
+    throw Errors.server(String(pageView.errmsg || "融合门户应用目录加载失败"));
+  }
+  const references = collectCardReferences(pageView.data);
+  const apps = new Map<string, XjtluEhallService>();
+  for (const card of references) {
+    const envelope = await fetchEhallEnvelope(
+      session,
+      `/execCardMethod/${encodeURIComponent(card.cardWid)}/${encodeURIComponent(card.cardId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          cardId: card.cardId,
+          cardWid: card.cardWid,
+          method: "renderData",
+          param: { fromMaster: true, lang: "zh_CN", platformType: 0 },
+          n: encodeURIComponent(Math.random()),
+        }),
+      },
+    );
+    if (String(envelope.errcode ?? "") !== "0") continue;
+    const parsed = flattenAppCatalog(envelope.data, card.name);
+    for (const app of parsed) {
+      if (!apps.has(app.id)) apps.set(app.id, app);
+    }
+  }
+  return Array.from(apps.values());
 }
 
 async function getNewsAnnouncementCard(session: EhallSession) {
@@ -624,41 +653,6 @@ async function execNewsCardMethod(
   return envelope.data;
 }
 
-async function fetchAllServiceItems(session: EhallSession) {
-  const card = await getAllServiceItemCard(session);
-  const envelope = await fetchEhallEnvelope(
-    session,
-    `/execCardMethod/${encodeURIComponent(card.cardWid)}/${encodeURIComponent(card.cardId)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({
-        cardId: card.cardId,
-        cardWid: card.cardWid,
-        method: "searchServiceItem",
-        param: {
-          searchKey: "",
-          categoryWids: "",
-          deptWids: "",
-          roleWids: "",
-          srvDeptWids: "",
-          dimensions: "",
-          availableOnline: false,
-          orderByVisitCount: false,
-          pageNumber: 1,
-          pageSize: 500,
-        },
-        n: encodeURIComponent(Math.random()),
-      }),
-    },
-  );
-  if (String(envelope.errcode ?? "") !== "0") {
-    if (envelope.errmsg === "notLogin") throw Errors.unauthorized("融合门户连接已失效，请重新连接学校服务");
-    throw Errors.server(String(envelope.errmsg || "融合门户办事大厅加载失败"));
-  }
-  return flattenServiceItems(envelope.data);
-}
-
 async function requireSession(userId: number) {
   const session = await loadSession(userId);
   if (!session) throw Errors.unauthorized("融合门户连接不存在，请重新连接学校服务");
@@ -667,21 +661,12 @@ async function requireSession(userId: number) {
 
 export async function getXjtluEhallServices(userId: number) {
   const session = await requireSession(userId);
-  const envelope = await fetchEhallEnvelope(session, "/queryFolderAndService", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ n: encodeURIComponent(Math.random()) }),
-  });
-  if (String(envelope.errcode ?? "") !== "0") {
-    if (envelope.errmsg === "notLogin") await deleteEphemeralValue(sessionKey(userId));
-    throw Errors.unauthorized("融合门户连接已失效，请重新连接学校服务");
-  }
-  const favorites = flattenServices(envelope.data);
-  const items = await fetchAllServiceItems(session);
-  const services = new Map<string, XjtluEhallService>();
-  for (const service of [...items, ...favorites]) services.set(`${service.kind}:${service.id}`, service);
+  const services = await fetchAppsPageCatalog(session);
   await saveSession(userId, session);
-  return Array.from(services.values());
+  return services.map(({ pcAccessUrl: _pc, mobileAccessUrl: _mobile, miniProgramUrl: _mini, ...service }) => ({
+    ...service,
+    featuredRank: FEATURED_XJTLU_APP_RANK.get(service.name) ?? null,
+  }));
 }
 
 async function fetchXjtluEhallNotices(session: EhallSession) {
@@ -761,71 +746,18 @@ export async function getXjtluEhallNotices(userId: number) {
   }
 }
 
-async function resolveItemLaunch(session: EhallSession, item: XjtluEhallService) {
-  let current = new URL("/simJump", EHALL_ORIGIN);
-  current.search = new URLSearchParams({
-    id: item.id,
-    name: item.name,
-    isOnline: "1",
-    langCountry: "zh_CN",
-    pageCode: "hall",
-  }).toString();
-  const original = current.toString();
-  let referer = EHALL_HOME_URL;
-  for (let hop = 0; hop < 6; hop += 1) {
-    const result = await request(current.toString(), session.cookies, {
-      headers: { Referer: referer, Accept: "text/html,application/xhtml+xml" },
-    }, true);
-    if (result.response.status >= 300 && result.response.status < 400) {
-      const location = result.response.headers.get("location");
-      let target: URL;
-      try {
-        target = new URL(String(location || ""), current);
-      } catch {
-        throw Errors.badRequest("融合门户返回了无效的服务入口");
-      }
-      if (target.protocol !== "https:" && target.protocol !== "http:") {
-        throw Errors.badRequest("融合门户服务入口格式不受支持");
-      }
-      if (target.origin !== EHALL_ORIGIN) return target.toString();
-      referer = current.toString();
-      current = target;
-      continue;
-    }
-    if (result.response.status >= 200 && result.response.status < 300) {
-      const match = result.text.match(/(?:window\.)?location(?:\.href)?\s*=\s*["'](https?:\/\/[^"']+)["']/i);
-      if (match?.[1]) return new URL(match[1]).toString();
-      return original;
-    }
-    throw Errors.badRequest("该融合门户服务暂时不可用");
-  }
-  throw Errors.badRequest("融合门户服务跳转次数过多");
-}
-
-function itemGuideUrl(item: XjtluEhallService) {
-  const query = new URLSearchParams({ wid: item.id, name: item.name });
-  return `${EHALL_ORIGIN}/default/index.html#/itemDetail?${query.toString()}`;
-}
-
 export async function getXjtluEhallLaunchUrl(
   userId: number,
   serviceId: string,
-  kind: "item" | "service" = "item",
+  kind: "service" = "service",
 ) {
   const id = serviceId.trim();
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw Errors.badRequest("无效的融合门户服务标识");
   const session = await requireSession(userId);
-  if (kind === "item") {
-    const item = (await fetchAllServiceItems(session)).find((candidate) => candidate.id === id);
-    if (!item || !item.permission) throw Errors.forbidden("当前账号无权访问该融合门户服务");
-    if (!item.online) {
-      await saveSession(userId, session);
-      return itemGuideUrl(item);
-    }
-    const target = await resolveItemLaunch(session, item);
-    await saveSession(userId, session);
-    return target;
-  }
+  if (kind !== "service") throw Errors.badRequest("应用目录已更新，请刷新页面后重试");
+  const service = (await fetchAppsPageCatalog(session))
+    .find((candidate) => candidate.kind === "service" && candidate.id === id);
+  if (!service || !service.permission) throw Errors.forbidden("当前账号无权访问该融合门户应用");
   const query = new URLSearchParams({ serviceId: id, isMobile: "0" });
   const envelope = await fetchEhallEnvelope(session, `/serviceShow?${query.toString()}`);
   if (String(envelope.errcode ?? "") !== "0") {
@@ -834,12 +766,22 @@ export async function getXjtluEhallLaunchUrl(
   }
   const data = envelope.data && typeof envelope.data === "object" ? envelope.data as Record<string, unknown> : null;
   const grants = Array.isArray(data?.grantData) ? data.grantData : [];
-  if (grants.length > 1) throw Errors.badRequest("该服务有多个角色入口，请先在官方融合门户中选择角色");
+  if (grants.length > 1) {
+    const officialChoice = new URL("/default/index.html#/ServiceShow", EHALL_ORIGIN);
+    officialChoice.hash = `/ServiceShow?isMobile=0&wid=${encodeURIComponent(id)}`;
+    await saveSession(userId, session);
+    return officialChoice.toString();
+  }
   const grant = grants[0] && typeof grants[0] === "object" ? grants[0] as Record<string, unknown> : null;
-  const rawUrl = String(grant?.serviceUrl ?? "").trim();
+  const rawUrl = String(
+    grant?.serviceUrl
+    || service.pcAccessUrl
+    || service.mobileAccessUrl
+    || "",
+  ).trim();
   let target: URL;
   try {
-    target = new URL(rawUrl);
+    target = new URL(rawUrl, EHALL_ORIGIN);
   } catch {
     throw Errors.badRequest("该融合门户服务未返回可用入口");
   }

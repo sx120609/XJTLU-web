@@ -1,4 +1,4 @@
-# 药大拾间 HarmonyOS App
+# 靠浦 HarmonyOS App
 
 这是和 Android WebView 壳保持同一规格的 HarmonyOS Stage 模型工程。
 
@@ -12,7 +12,7 @@
 
 ## 基础信息
 
-- 应用名：药大拾间
+- 应用名：靠浦
 - 包名：`com.cpu.yaodashijian`
 - 版本：`2.0.8 (17)`
 - 默认入口：`https://cpu.lizmt.cn/schedule`

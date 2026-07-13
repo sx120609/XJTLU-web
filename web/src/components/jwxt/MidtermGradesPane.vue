@@ -66,16 +66,16 @@
                 </div>
               </div>
               <div class="score-badges">
-                <span class="score-pill" :style="{ color: totalColor(row.scoreNum) }">
+                <span class="score-pill" :style="{ color: scoreColor(row.scoreNum) }">
                   总评 {{ row.score || "—" }}
                 </span>
-                <span class="score-pill" :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">
+                <span class="score-pill" :style="{ color: scoreColor(row.midterm), fontWeight: 600 }">
                   期中 {{ row.midterm || "—" }}
                 </span>
               </div>
               <div class="grade-detail">
-                <span>平时 {{ row.usual || "—" }}</span>
-                <span>期末 {{ row.final || "—" }}</span>
+                <span :style="{ color: scoreColor(row.usual) }">平时 {{ row.usual || "—" }}</span>
+                <span :style="{ color: scoreColor(row.final) }">期末 {{ row.final || "—" }}</span>
                 <span>性质 {{ row.courseAttr || "—" }}</span>
               </div>
             </article>
@@ -87,20 +87,20 @@
               <el-table-column prop="courseName" label="课程名称" min-width="220" />
               <el-table-column label="总评" width="80" align="right">
                 <template #default="{ row }">
-                  <span :style="{ color: totalColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
+                  <span :style="{ color: scoreColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="期中" width="80" align="right">
                 <template #default="{ row }">
-                  <span :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">{{ row.midterm || "—" }}</span>
+                  <span :style="{ color: scoreColor(row.midterm), fontWeight: 600 }">{{ row.midterm || "—" }}</span>
                 </template>
               </el-table-column>
               <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
               <el-table-column label="平时" width="60" align="right">
-                <template #default="{ row }">{{ row.usual || "—" }}</template>
+                <template #default="{ row }"><span :style="{ color: scoreColor(row.usual) }">{{ row.usual || "—" }}</span></template>
               </el-table-column>
               <el-table-column label="期末" width="60" align="right">
-                <template #default="{ row }">{{ row.final || "—" }}</template>
+                <template #default="{ row }"><span :style="{ color: scoreColor(row.final) }">{{ row.final || "—" }}</span></template>
               </el-table-column>
               <el-table-column prop="courseAttr" label="性质" width="90" />
               <el-table-column prop="examType" label="考试" width="100" />
@@ -116,6 +116,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
+import { scoreColor } from "@/utils/gpaScale";
 
 interface GradeRow {
   semester: string;
@@ -235,20 +236,6 @@ function sortRowsByPublishedMidterm(rows: GradeRow[]) {
       a.index - b.index
     )
     .map(({ row }) => row);
-}
-
-function midtermColor(n: number | null) {
-  if (n === null) return "var(--cpu-text-muted)";
-  if (n >= 85) return "#16a34a";
-  if (n >= 60) return "var(--cpu-text)";
-  return "#dc2626";
-}
-
-function totalColor(n: number | null) {
-  if (n === null) return "var(--cpu-text-muted)";
-  if (n >= 85) return "#16a34a";
-  if (n >= 60) return "var(--cpu-text)";
-  return "#dc2626";
 }
 
 async function reload() {

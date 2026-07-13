@@ -5,7 +5,7 @@
   --cpu-primary: #{$cpu-primary};
   --cpu-primary-light: #{$cpu-primary-light};
   --cpu-primary-dark: #{$cpu-primary-dark};
-  --cpu-primary-soft: rgba(22, 135, 118, 0.10);
+  --cpu-primary-soft: rgba(109, 92, 231, 0.10);
   --cpu-gold: #{$cpu-gold};
   --cpu-warn: #{$cpu-warn};
   --cpu-danger: #{$cpu-danger};
@@ -43,10 +43,10 @@
 }
 
 html[data-theme="dark"] {
-  --cpu-primary: #36d0b7;
-  --cpu-primary-light: #5ee4cc;
-  --cpu-primary-dark: #0f766e;
-  --cpu-primary-soft: rgba(54, 208, 183, 0.12);
+  --cpu-primary: #9b8cff;
+  --cpu-primary-light: #b4a9ff;
+  --cpu-primary-dark: #7564e8;
+  --cpu-primary-soft: rgba(155, 140, 255, 0.14);
   --cpu-gold: #fbbf24;
   --cpu-warn: #fb923c;
   --cpu-danger: #f87171;
@@ -84,12 +84,12 @@ html[data-theme="dark"] {
   --el-mask-color: rgba(4, 12, 10, 0.52);
   --el-box-shadow-light: var(--cpu-shadow-md);
   --el-color-primary: var(--cpu-primary);
-  --el-color-primary-light-3: #2ebba7;
-  --el-color-primary-light-5: #1f8f81;
-  --el-color-primary-light-7: rgba(54, 208, 183, 0.24);
-  --el-color-primary-light-8: rgba(54, 208, 183, 0.16);
-  --el-color-primary-light-9: rgba(54, 208, 183, 0.10);
-  --el-color-primary-dark-2: #7ff0dc;
+  --el-color-primary-light-3: #ad9fff;
+  --el-color-primary-light-5: #8f7ff2;
+  --el-color-primary-light-7: rgba(155, 140, 255, 0.24);
+  --el-color-primary-light-8: rgba(155, 140, 255, 0.16);
+  --el-color-primary-light-9: rgba(155, 140, 255, 0.10);
+  --el-color-primary-dark-2: #c4bcff;
   color-scheme: dark;
 }
 

@@ -25,6 +25,13 @@ import {
   type EpayPayType,
 } from "../services/epay";
 import { calculateMarketOrderAmounts } from "../services/marketFinance";
+import {
+  categoryBelongsToCatalog,
+  isLearningMaterialCategory,
+  resolveMarketCategoryBoundary,
+  splitMarketCategories,
+  type MarketCatalogScope,
+} from "../services/marketCatalog";
 
 export const marketRouter = Router();
 marketRouter.use(authOptional);
@@ -76,6 +83,7 @@ const imageUrlSchema = z.string().trim().min(1).max(2048).refine(
 );
 
 const itemInputSchema = z.object({
+  catalog: z.enum(["market", "learning_materials"]).default("market"),
   listingType: z.enum(LISTING_TYPES).default("sell"),
   title: z.string().trim().min(2).max(120),
   description: z.string().trim().min(1).max(20000),
@@ -261,9 +269,18 @@ marketRouter.get("/meta", async (_req, res, next) => {
   try {
     await ensureMarketCategories();
     const marketConfig = await getMarketConfig();
-    const categories = await prisma.marketCategory.findMany({ where: { enabled: true }, orderBy: [{ sort: "asc" }, { id: "asc" }] });
+    const allCategories = await prisma.marketCategory.findMany({ where: { enabled: true }, orderBy: [{ sort: "asc" }, { id: "asc" }] });
+    const { market: categories, learningMaterials } = splitMarketCategories(allCategories);
+    const learningMaterialCount = await prisma.marketItem.count({
+      where: { category: "digital_goods", status: "active" },
+    });
     ok(res, {
       categories,
+      featuredLearningMaterials: learningMaterials ? {
+        ...learningMaterials,
+        itemCount: learningMaterialCount,
+        route: "/market/learning-materials",
+      } : null,
       conditions: CONDITIONS,
       tradeModes: TRADE_MODES,
       listingTypes: LISTING_TYPES,
@@ -274,7 +291,17 @@ marketRouter.get("/meta", async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-marketRouter.get("/items", async (req, res, next) => {
+marketRouter.get("/materials/meta", async (_req, res, next) => {
+  try {
+    await ensureMarketCategories();
+    const category = await prisma.marketCategory.findUnique({ where: { slug: "digital_goods" } });
+    if (!category || !category.enabled) throw Errors.notFound("特色学习资料分类不存在");
+    const itemCount = await prisma.marketItem.count({ where: { category: "digital_goods", status: "active" } });
+    ok(res, { category: { ...category, itemCount } });
+  } catch (error) { next(error); }
+});
+
+async function listMarketItems(req: any, res: any, next: any, scope: MarketCatalogScope) {
   try {
     if (!isFeatureOn("market")) throw Errors.forbidden("商城当前已关闭");
     await closeExpiredMarketOrders();
@@ -290,12 +317,16 @@ marketRouter.get("/items", async (req, res, next) => {
     const maxPrice = req.query.maxPrice === undefined ? null : cents(String(req.query.maxPrice));
     const status = String(req.query.status || "active").trim();
     const where: any = { status: ITEM_STATUSES.includes(status as any) ? status : "active" };
+    const categoryBoundary = resolveMarketCategoryBoundary(scope, category);
+    if (!categoryBoundary.valid) {
+      throw Errors.badRequest(scope === "market" ? "电子资料请前往靠浦特色学习资料" : "该品类不属于靠浦特色学习资料");
+    }
+    where.category = categoryBoundary.filter;
     if (q) where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
       { location: { contains: q, mode: "insensitive" } },
     ];
-    if (category) where.category = category;
     if (LISTING_TYPES.includes(listingType as any)) where.listingType = listingType;
     if (CONDITIONS.includes(condition as any)) where.condition = condition;
     if (TRADE_MODES.includes(tradeMode as any)) where.tradeMode = tradeMode;
@@ -324,7 +355,10 @@ marketRouter.get("/items", async (req, res, next) => {
     ]);
     ok(res, { page, size, total, list: list.map((item) => serializeItem(item, req.user?.userId)) });
   } catch (error) { next(error); }
-});
+}
+
+marketRouter.get("/materials/items", (req, res, next) => listMarketItems(req, res, next, "learning_materials"));
+marketRouter.get("/items", (req, res, next) => listMarketItems(req, res, next, "market"));
 
 marketRouter.get("/items/:id", async (req, res, next) => {
   try {
@@ -352,6 +386,9 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
     await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
     const input = req.body as z.infer<typeof itemInputSchema>;
+    if (!categoryBelongsToCatalog(input.catalog, input.category)) {
+      throw Errors.badRequest(input.catalog === "market" ? "电子资料请从靠浦特色学习资料发布" : "学习资料只能发布到靠浦特色学习资料");
+    }
     const category = await getMarketCategory(input.category);
     const deliveryType = category.fulfillmentType === "digital" ? "digital" : "physical";
     if (deliveryType === "digital" && input.listingType === "sell" && !input.draft && !input.digitalDelivery) {
@@ -445,11 +482,17 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
       throw Errors.forbidden("不能切换到该商品状态");
     }
     const data: any = { ...input };
+    delete data.catalog;
     delete data.images;
     delete data.price;
     delete data.originalPrice;
     delete data.draft;
     delete data.digitalDelivery;
+    const finalCategory = input.category ?? current.category;
+    const catalogScope = input.catalog ?? (isLearningMaterialCategory(current.category) ? "learning_materials" : "market");
+    if (!categoryBelongsToCatalog(catalogScope, finalCategory)) {
+      throw Errors.badRequest(catalogScope === "market" ? "电子资料请从靠浦特色学习资料编辑" : "该商品不属于靠浦特色学习资料");
+    }
     const category = input.category ? await getMarketCategory(input.category) : await getMarketCategory(current.category, true);
     const deliveryType = category.fulfillmentType === "digital" ? "digital" : "physical";
     const finalListingType = input.listingType ?? current.listingType;

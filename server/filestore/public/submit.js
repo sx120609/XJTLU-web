@@ -1,7 +1,7 @@
 const token = location.pathname.split("/").pop();
 let task = null;
 let selectedFiles = [];
-const SITE_TITLE_DEFAULT = "药大拾间文件收集";
+const SITE_TITLE_DEFAULT = "靠浦文件收集";
 let draggedFileId = null;
 let successReset = false;
 
@@ -253,7 +253,7 @@ function renderTask() {
   const isClosed = task.status !== "open";
   document.title = `${task.siteTitle || SITE_TITLE_DEFAULT} - ${task.title}`;
   $("#submitHeader").innerHTML = `
-    <p class="eyebrow">${isClosed ? "药大拾间 · 已停止提交" : "药大拾间 · 文件提交"}</p>
+    <p class="eyebrow">${isClosed ? "靠浦 · 已停止提交" : "靠浦 · 文件提交"}</p>
     <h1>${escapeHtml(task.title)}</h1>
     <p>${escapeHtml(submitDescription()).replaceAll("\n", "<br>")}</p>
     ${task.deadline ? `<p class="hint hero-deadline">截止时间：${new Date(task.deadline).toLocaleString()}</p>` : ""}
@@ -289,7 +289,7 @@ async function loadTask() {
     task = payload;
     renderTask();
   } catch (error) {
-    $("#submitHeader").innerHTML = `<p class="eyebrow">药大拾间 · 访问异常</p><h1>无法提交</h1><p>${escapeHtml(error.message)}</p>`;
+    $("#submitHeader").innerHTML = `<p class="eyebrow">靠浦 · 访问异常</p><h1>无法提交</h1><p>${escapeHtml(error.message)}</p>`;
   }
 }
 

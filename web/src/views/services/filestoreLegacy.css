@@ -1,9 +1,9 @@
 :root {
   color-scheme: light;
-  --accent: #148f7b;
-  --accent-light: #34b39e;
-  --accent-dark: #0d6e5e;
-  --accent-text: #0d6e5e;
+  --accent: #6d5ce7;
+  --accent-light: #8b7cf6;
+  --accent-dark: #5747c8;
+  --accent-text: #5747c8;
   --accent-wash: rgba(20, 143, 123, 0.08);
   --accent-wash-strong: rgba(20, 143, 123, 0.12);
   --accent-border: rgba(20, 143, 123, 0.16);
@@ -51,7 +51,7 @@ html[data-theme="dark"] {
   color-scheme: dark;
   --accent: #36d0b7;
   --accent-light: #5ee4cc;
-  --accent-dark: #0f766e;
+  --accent-dark: #7564e8;
   --accent-text: #7ff0dc;
   --accent-wash: rgba(54, 208, 183, 0.12);
   --accent-wash-strong: rgba(54, 208, 183, 0.18);

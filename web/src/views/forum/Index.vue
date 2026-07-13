@@ -26,11 +26,11 @@
         </button>
 
         <div v-loading="loading" class="boards-content">
-          <div class="cluster" v-if="general.length">
-            <h3 class="cluster-title">💬 综合讨论</h3>
+          <div v-for="section in forumSections" :key="section.key" class="cluster">
+            <h3 class="cluster-title"><span>{{ section.icon }}</span>{{ section.title }}</h3>
             <div class="grid">
               <div
-                v-for="b in general"
+                v-for="b in section.boards"
                 :key="b.slug"
                 class="board-card"
                 role="button"
@@ -39,55 +39,11 @@
                 @keydown.enter.prevent="openBoard(b.slug)"
                 @keydown.space.prevent="openBoard(b.slug)"
               >
-                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "💬" }}</div>
-                <div class="body">
-                  <div class="name">{{ b.name }}</div>
-                  <div class="desc">{{ b.description }}</div>
-                  <div class="meta"><span>{{ b.topicCount }} 帖</span><span>进入板块 →</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="cluster" v-if="ugc.length">
-            <h3 class="cluster-title">🎒 学生共建</h3>
-            <div class="grid">
-              <div
-                v-for="b in ugc"
-                :key="b.slug"
-                class="board-card"
-                role="button"
-                tabindex="0"
-                @click="openBoard(b.slug)"
-                @keydown.enter.prevent="openBoard(b.slug)"
-                @keydown.space.prevent="openBoard(b.slug)"
-              >
-                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "🎒" }}</div>
+                <div class="icon" :style="{ background: b.color || '#6d5ce7' }">{{ b.icon || section.icon }}</div>
                 <div class="body">
                   <div class="name">{{ b.name }}</div>
                   <div class="desc">{{ b.description }}</div>
                   <div class="meta"><span>{{ b.topicCount }} 帖</span><span>{{ boardAction(b) }}</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="cluster" v-if="campusWall">
-            <h3 class="cluster-title">📮 外部镜像</h3>
-            <div class="grid">
-              <div
-                class="board-card readonly"
-                role="button"
-                tabindex="0"
-                @click="openBoard(campusWall.slug)"
-                @keydown.enter.prevent="openBoard(campusWall.slug)"
-                @keydown.space.prevent="openBoard(campusWall.slug)"
-              >
-                <div class="icon" :style="{ background: campusWall.color || '#0ea5e9' }">{{ campusWall.icon || "📮" }}</div>
-                <div class="body">
-                  <div class="name">{{ campusWall.name }}</div>
-                  <div class="desc">单独展示的逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新。</div>
-                  <div class="meta">{{ campusWall.topicCount }} 帖</div>
                 </div>
               </div>
             </div>
@@ -111,10 +67,10 @@
           使用学校账号登录后即可浏览板块、发布帖子和参与回复，不再需要额外手动开启。
         </p>
         <div class="gate-points">
-          <div>💬 校园广场、学习交流与日常生活</div>
-          <div>❓ 问答互助、失物招领与新生专区</div>
-          <div>🕳️ 树洞支持匿名发布</div>
-          <div>🛍️ 商城和课程点评使用专用页面</div>
+          <div>💬 综合讨论：校园广场、失物招领、新生专区与问答互助</div>
+          <div>📚 学习交流：课程学习、科研实习、雅思留学与课程点评</div>
+          <div>🎈 生活社交：校园生活、社团活动、树洞与交友扩列</div>
+          <div>🕳️ 树洞支持匿名发布，所有学习板块均可自由发帖交流</div>
         </div>
         <div class="gate-actions">
           <el-button type="primary" size="large" @click="goLogin">学校账号登录</el-button>
@@ -145,8 +101,6 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
-const CAMPUS_WALL_SLUG = "campus-wall";
-
 const all = ref<Board[]>([]);
 const loading = ref(false);
 const error = ref("");
@@ -169,11 +123,16 @@ onBeforeUnmount(() => {
   boardLoadSeq += 1;
 });
 
-const general = computed(() => all.value.filter((b) => b.type === "normal" && b.slug !== CAMPUS_WALL_SLUG));
-const ugc = computed(() => all.value.filter((b) => ["market", "question", "coursereview"].includes(b.type)));
-const campusWall = computed(() => all.value.find((b) =>
-  b.slug === CAMPUS_WALL_SLUG && (b.topicCount > 0 || Boolean(b.feedSource?.homepage))
-) ?? null);
+const sectionMeta = [
+  { key: "general", title: "综合讨论", icon: "💬" },
+  { key: "study", title: "学习交流", icon: "📚" },
+  { key: "social", title: "生活社交", icon: "🎈" },
+] as const;
+
+const forumSections = computed(() => sectionMeta.map((section) => ({
+  ...section,
+  boards: all.value.filter((board) => board.section === section.key),
+})));
 
 async function loadBoards() {
   if (disposed) return;
@@ -212,16 +171,11 @@ function openBoard(slug: string) {
     router.push("/market");
     return;
   }
-  if (board?.type === "coursereview") {
-    router.push("/coursereview");
-    return;
-  }
   router.push(`/forum/b/${slug}`);
 }
 
 function boardAction(board: Board) {
   if (board.type === "market") return "进入商城 →";
-  if (board.type === "coursereview") return "查看课评 →";
   return "进入板块 →";
 }
 
@@ -232,7 +186,7 @@ function boardAction(board: Board) {
 .page-title { margin: 0; font-size: 22px; }
 .page-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .page-heading p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 13px; }
-.cluster-title { margin: 0 0 12px; font-size: 16px; color: var(--cpu-text); font-weight: 600; }
+.cluster-title { margin: 0 0 12px; font-size: 16px; color: var(--cpu-text); font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .cpu-card {
   background: var(--cpu-card);
   border-radius: 14px;

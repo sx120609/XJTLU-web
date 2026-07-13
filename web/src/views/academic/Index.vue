@@ -139,9 +139,10 @@ const cpuGradesData = computed(() => {
       courseName: grade.moduleTitle,
       score: grade.mark,
       scoreNum: Number.isFinite(Number.parseFloat(grade.mark)) ? Number.parseFloat(grade.mark) : null,
+      gpa: grade.gpa ?? undefined,
+      grade: grade.letterGrade || grade.grade,
       credits: Number.isFinite(credits) ? credits : undefined,
       courseAttr: grade.additionalLearning ? "附加学习" : "正式课程",
-      grade: grade.grade,
       attempt: grade.attempt,
       components: grade.components,
     };

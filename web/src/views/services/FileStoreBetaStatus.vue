@@ -4,16 +4,16 @@
       <section class="submit-card status-card">
         <div class="submit-brandbar">
           <div class="submit-brand">
-            <span class="brand-mark">药</span>
+            <img class="brand-mark" src="/brand/kaopu-mark.svg" alt="">
             <div>
-              <strong>{{ statusData?.siteTitle || "药大拾间文件收集" }}</strong>
-              <small>CPU 校园互助服务 · 成功提交名单</small>
+              <strong>{{ statusData?.siteTitle || "靠浦文件收集" }}</strong>
+              <small>重塑校园生活的可能 · 成功提交名单</small>
             </div>
           </div>
-          <span class="submit-brand-tag">校园小工具</span>
+          <span class="submit-brand-tag">校园工具</span>
         </div>
         <div class="submit-hero">
-          <p class="eyebrow">药大拾间 · 成功提交名单</p>
+          <p class="eyebrow">靠浦 · 成功提交名单</p>
           <h1>{{ statusData?.title || (loading ? "加载成功名单中" : "无法查看") }}</h1>
           <p>{{ statusData ? "这里显示已经成功提交的记录和文件名。文件内容不会在此页面公开。" : (error || "请稍候。") }}</p>
           <p v-if="statusData?.deadline" class="hint hero-deadline">截止时间：{{ formatDateTime(statusData.deadline) }}</p>
@@ -111,7 +111,7 @@ async function load() {
     const next = await filestoreBetaApi.publicStatus(slug.value);
     if (seq !== loadSeq) return;
     statusData.value = next;
-    document.title = `${next.siteTitle || "药大拾间文件收集"} - 提交成功名单`;
+    document.title = `${next.siteTitle || "靠浦文件收集"} - 提交成功名单`;
   } catch (err) {
     if (seq !== loadSeq) return;
     error.value = requestErrorMessage(err, "成功名单加载失败");

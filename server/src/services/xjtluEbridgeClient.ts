@@ -9,6 +9,7 @@ import {
   setEphemeralValue,
 } from "./cache";
 import { buildRedisKey } from "./redis";
+import { calculateWeightedFourPointGpa, scoreToFourPointGpa, scoreToLetterGrade } from "./gpaScale";
 
 const EBRIDGE_ORIGIN = "https://ebridge.xjtlu.edu.cn";
 const UIM_ORIGIN = "https://uim.xjtlu.edu.cn";
@@ -39,6 +40,8 @@ export interface XjtluAcademicGrade {
   moduleTitle: string;
   credit: string;
   mark: string;
+  gpa: number | null;
+  letterGrade: string;
   grade: string;
   attempt: string;
   additionalLearning: boolean;
@@ -790,13 +793,16 @@ export function parseXjtluAcademicRecords(html: string) {
       const moduleCode = valueAt(headers, values, "Module Code");
       const moduleTitle = valueAt(headers, values, "Module Title");
       if (!moduleCode || !moduleTitle) return;
+      const mark = valueAt(headers, values, "Mark");
       grades.push({
         academicYear: tableAcademicYear || academicYear,
         period: valueAt(headers, values, "Period"),
         moduleCode,
         moduleTitle,
         credit: valueAt(headers, values, "Credit"),
-        mark: valueAt(headers, values, "Mark"),
+        mark,
+        gpa: scoreToFourPointGpa(mark) ?? null,
+        letterGrade: scoreToLetterGrade(mark) ?? "",
         grade: valueAt(headers, values, "Grade"),
         attempt: valueAt(headers, values, "Attempt"),
         additionalLearning,
@@ -888,6 +894,8 @@ function mergeComponentMarks(grades: XjtluAcademicGrade[], componentRecords: Xjt
       moduleTitle: record.moduleTitle,
       credit: record.credit,
       mark: "",
+      gpa: null,
+      letterGrade: "",
       grade: "",
       attempt: "",
       additionalLearning: false,
@@ -973,6 +981,11 @@ async function getXjtluAcademicOverviewUnlocked(userId: number) {
     const exams = parseXjtluExamTimetable(timetablePage.html);
     const overview = {
       ...records,
+      gpaSummary: calculateWeightedFourPointGpa(records.grades.map((grade) => ({
+        score: grade.mark,
+        gpa: grade.gpa,
+        credits: grade.credit,
+      }))),
       exams,
       updatedAt: new Date().toISOString(),
     };

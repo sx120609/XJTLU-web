@@ -1090,6 +1090,7 @@ adminRouter.get("/boards", adminOnly, async (_req, res, next) => {
 });
 
 const boardTypeSchema = z.enum(["normal", "question", "market", "coursereview"]);
+const boardSectionSchema = z.enum(["general", "study", "social"]);
 const boardCreateSchema = z.object({
   slug: z.string().trim().min(2).max(40).regex(/^[a-z0-9-]+$/, "slug 仅支持小写字母、数字和中划线"),
   name: z.string().trim().min(1).max(40),
@@ -1098,6 +1099,7 @@ const boardCreateSchema = z.object({
   color: z.string().trim().max(20).optional(),
   order: z.number().int().min(0).max(9999).optional(),
   type: boardTypeSchema,
+  section: boardSectionSchema.nullable().optional(),
   anonymousEnabled: z.boolean().optional(),
 });
 
@@ -1112,6 +1114,7 @@ adminRouter.post("/boards", adminOnly, validate(boardCreateSchema), async (req, 
         color: req.body.color || null,
         order: req.body.order ?? 0,
         type: req.body.type,
+        section: req.body.section ?? null,
         anonymousEnabled: req.body.anonymousEnabled ?? false,
         readOnly: false,
       },
@@ -1130,6 +1133,7 @@ const boardPatchSchema = z.object({
   color: z.string().trim().max(20).optional(),
   order: z.number().int().min(0).max(9999).optional(),
   type: boardTypeSchema.optional(),
+  section: boardSectionSchema.nullable().optional(),
   anonymousEnabled: z.boolean().optional(),
 });
 
@@ -1151,6 +1155,7 @@ adminRouter.patch("/boards/:id", adminOnly, validate(boardPatchSchema), async (r
         color: req.body.color,
         order: req.body.order,
         type: req.body.type,
+        section: req.body.section,
         anonymousEnabled: req.body.anonymousEnabled,
       },
     });

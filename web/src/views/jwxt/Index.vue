@@ -114,6 +114,7 @@ import { useJwxtStore } from "@/stores/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { jwxtApi } from "@/api/jwxt";
 import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
+import { scoreToFourPointGpa } from "@/utils/gpaScale";
 import SchedulePane from "@/components/jwxt/SchedulePane.vue";
 import GradesPane from "@/components/jwxt/GradesPane.vue";
 import MidtermGradesPane from "@/components/jwxt/MidtermGradesPane.vue";
@@ -310,31 +311,15 @@ function restoreCachedTab(t: DataTab) {
 
 function normalizeTabData(t: DataTab, data: any) {
   if (!["grades", "midterm"].includes(t) || !data?.parsed?.list || !Array.isArray(data.parsed.list)) return data;
-  const levelMap: Record<string, number> = {
-    优秀: 4.5, 优: 4.5,
-    良好: 3.5, 良: 3.5,
-    中等: 2.5, 中: 2.5,
-    及格: 1.5, 合格: 1.5, 通过: 1.5,
-    不及格: 0, 不合格: 0, 不通过: 0, 未通过: 0,
-  };
-  const scoreToGpa = (score?: string) => {
-    const raw = String(score ?? "").trim();
-    if (!raw) return undefined;
-    const level = raw.replace(/\s+/g, "");
-    if (Object.prototype.hasOwnProperty.call(levelMap, level)) return levelMap[level];
-    const scoreNum = parseFloat(raw);
-    if (!Number.isFinite(scoreNum)) return undefined;
-    if (scoreNum < 60) return 0;
-    const gpa = (scoreNum - 50) / 10;
-    return Math.min(5, Math.max(0, Math.round(gpa * 100) / 100));
-  };
   return {
     ...data,
     parsed: {
       ...data.parsed,
       list: data.parsed.list.map((row: any) => {
+        const converted = scoreToFourPointGpa(row.score);
+        if (converted !== undefined) return { ...row, gpa: converted };
         const gpa = typeof row.gpa === "number" ? row.gpa : Number(row.gpa);
-        return Number.isFinite(gpa) ? { ...row, gpa } : { ...row, gpa: scoreToGpa(row.score) };
+        return Number.isFinite(gpa) ? { ...row, gpa } : { ...row, gpa: undefined };
       }),
     },
   };

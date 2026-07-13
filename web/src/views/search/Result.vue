@@ -3,7 +3,7 @@
     <div class="head">
       <h2>搜索 "{{ q }}"</h2>
       <div class="counts" v-if="result">
-        共找到 {{ result.topics.length + result.courses.length + result.services.length }} 条结果
+        共找到 {{ result.topics.length + result.services.length }} 条结果
       </div>
     </div>
 
@@ -18,26 +18,6 @@
       <section v-if="result.topics.length" class="cpu-card">
         <h3 class="title">💬 帖子（{{ result.topics.length }}）</h3>
         <TopicListItem v-for="t in result.topics" :key="t.id" :topic="t" />
-      </section>
-
-      <section v-if="result.courses.length" class="cpu-card">
-        <h3 class="title">📚 课程（{{ result.courses.length }}）</h3>
-        <div
-          v-for="c in result.courses"
-          :key="c.id"
-          class="course-row"
-          role="button"
-          tabindex="0"
-          @click="openCourse(c.id)"
-          @keydown.enter.prevent="openCourse(c.id)"
-          @keydown.space.prevent="openCourse(c.id)"
-        >
-          <div>
-            <div class="c-name">{{ c.code }} · {{ c.name }}</div>
-            <div class="c-meta">{{ c.teachers?.length ? c.teachers.map((t: any) => t.name).join("、") : (c.teacher || "—") }} · {{ c.ratingCount }} 评价</div>
-          </div>
-          <el-icon><Right /></el-icon>
-        </div>
       </section>
 
       <section v-if="result.services.length" class="cpu-card">
@@ -85,7 +65,7 @@ const error = ref("");
 let searchSeq = 0;
 
 const hasResult = computed(() =>
-  result.value && (result.value.topics.length + result.value.courses.length + result.value.services.length) > 0
+  result.value && (result.value.topics.length + result.value.services.length) > 0
 );
 
 watch(() => route.query.q, async (v) => {
@@ -147,9 +127,6 @@ function open(s: any) {
   ElMessage.warning("该服务链接格式暂不支持");
 }
 
-function openCourse(id: number) {
-  router.push(`/coursereview/${id}`);
-}
 </script>
 
 <style scoped>
@@ -166,7 +143,7 @@ function openCourse(id: number) {
 }
 .title { margin: 0 0 10px; font-size: 15px; }
 
-.course-row, .svc-row {
+.svc-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -177,16 +154,16 @@ function openCourse(id: number) {
   min-width: 0;
   overflow: hidden;
 }
-.course-row:last-child, .svc-row:last-child { border-bottom: none; }
-.course-row:hover, .svc-row:hover { background: var(--cpu-surface-subtle); }
-.course-row:focus-visible, .svc-row:focus-visible {
+.svc-row:last-child { border-bottom: none; }
+.svc-row:hover { background: var(--cpu-surface-subtle); }
+.svc-row:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
 }
-.course-row > div, .svc-row > div { flex: 1; min-width: 0; }
-.course-row > .el-icon, .svc-row > .el-icon { flex: 0 0 auto; }
-.c-name, .s-name { font-size: 14px; color: var(--cpu-text); overflow-wrap: anywhere; }
-.c-meta, .s-desc { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 2px; overflow-wrap: anywhere; }
+.svc-row > div { flex: 1; min-width: 0; }
+.svc-row > .el-icon { flex: 0 0 auto; }
+.s-name { font-size: 14px; color: var(--cpu-text); overflow-wrap: anywhere; }
+.s-desc { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 2px; overflow-wrap: anywhere; }
 .icon { font-size: 20px; }
 
 .empty { text-align: center; }
@@ -203,14 +180,12 @@ function openCourse(id: number) {
     padding: 14px 12px;
   }
 
-  .course-row,
   .svc-row {
     align-items: flex-start;
     gap: 10px;
     padding: 12px 2px;
   }
 
-  .c-meta,
   .s-desc {
     line-height: 1.5;
   }

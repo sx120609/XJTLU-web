@@ -3,25 +3,25 @@ import { defineStore } from "pinia";
 export type AppearanceMode = "system" | "light" | "dark";
 export type ResolvedAppearance = "light" | "dark";
 
-const STORAGE_KEY = "cpu-appearance-mode-v1";
+const STORAGE_KEY = "kaopu-appearance-mode-v2";
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 const THEME_COLORS: Record<ResolvedAppearance, string> = {
-  light: "#168776",
-  dark: "#0f766e",
+  light: "#6D5CE7",
+  dark: "#8B7CF6",
 };
 
 let mediaQuery: MediaQueryList | null = null;
 let mediaListenerInstalled = false;
 
 function normalizeMode(value: unknown): AppearanceMode {
-  return value === "light" || value === "dark" || value === "system" ? value : "system";
+  return value === "light" || value === "dark" || value === "system" ? value : "light";
 }
 
 function readStoredMode(): AppearanceMode {
   try {
     return normalizeMode(localStorage.getItem(STORAGE_KEY));
   } catch {
-    return "system";
+    return "light";
   }
 }
 
@@ -58,7 +58,7 @@ function applyAppearance(mode: AppearanceMode) {
 
 export const useAppearanceStore = defineStore("appearance", {
   state: () => ({
-    mode: "system" as AppearanceMode,
+    mode: "light" as AppearanceMode,
     resolved: "light" as ResolvedAppearance,
   }),
   getters: {

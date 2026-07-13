@@ -208,7 +208,7 @@ struct Index {
                 .height(38)
                 .fontSize(13)
                 .fontColor('#FFFFFF')
-                .backgroundColor('#168776')
+                .backgroundColor('#6D5CE7')
                 .enabled(false)
             } else {
               SaveButton({
@@ -220,7 +220,7 @@ struct Index {
                 .fontSize(13)
                 .fontColor('#FFFFFF')
                 .iconColor('#FFFFFF')
-                .backgroundColor('#168776')
+                .backgroundColor('#6D5CE7')
                 .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => {
                   if (result === SaveButtonOnClickResult.SUCCESS) {
                     void this.commitPreviewImageSave();
@@ -372,7 +372,7 @@ struct Index {
                 .fontSize(16)
                 .fontWeight(FontWeight.Medium)
                 .fontColor('#FFFFFF')
-                .backgroundColor('#168776')
+                .backgroundColor('#6D5CE7')
                 .enabled(false)
             } else {
               SaveButton({
@@ -386,7 +386,7 @@ struct Index {
                 .fontWeight(FontWeight.Medium)
                 .fontColor('#FFFFFF')
                 .iconColor('#FFFFFF')
-                .backgroundColor('#168776')
+                .backgroundColor('#6D5CE7')
                 .onClick((_event: ClickEvent, result: SaveButtonOnClickResult) => {
                   if (result === SaveButtonOnClickResult.SUCCESS) {
                     void this.commitPendingImageSave();

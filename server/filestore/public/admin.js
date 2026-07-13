@@ -1,4 +1,4 @@
-const SITE_TITLE_DEFAULT = "药大拾间文件收集";
+const SITE_TITLE_DEFAULT = "靠浦文件收集";
 
 const state = {
   tasks: [],

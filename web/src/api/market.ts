@@ -162,6 +162,7 @@ export interface MarketMessage {
 }
 
 export interface MarketItemInput {
+  catalog?: "market" | "learning_materials";
   listingType: MarketListingType;
   title: string;
   description: string;
@@ -195,7 +196,9 @@ export type MarketListParams = {
 };
 
 export const marketApi = {
-  meta: (options?: RequestOptions) => request.get<{ categories: MarketCategoryOption[]; conditions: string[]; tradeModes: string[]; listingTypes: string[]; payTypes: PayType[]; paymentEnabled: boolean; commissionBps: number; commissionRate: number }>("/market/meta", undefined, options),
+  meta: (options?: RequestOptions) => request.get<{ categories: MarketCategoryOption[]; featuredLearningMaterials: MarketCategoryOption | null; conditions: string[]; tradeModes: string[]; listingTypes: string[]; payTypes: PayType[]; paymentEnabled: boolean; commissionBps: number; commissionRate: number }>("/market/meta", undefined, options),
+  learningMaterialsMeta: (options?: RequestOptions) => request.get<{ category: MarketCategoryOption }>("/market/materials/meta", undefined, options),
+  learningMaterials: (params?: Omit<MarketListParams, "category">, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: MarketItem[] }>("/market/materials/items", params, options),
   items: (params?: MarketListParams, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: MarketItem[] }>("/market/items", params, options),
   item: (id: number, options?: RequestOptions) => request.get<MarketItem>(`/market/items/${id}`, undefined, options),
   createItem: (payload: MarketItemInput) => request.post<MarketItem>("/market/items", payload),

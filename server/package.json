@@ -2,11 +2,12 @@
   "name": "xjtlu-web-server",
   "version": "0.1.0",
   "private": true,
-  "description": "XJTLU-web 后端：Express + Prisma + PostgreSQL",
+  "description": "靠浦服务端：Express + Prisma + PostgreSQL",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
     "proxy": "node dist/proxy.js",
     "proxy:dev": "tsx watch src/proxy.ts",
@@ -25,7 +26,8 @@
     "db:studio": "prisma studio",
     "prisma:generate": "prisma generate",
     "test": "npm run test:xjtlu-sso",
-    "test:xjtlu-sso": "node --import tsx --test tests/xjtluSsoClient.test.ts tests/xjtluEhallClient.test.ts tests/xjtluEbridgeClient.test.ts tests/schoolAuthRateLimit.test.ts tests/xjtluOnlyRoutes.test.ts tests/browserSession.test.ts tests/marketPayment.test.ts tests/siteIdentity.test.ts"
+    "test:integration": "node --import tsx --test tests/jwxtAgent.integration.test.ts tests/ssoLoginPool.integration.test.ts",
+    "test:xjtlu-sso": "node --import tsx --test tests/xjtluSsoClient.test.ts tests/xjtluEhallClient.test.ts tests/xjtluEbridgeClient.test.ts tests/gpaScale.test.ts tests/productRegression.test.ts tests/schoolAuthRateLimit.test.ts tests/xjtluOnlyRoutes.test.ts tests/browserSession.test.ts tests/marketPayment.test.ts tests/marketCatalog.test.ts tests/siteIdentity.test.ts tests/forumBoardCatalog.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

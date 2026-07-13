@@ -2093,6 +2093,11 @@ function boardAliasCandidates(slug: string, name: string) {
   if (slug === "treehole") {
     out.add("树洞");
   }
+  if (slug === "study") {
+    out.add("课程学习");
+    out.add("学习交流");
+    out.add("学习");
+  }
   if (slug === "life") {
     out.add("校园生活");
     out.add("生活");
@@ -2100,6 +2105,11 @@ function boardAliasCandidates(slug: string, name: string) {
   if (slug === "freshman") {
     out.add("新生");
     out.add("新生入学");
+  }
+  if (slug === "lost-found") {
+    out.add("失物招领");
+    out.add("寻物");
+    out.add("招领");
   }
   if (slug === "question") {
     out.add("提问");
@@ -2113,6 +2123,25 @@ function boardAliasCandidates(slug: string, name: string) {
   if (slug === "coursereview") {
     out.add("课评");
     out.add("课程点评");
+  }
+  if (slug === "ielts") {
+    out.add("科研");
+    out.add("实习");
+    out.add("科研实习");
+  }
+  if (slug === "study-abroad") {
+    out.add("雅思");
+    out.add("留学");
+    out.add("雅思留学");
+  }
+  if (slug === "clubs") {
+    out.add("社团");
+    out.add("社团活动");
+  }
+  if (slug === "friends") {
+    out.add("交友");
+    out.add("扩列");
+    out.add("交友扩列");
   }
   return [...out];
 }
@@ -2511,7 +2540,7 @@ async function sendNotificationMessage(
 ) {
   const link = resolveNotificationLink(notification);
   const message = [
-    `【${notification.source || "药大拾间"}】${notification.title}`,
+    `【${notification.source || "靠浦"}】${notification.title}`,
     "",
     notification.content,
     link ? "" : null,

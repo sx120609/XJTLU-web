@@ -8,7 +8,7 @@
 
 ## 2. 客户端身份
 
-- 应用名：药大拾间
+- 应用名：靠浦
 - Android package：`cn.lizmt.cpuweb`
 - iOS bundle id：`cn.lizmt.cpuweb`
 - 当前版本：`3.0.1+22`

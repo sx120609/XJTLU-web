@@ -4,7 +4,7 @@ import test from "node:test";
 process.env.REDIS_ENABLED = "false";
 process.env.JWT_SECRET = "xjtlu-ehall-test-secret";
 
-test("XJTLU eHall exchanges the UIM session, isolates cookies, and exposes services", async (t) => {
+test("XJTLU eHall mirrors the official apps catalog and launches listed apps", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -56,9 +56,7 @@ test("XJTLU eHall exchanges the UIM session, isolates cookies, and exposes servi
       assert.match(cookies, /EHALL_AUTH=ready/);
       return new Response(null, { status: 302, headers: { Location: "/index.html" } });
     }
-    if (url.pathname === "/index.html") {
-      return new Response("<html></html>");
-    }
+    if (url.pathname === "/index.html") return new Response("<html></html>");
     if (url.pathname === "/getLoginUser") {
       assert.doesNotMatch(cookies, /UIM_SESSION/);
       assert.match(cookies, /EHALL_AUTH=ready/);
@@ -68,77 +66,62 @@ test("XJTLU eHall exchanges the UIM session, isolates cookies, and exposes servi
         data: { userAccount: "Student.Name24", userName: "Test Student" },
       });
     }
-    if (url.pathname === "/queryFolderAndService") {
-      assert.equal(init.method, "POST");
-      const payload = JSON.parse(String(init.body)) as { n?: string };
-      assert.ok(payload.n);
-      return Response.json({
-        errcode: "0",
-        data: [{
-          folderName: "教学服务",
-          services: [{
-            serviceWid: "service-1",
-            serviceName: "成绩单及证明申请",
-            serviceDesc: "申请成绩单",
-            departmentName: "教务办公室",
-            iconLink: "https://ehall.xjtlu.edu.cn/icon.png",
-            permission: true,
-            favorite: true,
-            serviceStation: 0,
-          }],
-        }],
-      });
-    }
     if (url.pathname === "/getPageView") {
       const pageCode = url.searchParams.get("pageCode");
-      assert.ok(pageCode === "hall" || pageCode === "homeXS");
+      assert.ok(pageCode === "apps" || pageCode === "homeXS");
       return Response.json({
         errcode: "0",
         data: JSON.stringify({
-          cards: pageCode === "hall"
-            ? [{ cardId: "CUS_CARD_ALLSERVICEITEM", cardWid: "5221461526271929" }]
+          cards: pageCode === "apps"
+            ? [{ cardId: "CUS_CARD_ALLSERVICE", cardWid: "36671875738857906", cardName: "全部服务" }]
             : [{ cardId: "CUS_CARD_NEWSANNOUNCEMENT", cardWid: "7633185986201947" }],
         }),
       });
     }
-    if (url.pathname === "/execCardMethod/5221461526271929/CUS_CARD_ALLSERVICEITEM") {
-      assert.equal(init.method, "POST");
+    if (url.pathname === "/execCardMethod/36671875738857906/CUS_CARD_ALLSERVICE") {
       const payload = JSON.parse(String(init.body)) as {
         method?: string;
-        param?: { pageNumber?: number; pageSize?: number };
+        param?: { fromMaster?: boolean; lang?: string };
       };
-      assert.equal(payload.method, "searchServiceItem");
-      assert.equal(payload.param?.pageNumber, 1);
-      assert.equal(payload.param?.pageSize, 500);
+      assert.equal(payload.method, "renderData");
+      assert.equal(payload.param?.fromMaster, true);
+      assert.equal(payload.param?.lang, "zh_CN");
       return Response.json({
         errcode: "0",
         data: {
-          total: 2,
-          serviceItemList: [{
-            itemWid: "item-1",
-            itemName: "大型仪器共享管理系统",
-            itemDesc: "在线办理事项",
-            categoryName: "科研服务",
-            deptName: "科研管理办公室",
-            iconLink: "https://ehall.xjtlu.edu.cn/item-icon.png",
-            isAuthorized: 1,
-            onlineServiceType: 2,
-            favorite: 0,
+          serviceList: [{
+            navName: "学术教育及科研",
+            classifyWid: "category-1",
+            datas: [{
+              serviceWid: "service-1",
+              serviceName: "西浦学习超市Core",
+              serviceDesc: "在线学习平台",
+              iconLink: "https://ehall.xjtlu.edu.cn/icon.png",
+              permission: true,
+              favorite: true,
+              serviceStation: 2,
+            }, {
+              serviceWid: "service-2",
+              serviceName: "e-Bridge",
+              serviceDesc: "学生和课程信息管理系统",
+              permission: true,
+              serviceStation: 2,
+            }],
           }, {
-            itemWid: "item-guide-1",
-            itemName: "护理处置",
-            itemDesc: "查看办事说明",
-            categoryName: "校园服务",
-            deptName: "学生事务中心",
-            isAuthorized: 1,
-            onlineServiceType: 0,
-            isShow: 1,
+            navName: "校园生活",
+            classifyWid: "category-2",
+            datas: [{
+              serviceWid: "service-3",
+              serviceName: "校车查询系统",
+              serviceDesc: "查询校车时刻",
+              permission: true,
+              serviceStation: 2,
+            }],
           }],
         },
       });
     }
     if (url.pathname === "/execCardMethod/7633185986201947/CUS_CARD_NEWSANNOUNCEMENT") {
-      assert.equal(init.method, "POST");
       const payload = JSON.parse(String(init.body)) as {
         method?: string;
         param?: { channelIds?: string; programIds?: string; pageNumber?: number };
@@ -176,15 +159,6 @@ test("XJTLU eHall exchanges the UIM session, isolates cookies, and exposes servi
         },
       });
     }
-    if (url.pathname === "/simJump") {
-      assert.equal(url.searchParams.get("id"), "item-1");
-      assert.equal(url.searchParams.get("name"), "大型仪器共享管理系统");
-      assert.match(cookies, /EHALL_AUTH=ready/);
-      return new Response(null, {
-        status: 302,
-        headers: { Location: "https://service.xjtlu.edu.cn/item-start?ticket=item-one-time" },
-      });
-    }
     if (url.pathname === "/serviceShow") {
       assert.equal(url.searchParams.get("serviceId"), "service-1");
       return Response.json({
@@ -205,49 +179,50 @@ test("XJTLU eHall exchanges the UIM session, isolates cookies, and exposes servi
   } = await import("../src/services/xjtluEhallClient");
 
   await establishXjtluEhallSession(991, "student.name24", { UIM_SESSION: "authenticated" });
-  const status = await getXjtluEhallStatus(991);
-  assert.deepEqual(status, { active: true, username: "student.name24", displayName: "Test Student" });
-  const services = await getXjtluEhallServices(991);
-  assert.equal(services.length, 3);
-  assert.deepEqual(services[0], {
-    id: "item-1",
-    kind: "item",
-    name: "大型仪器共享管理系统",
-    description: "在线办理事项",
-    category: "科研服务",
-    department: "科研管理办公室",
-    icon: "https://ehall.xjtlu.edu.cn/item-icon.png",
-    favorite: false,
-    permission: true,
-    serviceStation: 0,
-    online: true,
-  });
-  assert.deepEqual(services[1], {
-    id: "item-guide-1",
-    kind: "item",
-    name: "护理处置",
-    description: "查看办事说明",
-    category: "校园服务",
-    department: "学生事务中心",
-    icon: "",
-    favorite: false,
-    permission: true,
-    serviceStation: 0,
-    online: false,
-  });
-  assert.deepEqual(services[2], {
+  assert.deepEqual(
+    await getXjtluEhallStatus(991),
+    { active: true, username: "student.name24", displayName: "Test Student" },
+  );
+  assert.deepEqual(await getXjtluEhallServices(991), [{
     id: "service-1",
     kind: "service",
-    name: "成绩单及证明申请",
-    description: "申请成绩单",
-    category: "教学服务",
-    department: "教务办公室",
+    name: "西浦学习超市Core",
+    description: "在线学习平台",
+    category: "学术教育及科研",
+    department: "",
     icon: "https://ehall.xjtlu.edu.cn/icon.png",
     favorite: true,
     permission: true,
-    serviceStation: 0,
+    serviceStation: 2,
     online: true,
-  });
+    featuredRank: 0,
+  }, {
+    id: "service-2",
+    kind: "service",
+    name: "e-Bridge",
+    description: "学生和课程信息管理系统",
+    category: "学术教育及科研",
+    department: "",
+    icon: "",
+    favorite: false,
+    permission: true,
+    serviceStation: 2,
+    online: true,
+    featuredRank: 1,
+  }, {
+    id: "service-3",
+    kind: "service",
+    name: "校车查询系统",
+    description: "查询校车时刻",
+    category: "校园生活",
+    department: "",
+    icon: "",
+    favorite: false,
+    permission: true,
+    serviceStation: 2,
+    online: true,
+    featuredRank: null,
+  }]);
   assert.deepEqual(await getXjtluEhallNotices(991), {
     active: true,
     notices: [{
@@ -270,14 +245,9 @@ test("XJTLU eHall exchanges the UIM session, isolates cookies, and exposes servi
     await getXjtluEhallLaunchUrl(991, "service-1", "service"),
     "https://service.xjtlu.edu.cn/start?ticket=one-time",
   );
-  assert.equal(
-    await getXjtluEhallLaunchUrl(991, "item-guide-1"),
-    "https://ehall.xjtlu.edu.cn/default/index.html#/itemDetail?wid=item-guide-1&name=%E6%8A%A4%E7%90%86%E5%A4%84%E7%BD%AE",
-  );
-  assert.equal(
-    // 旧版前端只传 serviceId，后端仍应按办事事项打开。
-    await getXjtluEhallLaunchUrl(991, "item-1"),
-    "https://service.xjtlu.edu.cn/item-start?ticket=item-one-time",
+  await assert.rejects(
+    () => getXjtluEhallLaunchUrl(991, "not-in-catalog", "service"),
+    /无权访问/,
   );
   assert.ok(seen.includes("GET https://uim.xjtlu.edu.cn/esc-sso/oauth2.0/authorize"));
   await clearXjtluEhallSession(991);

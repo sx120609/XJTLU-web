@@ -48,8 +48,7 @@ ehallRouter.post(
   "/launch",
   validate(z.object({
     serviceId: z.string().trim().min(1).max(128),
-    // 兼容仍在浏览器/PWA 缓存中的旧版前端。完整办事大厅返回的都是 item。
-    kind: z.enum(["item", "service"]).optional().default("item"),
+    kind: z.literal("service").optional().default("service"),
   })),
   async (req, res, next) => {
     try {

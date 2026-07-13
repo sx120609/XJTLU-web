@@ -10,7 +10,7 @@
       </div>
 
       <div class="brand">
-        <div class="brand-logo"><img v-if="site.siteLogoUrl" :src="site.siteLogoUrl" alt="" /><template v-else>西</template></div>
+        <div class="brand-logo"><img :src="site.siteLogoUrl || '/brand/kaopu-mark.svg'" alt="靠浦" /></div>
         <div>
           <h1>注册 {{ site.siteName }}</h1>
           <p>暂不开放公开注册</p>
@@ -200,8 +200,8 @@ async function submit() {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #168776, #0f6557);
-  color: #e8a317;
+  background: #6d5ce7;
+  color: #fff;
   display: grid;
   place-items: center;
   font-family: serif;
@@ -210,7 +210,7 @@ async function submit() {
 }
 .brand-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 
-.brand h1 { margin: 0; font-size: 20px; color: #168776; }
+.brand h1 { margin: 0; font-size: 20px; color: var(--cpu-primary); }
 .brand p { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
 
 .btn-submit { width: 100%; letter-spacing: 4px; }

@@ -1,4 +1,4 @@
-// 药大拾间 数据模型
+// 靠浦数据模型
 // 民间学生论坛 + 学校公告爬虫聚合
 // PostgreSQL + Prisma 5
 
@@ -105,6 +105,9 @@ model Board {
   icon        String?  // emoji 或 element icon name
   color       String?  // 板块色（hex）
   order       Int      @default(0)
+  // 论坛首页分区：general 综合讨论 / study 学习交流 / social 生活社交
+  // 商城、公告和外部镜像等非论坛入口保持为空。
+  section     String?
   // type 控制板块特殊行为：
   //   normal      普通板块
   //   announce    只读公告板（爬虫机器人发帖）
@@ -124,6 +127,7 @@ model Board {
   topics Topic[]
 
   @@index([order])
+  @@index([section, order])
   @@index([type, order])
 }
 

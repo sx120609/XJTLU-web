@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="manifest" href="/manifest-v3.webmanifest?v=20260530" />
+    <link rel="manifest" href="/manifest-v3.webmanifest?v=20260713-kaopu" />
     <!-- iOS 添加到主屏幕：标题 + 图标（与 Android manifest 一致） -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon-v3.png?v=20260530-hw" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-v3.png?v=20260530-hw" />
-    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192-v3.png?v=20260530-hw" />
-    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512-v3.png?v=20260530-hw" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-v3.png?v=20260713-kaopu" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-v3.png?v=20260713-kaopu" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192-v3.png?v=20260713-kaopu" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512-v3.png?v=20260713-kaopu" />
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-750x1334.png?v=20260530" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-828x1792.png?v=20260530" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1125x2436.png?v=20260530" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
@@ -20,16 +20,16 @@
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-1668x2388.png?v=20260530" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
     <link rel="apple-touch-startup-image" href="/splash/ios-launch-v4-2048x2732.png?v=20260530" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#168776" />
+    <meta name="theme-color" content="#6D5CE7" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="XJTLU 校园服务" />
-    <meta name="application-name" content="XJTLU 校园服务" />
+    <meta name="apple-mobile-web-app-title" content="靠浦" />
+    <meta name="application-name" content="靠浦" />
     <script>
       (() => {
-        const storageKey = "cpu-appearance-mode-v1";
-        let mode = "system";
+        const storageKey = "kaopu-appearance-mode-v2";
+        let mode = "light";
         try {
           const stored = localStorage.getItem(storageKey);
           if (stored === "light" || stored === "dark" || stored === "system") mode = stored;
@@ -42,7 +42,7 @@
         root.classList.toggle("dark", resolved === "dark");
         root.style.colorScheme = resolved;
         const themeColor = document.querySelector("meta[name='theme-color']");
-        if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#0f766e" : "#168776");
+        if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#8B7CF6" : "#6D5CE7");
       })();
     </script>
     <style>
@@ -90,7 +90,8 @@
         height: 84px;
         border-radius: 0;
         display: block;
-        box-shadow: 0 14px 36px rgba(22, 135, 118, 0.22);
+        border-radius: 20px;
+        box-shadow: 0 14px 36px rgba(109, 92, 231, 0.24);
       }
       .app-launch-title {
         margin: 0;
@@ -116,17 +117,17 @@
         color: #8ea6a0;
       }
       html[data-theme="dark"] .app-launch-logo {
-        box-shadow: 0 14px 42px rgba(16, 185, 129, 0.18);
+        box-shadow: 0 14px 42px rgba(139, 124, 246, 0.2);
       }
     </style>
-    <title>XJTLU 校园服务 · 西交利物浦大学校园互助与服务平台</title>
-    <meta name="description" content="面向西交利物浦大学学生的校园互助与服务平台" />
+    <title>靠浦 · 重塑校园生活的可能</title>
+    <meta name="description" content="靠浦，为西交利物浦大学学生重塑校园生活的更多可能。" />
   </head>
   <body>
-    <div class="app-launch-screen" id="boot-screen" aria-label="XJTLU 校园服务正在启动">
-      <img class="app-launch-logo" src="/apple-touch-icon-v3.png?v=20260530-hw" alt="" />
-      <h1 class="app-launch-title">XJTLU 校园服务</h1>
-      <p class="app-launch-subtitle">正在打开你的校园服务</p>
+    <div class="app-launch-screen" id="boot-screen" aria-label="靠浦正在启动">
+      <img class="app-launch-logo" src="/brand/kaopu-mark.svg?v=20260713" alt="" />
+      <h1 class="app-launch-title">靠浦</h1>
+      <p class="app-launch-subtitle">重塑校园生活的可能</p>
     </div>
     <div id="app">
     </div>

@@ -375,7 +375,7 @@ public final class MainActivity extends Activity {
         logoParams.setMargins(0, 0, 0, dp(18));
 
         TextView title = new TextView(this);
-        title.setText("药大拾间");
+        title.setText("靠浦");
         title.setTextColor(Color.rgb(23, 32, 51));
         title.setTextSize(28);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -387,7 +387,7 @@ public final class MainActivity extends Activity {
         titleParams.setMargins(0, 0, 0, dp(10));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("正在打开你的校园服务");
+        subtitle.setText("重塑校园生活的可能");
         subtitle.setTextColor(Color.rgb(102, 112, 133));
         subtitle.setTextSize(15);
         subtitle.setGravity(Gravity.CENTER);

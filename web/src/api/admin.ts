@@ -903,6 +903,7 @@ export const adminApi = {
     color?: string;
     order?: number;
     type: "normal" | "question" | "market" | "coursereview";
+    section?: "general" | "study" | "social" | null;
     anonymousEnabled?: boolean;
   }) => request.post<any>("/admin/boards", payload),
   updateBoard: (id: number, payload: Partial<{
@@ -913,6 +914,7 @@ export const adminApi = {
     color: string;
     order: number;
     type: "normal" | "question" | "market" | "coursereview";
+    section: "general" | "study" | "social" | null;
     anonymousEnabled: boolean;
   }>) => request.patch<any>(`/admin/boards/${id}`, payload),
   deleteBoard: (id: number) => request.delete<any>(`/admin/boards/${id}`),

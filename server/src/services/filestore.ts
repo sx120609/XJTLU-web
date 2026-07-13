@@ -47,7 +47,7 @@ import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../ut
 const MOUNT_PATH = "/filestore";
 const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
 const TRUSTED_PROXY_TOKEN = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-const FILESTORE_SITE_TITLE_DEFAULT = "药大拾间文件收集";
+const FILESTORE_SITE_TITLE_DEFAULT = "靠浦文件收集";
 const FILESTORE_SITE_TITLE_KEY = "filestore.siteTitle";
 const FILESTORE_SITE_URL_KEY = "filestore.siteUrl";
 const FILESTORE_TEMPLATE_VISIBILITY = "filestore-global";

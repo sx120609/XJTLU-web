@@ -11,18 +11,22 @@ export async function ensureBuiltinBoards() {
   });
   const existingSlugs = new Set(existing.map((board) => board.slug));
   const created: CommunityBoardDefinition[] = [];
-  for (const [index, board] of defs.entries()) {
-    const order = (index + 1) * 10;
+  for (const board of defs) {
+    const order = board.order;
     if (existingSlugs.has(board.slug)) {
-      // Keep administrator-customized text and colors, but make the built-in
-      // navigation order and capabilities deterministic after every deploy.
+      // Built-in information architecture is product-owned and deterministic.
+      // Slugs remain stable so existing topics keep their board relationship.
       await prisma.board.update({
         where: { slug: board.slug },
         data: {
+          name: board.name,
+          description: board.description,
+          icon: board.icon,
+          color: board.color,
           order,
           type: board.type,
+          section: board.section ?? null,
           anonymousEnabled: Boolean(board.anonymousEnabled),
-          ...(board.slug === "market" ? { name: board.name, description: board.description } : {}),
         },
       });
       continue;
@@ -36,6 +40,7 @@ export async function ensureBuiltinBoards() {
         color: board.color,
         order,
         type: board.type,
+        section: board.section ?? null,
         anonymousEnabled: Boolean(board.anonymousEnabled),
       },
     });

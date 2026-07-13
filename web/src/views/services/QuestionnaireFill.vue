@@ -3,7 +3,7 @@
     <section class="fill-card" v-loading="loading">
       <button type="button" class="back-btn" @click="$router.push('/services/tools')">
         <el-icon><ArrowLeft /></el-icon>
-        <span>校园小工具</span>
+        <span>校园工具</span>
       </button>
 
       <template v-if="questionnaire">

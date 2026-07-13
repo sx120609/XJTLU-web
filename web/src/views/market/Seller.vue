@@ -85,7 +85,7 @@
             <article v-for="item in data.items" :key="item.id">
               <div class="item-cover"><img v-if="item.cover" :src="item.cover" alt="" /><span v-else>📦</span></div>
               <div class="item-copy"><strong>{{ item.title }}</strong><b>{{ item.listingType==='wanted'?'预算 ':'' }}¥{{ item.price }}</b><span>{{ itemStatus(item) }} · {{ item.viewCount }} 浏览 · {{ item.offerCount }} 意向</span></div>
-              <el-button size="small" @click="$router.push({ name: 'market-edit', params: { id: item.id } })">管理</el-button>
+              <el-button size="small" @click="$router.push({ name: item.category === 'digital_goods' ? 'market-learning-materials-edit' : 'market-edit', params: { id: item.id } })">管理</el-button>
             </article>
           </div>
           <el-empty v-else description="还没有发布商品" />

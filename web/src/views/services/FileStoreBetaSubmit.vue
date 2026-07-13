@@ -4,16 +4,16 @@
       <section class="submit-card">
         <div class="submit-brandbar">
           <div class="submit-brand">
-            <span class="brand-mark">药</span>
+            <img class="brand-mark" src="/brand/kaopu-mark.svg" alt="">
             <div>
-              <strong>{{ task?.siteTitle || "药大拾间文件收集" }}</strong>
-              <small>CPU 校园互助服务 · 文件提交入口</small>
+              <strong>{{ task?.siteTitle || "靠浦文件收集" }}</strong>
+              <small>重塑校园生活的可能 · 文件提交入口</small>
             </div>
           </div>
-          <span class="submit-brand-tag">校园小工具</span>
+          <span class="submit-brand-tag">校园工具</span>
         </div>
         <div class="submit-hero">
-          <p class="eyebrow">{{ task?.status === "closed" ? "药大拾间 · 已停止提交" : "药大拾间 · 文件提交" }}</p>
+          <p class="eyebrow">{{ task?.status === "closed" ? "靠浦 · 已停止提交" : "靠浦 · 文件提交" }}</p>
           <h1>{{ task?.title || (loading ? "加载任务中" : "无法提交") }}</h1>
           <p>{{ task ? submitDescription : (error || "请稍候。") }}</p>
           <p v-if="task?.deadline" class="hint hero-deadline">截止时间：{{ formatDateTime(task.deadline) }}</p>
@@ -308,7 +308,7 @@ async function load() {
     const next = await filestoreBetaApi.publicTask(slug.value);
     if (seq !== loadSeq) return;
     task.value = next;
-    document.title = `${next.siteTitle || "药大拾间文件收集"} - ${next.title}`;
+    document.title = `${next.siteTitle || "靠浦文件收集"} - ${next.title}`;
     for (const field of next.fields) answers[field.key] = "";
     for (const field of next.surveyFields || []) surveyAnswers[field.id] = field.type === "multiple" ? [] : "";
   } catch (err) {

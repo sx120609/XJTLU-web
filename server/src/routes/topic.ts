@@ -35,7 +35,7 @@ import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTr
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
-import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
+import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 
 export const topicRouter = Router();
@@ -164,7 +164,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
       throw Errors.forbidden("该板块为只读公告板，禁止发帖");
     }
-    // 功能开关：admin 可一键关闭论坛 / 二手 / 课评 整块功能
+    // 功能开关：admin 可一键关闭论坛或商城整块功能
     // type=announce 由系统/爬虫机器人发，不受用户开关约束
     if (board.type !== "announce" && req.user!.role !== "admin") {
       const featureKey = featureForBoardType(board.type) ?? "forum";
@@ -252,52 +252,6 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       },
     });
 
-    // 课评：写入 CourseRating 派生表
-    if (board.type === "coursereview" && metadata?.courseId && metadata?.ratings) {
-      const r = metadata.ratings;
-      const courseId = Number(metadata.courseId);
-
-      // 解析"针对哪位老师"：
-      //   - 优先用 metadata.courseTeacherId（前端已选的 CourseTeacher 关联 id）
-      //   - 否则若给了 teacherName 字符串，自助 upsert Teacher + CourseTeacher
-      //   - 都没给则 null（旧行为兼容）
-      let courseTeacherId: number | null = null;
-      if (metadata.courseTeacherId) {
-        const ct = await prisma.courseTeacher.findFirst({
-          where: { id: Number(metadata.courseTeacherId), courseId },
-        });
-        if (ct) courseTeacherId = ct.id;
-      } else if (typeof metadata.teacherName === "string" && metadata.teacherName.trim()) {
-        const name = metadata.teacherName.trim().slice(0, 40);
-        const teacher = await prisma.teacher.upsert({
-          where: { name },
-          update: {},
-          create: { name, createdById: userId },
-        });
-        const ct = await prisma.courseTeacher.upsert({
-          where: { courseId_teacherId: { courseId, teacherId: teacher.id } },
-          update: {},
-          create: { courseId, teacherId: teacher.id, source: "user-add" },
-        });
-        courseTeacherId = ct.id;
-      }
-
-      await prisma.courseRating.create({
-        data: {
-          topicId: topic.id,
-          courseId,
-          courseTeacherId,
-          authorId: userId,
-          difficulty: clampInt(r.difficulty, 1, 5),
-          reward: clampInt(r.reward, 1, 5),
-          recommend: clampInt(r.recommend, 1, 5),
-          givingScore: clampInt(r.givingScore ?? r.score, 1, 5),
-          semester: metadata.semester ?? null,
-        },
-      }).catch(() => {});
-      await refreshCourseStats(courseId);
-    }
-
     if (hiddenByAi && aiResult) {
       await notifyTopicAiBlocked({
         topicId: topic.id,
@@ -314,7 +268,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     ]);
     const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
     const videoReview = await summarizeForumVideoModerationForContent(content).catch(() => null);
-    await invalidateForumCaches({ includeCourses: board.type === "coursereview" });
+    await invalidateForumCaches();
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user)),
       submissionResult: hiddenByAi
@@ -512,9 +466,6 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         tags: { include: { tag: true } },
       },
     });
-    if (t.board?.type === "coursereview") {
-      await invalidateCourseCaches();
-    }
     await invalidateForumCaches();
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? u, req.user)),
@@ -546,9 +497,6 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
       }
     });
     await removeTopicFromGlobalPins(id);
-    if (t.board?.type === "coursereview") {
-      await invalidateCourseCaches();
-    }
     await invalidateForumCaches();
     ok(res, { ok: true });
   } catch (e) { next(e); }
@@ -580,27 +528,4 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
 function parseJsonSafe(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
-}
-function clampInt(v: any, min: number, max: number) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.round(n)));
-}
-
-async function refreshCourseStats(courseId: number) {
-  const agg = await prisma.courseRating.aggregate({
-    where: { courseId },
-    _count: true,
-    _avg: { difficulty: true, reward: true, recommend: true, givingScore: true },
-  });
-  await prisma.course.update({
-    where: { id: courseId },
-    data: {
-      ratingCount: agg._count,
-      avgDifficulty: agg._avg.difficulty ?? 0,
-      avgReward: agg._avg.reward ?? 0,
-      avgRecommend: agg._avg.recommend ?? 0,
-      avgScore: agg._avg.givingScore ?? 0,
-    },
-  });
 }

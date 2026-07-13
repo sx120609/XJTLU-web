@@ -1,36 +1,15 @@
 {
-  "name": "药大拾间",
-  "short_name": "药大拾间",
-  "description": "面向中国药科大学学生的校园公告、教务数据与校园服务入口",
+  "name": "靠浦",
+  "short_name": "靠浦",
+  "description": "重塑校园生活的可能",
   "start_url": "/home",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0F8F7F",
-  "theme_color": "#168776",
+  "background_color": "#F7F6FF",
+  "theme_color": "#6D5CE7",
   "icons": [
-    {
-      "src": "/icon-192-v2.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512-v2.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512-v2.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
+    { "src": "/icon-192-v3.png?v=20260713-kaopu", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512-v3.png?v=20260713-kaopu", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/favicon.svg?v=20260713-kaopu", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

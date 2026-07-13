@@ -1,5 +1,5 @@
 name: cpu_flutter_client
-description: Flutter shell for CPU Web mobile clients.
+description: 靠浦移动客户端外壳。
 publish_to: "none"
 version: 3.0.1+22
 

@@ -8,7 +8,7 @@ const router = useRouter();
     <div class="hero">
       <div class="brand-logo">药</div>
       <h1>药大刷课助手</h1>
-      <p class="tagline">药大拾间出品 · 学习通自动刷课工具</p>
+      <p class="tagline">靠浦出品 · 重塑校园生活的可能</p>
     </div>
 
     <div class="features">

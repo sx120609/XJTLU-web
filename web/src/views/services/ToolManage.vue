@@ -2,7 +2,7 @@
   <div class="tool-manage-page">
     <section class="manage-head">
       <div class="manage-head-copy">
-        <div class="kicker">校园小工具</div>
+        <div class="kicker">校园工具</div>
         <h2>小工具管理</h2>
         <p>管理器可维护工具设置和人员；开放管理入口后，登录用户可维护自己发起的内容。</p>
       </div>

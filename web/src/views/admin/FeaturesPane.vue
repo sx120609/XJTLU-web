@@ -35,7 +35,7 @@
       <div class="site-config">
         <div class="config-copy">
           <div class="card-title">站点名称</div>
-          <div class="desc">用于页头、首页、登录页、浏览器标题、启动页、页脚和分享卡片。留空时恢复为“XJTLU 校园服务”。</div>
+          <div class="desc">用于页头、首页、登录页、浏览器标题、启动页、页脚和分享卡片。留空时恢复为“靠浦”。</div>
         </div>
         <div class="config-form">
           <el-input
@@ -43,7 +43,7 @@
             clearable
             maxlength="40"
             show-word-limit
-            placeholder="XJTLU 校园服务"
+            placeholder="靠浦"
             :disabled="savingConfig || configLoading || Boolean(loadError)"
             @keyup.enter="saveSiteConfig"
           />
@@ -62,7 +62,7 @@
             clearable
             maxlength="80"
             show-word-limit
-            placeholder="西交利物浦校园互助服务"
+            placeholder="重塑校园生活的可能"
             :disabled="savingConfig || configLoading || Boolean(loadError)"
             @keyup.enter="saveSiteConfig"
           />
@@ -73,12 +73,12 @@
       <div class="site-config">
         <div class="config-copy">
           <div class="card-title">站点 Logo</div>
-          <div class="desc">建议上传正方形 PNG、JPG、WebP 或 GIF。用于页头、登录页、启动页和浏览器图标；清空后恢复“西”字默认标识。</div>
+          <div class="desc">建议上传正方形 PNG、JPG、WebP 或 GIF。用于页头、登录页、启动页和浏览器图标；清空后恢复紫底白云默认标识。</div>
         </div>
         <div class="config-form logo-config-form">
           <div class="logo-preview" :class="{ empty: !siteLogoUrl }">
             <img v-if="siteLogoUrl" :src="siteLogoUrl" alt="站点 Logo 预览" />
-            <span v-else>西</span>
+            <img v-else src="/brand/kaopu-mark.svg" alt="靠浦默认 Logo" />
           </div>
           <el-input v-model="siteLogoUrl" clearable maxlength="2048" placeholder="上传图片或填写 https://..." :disabled="savingConfig || configLoading || uploadingLogo || Boolean(loadError)" />
           <input ref="logoFileInput" class="logo-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="uploadLogo" />
@@ -270,9 +270,9 @@ const pendingKey = ref<FKey | null>(null);
 const aiConfigExpanded = ref(false);
 const aiPromptsExpanded = ref(false);
 const trustConfigExpanded = ref(false);
-const siteName = ref("XJTLU 校园服务");
-const siteSubtitle = ref("西交利物浦校园互助服务");
-const siteLogoUrl = ref("");
+const siteName = ref("靠浦");
+const siteSubtitle = ref("重塑校园生活的可能");
+const siteLogoUrl = ref("/brand/kaopu-mark.svg");
 const logoFileInput = ref<HTMLInputElement | null>(null);
 const uploadingLogo = ref(false);
 const siteOrigin = ref("");
@@ -326,18 +326,13 @@ let featureLoadSeq = 0;
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
   {
     key: "forum", icon: "💬", title: "论坛（通用板块 + 发帖）",
-    desc: "灌水广场 / 校园生活 / 新生入学 / 提问广场等通用板块的可见与发帖。",
+    desc: "综合讨论、学习交流和生活社交全部板块的可见与自由发帖。",
     paths: ["/forum", "/post", "/forum/topic/:id"],
   },
   {
     key: "market", icon: "🛒", title: "商城",
     desc: "校园商品交易平台，支持实体商品和电子资料。",
     paths: ["/market", "boards type=market"],
-  },
-  {
-    key: "coursereview", icon: "📊", title: "课程点评",
-    desc: "评老师 / 课程的板块。",
-    paths: ["/coursereview", "/coursereview/:id"],
   },
   {
     key: "electric", icon: "💡", title: "宿舍电费查询",

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/prisma";
 import { signToken } from "../src/utils/jwt";
 
-const baseUrl = String(process.env.MARKET_SMOKE_URL || "http://127.0.0.1:3010/api").replace(/\/$/, "");
+const baseUrl = String(process.env.MARKET_SMOKE_URL || "http://127.0.0.1:3011/api").replace(/\/$/, "");
 
 async function main() {
   const user = await prisma.user.findFirst({ where: { role: "admin", status: "active" }, orderBy: { id: "asc" } });
@@ -24,6 +24,14 @@ async function main() {
   try {
     const meta = await call("/market/meta");
     assert(Array.isArray(meta.categories));
+    assert.equal(meta.categories.some((category: { slug: string }) => category.slug === "digital_goods"), false);
+    assert.equal(meta.featuredLearningMaterials?.route, "/market/learning-materials");
+    const materialsMeta = await call("/market/materials/meta");
+    assert.equal(materialsMeta.category.slug, "digital_goods");
+    const materials = await call("/market/materials/items?size=8");
+    assert(materials.list.every((item: { category: string }) => item.category === "digital_goods"));
+    const ordinaryItems = await call("/market/items?size=8");
+    assert(ordinaryItems.list.every((item: { category: string }) => item.category !== "digital_goods"));
     const created = await call("/market/items", {
       method: "POST",
       body: JSON.stringify({
@@ -47,7 +55,7 @@ async function main() {
     const admin = await call("/market/admin/overview");
     assert(admin.counts && Array.isArray(admin.orders));
     await call(`/market/items/${itemId}`, { method: "DELETE" });
-    console.log(JSON.stringify({ ok: true, checks: ["meta", "create", "detail", "update", "favorite", "mine", "admin", "withdraw"] }));
+    console.log(JSON.stringify({ ok: true, checks: ["catalog-boundary", "meta", "materials", "create", "detail", "update", "favorite", "mine", "admin", "withdraw"] }));
   } finally {
     if (itemId) await prisma.marketItem.delete({ where: { id: itemId } }).catch(() => null);
     if (topicId) await prisma.topic.delete({ where: { id: topicId } }).catch(() => null);

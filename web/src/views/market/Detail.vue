@@ -1,10 +1,10 @@
 <template>
   <div class="detail-page" v-loading="loading">
     <template v-if="item">
-      <nav class="crumb"><router-link to="/market">商城</router-link><span>/</span><span>{{ categoryLabel(item.category) }}</span><span>/</span><b>{{ item.title }}</b></nav>
+      <nav class="crumb"><router-link :to="catalogRoute">{{ isLearningMaterial ? '靠浦特色学习资料' : '商城' }}</router-link><span>/</span><span>{{ categoryLabel(item.category) }}</span><span>/</span><b>{{ item.title }}</b></nav>
       <section class="product-card cpu-card">
         <div class="gallery">
-          <div class="main-image"><img v-if="activeImage" :src="activeImage" :alt="item.title" /><div v-else>📦</div></div>
+          <div class="main-image"><img v-if="activeImage" :src="activeImage" :alt="item.title" /><div v-else>{{ isLearningMaterial ? '📚' : '📦' }}</div></div>
           <div v-if="item.images.length>1" class="thumb-list"><button v-for="image in item.images" :key="image.id" :class="{active:activeImage===image.url}" @click="activeImage=image.url"><img :src="image.url" alt="商品缩略图" /></button></div>
         </div>
         <div class="product-info">
@@ -14,8 +14,10 @@
           <dl>
             <div><dt>{{ item.listingType==='wanted'?'期望成色':'商品成色' }}</dt><dd>{{ conditionLabel(item.condition) }}</dd></div>
             <div><dt>{{ item.listingType==='wanted'?'期望交付':'交付方式' }}</dt><dd>{{ tradeModeLabel(item.tradeMode) }}</dd></div>
-            <div><dt>所在校区</dt><dd>{{ item.campus || '与卖家协商' }}</dd></div>
-            <div><dt>推荐地点</dt><dd>{{ item.location || '与卖家协商' }}</dd></div>
+            <div v-if="!isLearningMaterial"><dt>所在校区</dt><dd>{{ item.campus || '与卖家协商' }}</dd></div>
+            <div v-if="!isLearningMaterial"><dt>推荐地点</dt><dd>{{ item.location || '与卖家协商' }}</dd></div>
+            <div v-if="isLearningMaterial"><dt>资料类型</dt><dd>数字学习资料</dd></div>
+            <div v-if="isLearningMaterial"><dt>交付保障</dt><dd>付款后订单内交付</dd></div>
             <div><dt>发布时间</dt><dd>{{ fmtRelative(item.createdAt) }}</dd></div>
             <div><dt>浏览 / 收藏</dt><dd>{{ item.viewCount }} / {{ item.favoriteCount }}</dd></div>
           </dl>
@@ -25,9 +27,9 @@
             <el-button v-else type="primary" :disabled="!auth.isLoggedIn || item.status!=='active'" @click="startConversation">我有这个，联系求购者</el-button>
             <el-button circle :icon="item.favorited?StarFilled:Star" @click="favorite" />
           </div>
-          <div v-else class="buy-actions"><el-button type="primary" @click="$router.push({name:'market-edit',params:{id:item.id}})">编辑{{ item.listingType==='wanted'?'求购':'商品' }}</el-button><el-button @click="$router.push({name:'market-mine',query:{tab:'selling'}})">管理{{ item.listingType==='wanted'?'响应':'购买意向' }}</el-button><el-button type="danger" plain @click="withdraw">{{ item.listingType==='wanted'?'结束求购':'下架' }}</el-button></div>
+          <div v-else class="buy-actions"><el-button type="primary" @click="$router.push({name:isLearningMaterial?'market-learning-materials-edit':'market-edit',params:{id:item.id}})">编辑{{ item.listingType==='wanted'?'求购':(isLearningMaterial?'资料':'商品') }}</el-button><el-button @click="$router.push({name:'market-mine',query:{tab:'selling'}})">管理{{ item.listingType==='wanted'?'响应':'购买意向' }}</el-button><el-button type="danger" plain @click="withdraw">{{ item.listingType==='wanted'?'结束求购':'下架' }}</el-button></div>
           <p v-if="!auth.isLoggedIn" class="login-tip">登录 XJTLU 账号后即可联系、收藏和参与交易。</p>
-          <div class="payment-note"><b>{{ item.listingType==='wanted'?'求购说明':'平台交易' }}</b><span>{{ item.listingType==='wanted'?'如果你有符合要求的商品，请先联系求购者沟通成色、价格与交付方式。':'卖家接受购买意向后，通过本站配置的易支付完成付款；订单、退款与结算全程留痕。' }}</span></div>
+          <div class="payment-note"><b>{{ item.listingType==='wanted'?'求购说明':(isLearningMaterial?'安全交付':'平台交易') }}</b><span>{{ item.listingType==='wanted'?'如果你有符合要求的内容，请先联系发布者沟通版本、价格与交付方式。':(isLearningMaterial?'卖家接受购买意向后完成付款，交付链接只在已付款订单内向买家展示。':'卖家接受购买意向后，通过本站配置的易支付完成付款；订单、退款与结算全程留痕。') }}</span></div>
         </div>
       </section>
 
@@ -36,7 +38,7 @@
         <aside class="seller-card cpu-card"><div class="seller-head"><UserAvatar :size="52" :src="item.seller.avatar" :name="item.seller.nickname" /><div><strong>{{ item.seller.nickname||item.seller.username }}</strong><span>✓ XJTLU 校园认证</span></div></div><div class="seller-stats"><div><b>{{ Number(item.sellerRating||0).toFixed(1) }}</b><span>交易评分</span></div><div><b>{{ item.sellerReviewCount||0 }}</b><span>收到评价</span></div><div><b>{{ item.listingType==='wanted'?item.favoriteCount:item.offerCount }}</b><span>{{ item.listingType==='wanted'?'收藏关注':'购买意向' }}</span></div></div><p>{{ item.listingType==='wanted'?'沟通时请描述商品实际状况，确认价格与交付方式后再交易。':'建议在校园公共区域见面，确认商品状况后再完成交付确认。' }}</p></aside>
       </section>
 
-      <section v-if="related.length" class="related"><header><h2>{{ item.listingType==='wanted'?'同类求购':'同类商品' }}</h2><router-link to="/market">查看更多</router-link></header><div class="related-grid"><article v-for="row in related" :key="row.id" @click="$router.push({name:'market-item',params:{id:row.id}})"><div><img v-if="row.cover" :src="row.cover" :alt="row.title" /><span v-else>📦</span></div><h3>{{ row.title }}</h3><strong>{{ row.listingType==='wanted'?'预算 ':'' }}¥{{ row.price }}</strong></article></div></section>
+      <section v-if="related.length" class="related"><header><h2>{{ item.listingType==='wanted'?'同类求购':(isLearningMaterial?'相关学习资料':'同类商品') }}</h2><router-link :to="catalogRoute">查看更多</router-link></header><div class="related-grid"><article v-for="row in related" :key="row.id" @click="$router.push({name:'market-item',params:{id:row.id}})"><div><img v-if="row.cover" :src="row.cover" :alt="row.title" /><span v-else>{{ isLearningMaterial ? '📚' : '📦' }}</span></div><h3>{{ row.title }}</h3><strong>{{ row.listingType==='wanted'?'预算 ':'' }}¥{{ row.price }}</strong></article></div></section>
     </template>
     <el-empty v-else-if="!loading" description="商品不存在或已被下架"><el-button @click="$router.push('/market')">返回商城</el-button></el-empty>
 
@@ -52,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -67,8 +69,10 @@ const offerOpen=ref(false),messageOpen=ref(false),reportOpen=ref(false),firstMes
 const offer=reactive({price:0,message:''}),report=reactive({reason:'',detail:''});
 const reportReasons=['疑似诈骗','禁售或违规物品','商品信息虚假','盗用图片','恶意引流','其他'];
 const categories=ref<Record<string,string>>({});
+const isLearningMaterial=computed(()=>item.value?.category==='digital_goods');
+const catalogRoute=computed(()=>isLearningMaterial.value?'/market/learning-materials':'/market');
 onMounted(load);watch(()=>route.params.id,load);
-async function load(){const id=Number(route.params.id);if(!id)return;loading.value=true;try{const [nextItem,meta]=await Promise.all([marketApi.item(id,{suppressErrorMessage:true}),marketApi.meta({suppressErrorMessage:true})]);item.value=nextItem;categories.value=Object.fromEntries(meta.categories.map(category=>[category.slug,category.name]));activeImage.value=item.value.cover;offer.price=Number(item.value.price);const result=await marketApi.items({category:item.value.category,listingType:item.value.listingType,size:5},{suppressErrorMessage:true});related.value=result.list.filter(row=>row.id!==id).slice(0,4);}catch{item.value=null;}finally{loading.value=false;}}
+async function load(){const id=Number(route.params.id);if(!id)return;loading.value=true;try{const nextItem=await marketApi.item(id,{suppressErrorMessage:true});item.value=nextItem;activeImage.value=nextItem.cover;offer.price=Number(nextItem.price);if(nextItem.category==='digital_goods'){const [meta,result]=await Promise.all([marketApi.learningMaterialsMeta({suppressErrorMessage:true}),marketApi.learningMaterials({listingType:nextItem.listingType,size:5},{suppressErrorMessage:true})]);categories.value={[meta.category.slug]:meta.category.name};related.value=result.list.filter(row=>row.id!==id).slice(0,4);}else{const [meta,result]=await Promise.all([marketApi.meta({suppressErrorMessage:true}),marketApi.items({category:nextItem.category,listingType:nextItem.listingType,size:5},{suppressErrorMessage:true})]);categories.value=Object.fromEntries(meta.categories.map(category=>[category.slug,category.name]));related.value=result.list.filter(row=>row.id!==id).slice(0,4);}}catch{item.value=null;related.value=[];}finally{loading.value=false;}}
 async function favorite(){if(!item.value)return;if(!auth.isLoggedIn)return router.push({name:'login',query:{redirect:route.fullPath}});const result=await marketApi.favorite(item.value.id);item.value.favorited=result.favorited;item.value.favoriteCount=result.favoriteCount;}
 function startConversation(){if(!auth.isLoggedIn)return router.push({name:'login',query:{redirect:route.fullPath}});messageOpen.value=true;}
 async function sendFirstMessage(){if(!item.value||!firstMessage.value.trim())return ElMessage.warning('请输入消息');submitting.value=true;try{const conversation=await marketApi.createConversation(item.value.id,firstMessage.value.trim());messageOpen.value=false;router.push({name:'market-messages',query:{conversation:conversation.id}});}finally{submitting.value=false;}}

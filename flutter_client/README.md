@@ -1,4 +1,4 @@
-# 药大拾间 Flutter 客户端
+# 靠浦 Flutter 客户端
 
 这是新版移动客户端线。它不再沿用旧 Android WebView 包名 `cn.lizmt.cpuweb.schedule`，而是使用新的正式包名：
 

@@ -158,6 +158,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { scoreColor } from "@/utils/gpaScale";
 
 const props = defineProps<{ data: any; loading?: boolean }>();
 const parsed = ref<any>(props.data?.parsed ?? null);
@@ -284,13 +285,6 @@ function progressStatus(earned: number, required: number): "success" | "warning"
   return "exception";
 }
 
-function scoreColor(s: string) {
-  const n = parseFloat(s);
-  if (!Number.isFinite(n)) return "var(--cpu-text-muted)";
-  if (n >= 85) return "#16a34a";
-  if (n >= 60) return "var(--cpu-text)";
-  return "#dc2626";
-}
 </script>
 
 <style scoped>
@@ -312,7 +306,7 @@ function scoreColor(s: string) {
   gap: 24px;
   padding: 24px 28px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #168776 0%, #2da391 60%, #0f6557 100%);
+  background: linear-gradient(135deg, #5747c8 0%, #6d5ce7 58%, #8b7cf6 100%);
   color: #fff;
   position: relative;
   overflow: hidden;

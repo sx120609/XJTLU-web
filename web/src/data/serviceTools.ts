@@ -86,7 +86,7 @@ export const serviceTools: ServiceTool[] = [
 ];
 
 export const toolHubIntro = {
-  title: "校园小工具",
+  title: "校园工具",
   subtitle: "一些轻量入口会集中放在这里，适合处理反馈、表单和临时查询这类小任务。",
   iconComponent: Tools,
 };

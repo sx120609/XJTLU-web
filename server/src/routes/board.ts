@@ -23,12 +23,22 @@ boardRouter.get("/", async (req, res, next) => {
     }
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const allowedTypes = forumAccessEnabled ? enabledBoardTypes() : ["announce"];
-    const boards = await withCache("boards", ["list-xjtlu-v2", forumAccessEnabled ? "forum-enabled" : "announce-only"], 5 * 60_000, async () => prisma.board.findMany({
+    const boards = await withCache("boards", ["list-xjtlu-v3", forumAccessEnabled ? "forum-enabled" : "announce-only"], 5 * 60_000, async () => prisma.board.findMany({
       where: {
         type: { in: allowedTypes },
-        OR: [
-          { feedSourceId: null },
-          { feedSource: { is: { enabled: true } } },
+        AND: [
+          {
+            OR: [
+              { section: { not: null } },
+              { type: "announce" },
+            ],
+          },
+          {
+            OR: [
+              { feedSourceId: null },
+              { feedSource: { is: { enabled: true } } },
+            ],
+          },
         ],
       },
       orderBy: { order: "asc" },
@@ -53,7 +63,7 @@ boardRouter.get("/:slug", async (req, res, next) => {
         role = token.role;
       } catch { /* ignore */ }
     }
-    const board = await withCache("boards", ["detail-xjtlu-v2", req.params.slug], 5 * 60_000, async () => prisma.board.findUnique({
+    const board = await withCache("boards", ["detail-xjtlu-v3", req.params.slug], 5 * 60_000, async () => prisma.board.findUnique({
       where: { slug: req.params.slug },
       select: {
         id: true,
@@ -63,6 +73,7 @@ boardRouter.get("/:slug", async (req, res, next) => {
         icon: true,
         color: true,
         order: true,
+        section: true,
         type: true,
         readOnly: true,
         anonymousEnabled: true,

@@ -9,7 +9,7 @@ import { verifyToken } from "../utils/jwt";
 
 export const searchRouter = Router();
 
-/** 全局搜索：帖子标题/正文 + 课程 + 服务卡片 */
+/** 全局搜索：帖子标题/正文 + 服务卡片 */
 searchRouter.get("/", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
@@ -29,17 +29,15 @@ searchRouter.get("/", async (req, res, next) => {
     const searchableBoardTypes = ["announce"];
     if (forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question");
     if (forumAccessEnabled && features.market) searchableBoardTypes.push("market");
-    if (forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
 
     const cacheParts = [
       q,
       forumAccessEnabled ? "forum-enabled" : "announce-only",
       features.forum ? "forum-on" : "forum-off",
       features.market ? "market-on" : "market-off",
-      features.coursereview ? "course-on" : "course-off",
     ];
-    const { topics, courses, services } = await withCache("search", cacheParts, 60_000, async () => {
-      const [topics, courses, services] = await Promise.all([
+    const { topics, services } = await withCache("search", cacheParts, 60_000, async () => {
+      const [topics, services] = await Promise.all([
         prisma.topic.findMany({
           where: {
             hidden: false,
@@ -54,20 +52,6 @@ searchRouter.get("/", async (req, res, next) => {
             tags: { include: { tag: true } },
           },
         }),
-        forumAccessEnabled && features.coursereview ? prisma.course.findMany({
-          where: {
-            OR: [
-              { name: { contains: q } },
-              { code: { contains: q } },
-              { teacher: { contains: q } },
-              { courseTeachers: { some: { teacher: { name: { contains: q } } } } },
-            ],
-          },
-          take: 5,
-          include: {
-            courseTeachers: { include: { teacher: true } },
-          },
-        }) : Promise.resolve([]),
         prisma.serviceCard.findMany({
           where: visibleServiceWhere({
             OR: [
@@ -80,7 +64,7 @@ searchRouter.get("/", async (req, res, next) => {
           take: 8,
         }),
       ]);
-      return { topics, courses, services };
+      return { topics, services };
     });
 
     ok(res, {
@@ -91,15 +75,7 @@ searchRouter.get("/", async (req, res, next) => {
           ? topic.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
           : [],
       })),
-      courses: courses.map((c: any) => ({
-        ...c,
-        teachers: (c.courseTeachers ?? []).map((ct: any) => ({
-          id: ct.teacher.id,
-          name: ct.teacher.name,
-          courseTeacherId: ct.id,
-        })),
-        courseTeachers: undefined,
-      })),
+      courses: [],
       services: services.map(normalizeServiceCard),
     });
   } catch (e) { next(e); }

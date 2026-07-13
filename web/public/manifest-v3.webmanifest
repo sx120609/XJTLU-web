@@ -1,37 +1,17 @@
 {
   "id": "/schedule",
-  "name": "XJTLU 校园服务",
-  "short_name": "XJTLU 校园",
-  "description": "西交利物浦大学校园互助与服务平台",
+  "name": "靠浦",
+  "short_name": "靠浦",
+  "description": "重塑校园生活的可能",
   "start_url": "/schedule?source=pwa-v3",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#edf4ff",
-  "theme_color": "#168776",
+  "background_color": "#F7F6FF",
+  "theme_color": "#6D5CE7",
   "icons": [
-    {
-      "src": "/icon-192-v3.png?v=20260530-hw",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512-v3.png?v=20260530-hw",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512-v3.png?v=20260530-hw",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/favicon.svg?v=20260530",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
+    { "src": "/icon-192-v3.png?v=20260713-kaopu", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512-v3.png?v=20260713-kaopu", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512-v3.png?v=20260713-kaopu", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/favicon.svg?v=20260713-kaopu", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

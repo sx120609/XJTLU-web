@@ -5,7 +5,7 @@
       <div class="mobile-nav">
         <button type="button" class="icon-button" title="菜单" @click="sidebarOpen = true">☰</button>
         <div class="mobile-brand">
-          <span class="brand-mark">药</span>
+          <img class="brand-mark" src="/brand/kaopu-mark.svg" alt="">
           <strong>文件收集工作台</strong>
         </div>
         <a class="back-to-site mobile-back-to-site" href="/services/tools/file_collect">返回</a>
@@ -37,10 +37,10 @@
 
       <aside :class="['app-sidebar', { open: sidebarOpen }]">
         <div class="brand">
-          <span class="brand-mark">药</span>
+          <img class="brand-mark" src="/brand/kaopu-mark.svg" alt="">
           <div>
             <strong>{{ siteTitle }}</strong>
-            <small>CPU 校园小工具</small>
+            <small>靠浦校园工具</small>
           </div>
           <button type="button" class="icon-button mobile-only-close" title="关闭" @click="sidebarOpen = false">×</button>
         </div>
@@ -717,7 +717,7 @@ const steps = [
 ];
 const lastStep = steps[steps.length - 1].value;
 
-const siteTitle = computed(() => settings.value.siteTitle || "药大拾间文件收集");
+const siteTitle = computed(() => settings.value.siteTitle || "靠浦文件收集");
 const filteredTasks = computed(() => {
   const query = taskQuery.value.trim().toLowerCase();
   if (!query) return tasks.value;

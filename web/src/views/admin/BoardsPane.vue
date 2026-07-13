@@ -33,6 +33,9 @@
         </template>
       </el-table-column>
       <el-table-column prop="type" label="类型" width="120" />
+      <el-table-column label="论坛分区" width="120">
+        <template #default="{ row }">{{ sectionLabel(row.section) }}</template>
+      </el-table-column>
       <el-table-column label="状态" width="180">
         <template #default="{ row }">
           <el-tag v-if="row.readOnly || row.feedSourceId" type="warning" size="small">公告同步</el-tag>
@@ -70,6 +73,7 @@
         <div class="board-meta">
           <span>#{{ row.order }} · {{ row.slug }}</span>
           <span>{{ row.type }}</span>
+          <span>{{ sectionLabel(row.section) }}</span>
           <span>{{ row.topicCount }} 帖</span>
           <span v-if="row.anonymousEnabled">支持匿名</span>
         </div>
@@ -122,6 +126,13 @@
             </el-select>
           </el-form-item>
         </div>
+        <el-form-item label="论坛分区">
+          <el-select v-model="form.section" clearable placeholder="不在论坛首页展示">
+            <el-option label="综合讨论" value="general" />
+            <el-option label="学习交流" value="study" />
+            <el-option label="生活社交" value="social" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="匿名机制">
           <el-switch v-model="form.anonymousEnabled" />
           <span class="anonymous-switch-note">开启后，该板块可消耗用户每周匿名积分进行匿名发帖 / 回复。</span>
@@ -158,6 +169,7 @@ const form = reactive({
   color: "",
   order: 0,
   type: "normal" as "normal" | "question" | "market" | "coursereview",
+  section: "" as "" | "general" | "study" | "social",
   anonymousEnabled: false,
 });
 
@@ -208,6 +220,7 @@ function openCreate() {
     color: "",
     order: 0,
     type: "normal",
+    section: "",
     anonymousEnabled: false,
   });
   dialogOpen.value = true;
@@ -224,6 +237,7 @@ function openEdit(row: any) {
     color: row.color || "",
     order: row.order ?? 0,
     type: row.type,
+    section: row.section || "",
     anonymousEnabled: Boolean(row.anonymousEnabled),
   });
   dialogOpen.value = true;
@@ -243,6 +257,7 @@ async function submitBoard() {
       color: form.color.trim() || undefined,
       order: Number(form.order || 0),
       type: form.type,
+      section: form.section || null,
       anonymousEnabled: form.anonymousEnabled,
     };
     if (editingId.value) await adminApi.updateBoard(editingId.value, payload);
@@ -253,6 +268,13 @@ async function submitBoard() {
   } finally {
     saving.value = false;
   }
+}
+
+function sectionLabel(section: unknown) {
+  if (section === "general") return "综合讨论";
+  if (section === "study") return "学习交流";
+  if (section === "social") return "生活社交";
+  return "独立入口";
 }
 
 async function removeBoard(row: any) {

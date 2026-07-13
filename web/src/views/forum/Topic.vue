@@ -127,12 +127,6 @@
           {{ topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
       </div>
-      <div v-if="topic.metadata?.ratings" class="extra-bar ratings">
-        <span>难度 <el-rate :model-value="topic.metadata.ratings.difficulty" disabled size="small" /></span>
-        <span>收获 <el-rate :model-value="topic.metadata.ratings.reward" disabled size="small" /></span>
-        <span>推荐 <el-rate :model-value="topic.metadata.ratings.recommend" disabled size="small" /></span>
-        <span>给分 <el-rate :model-value="topic.metadata.ratings.givingScore" disabled size="small" /></span>
-      </div>
       <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode" class="extra-bar">
         <span v-if="topic.metadata.condition">📦 {{ topic.metadata.condition }}</span>
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>

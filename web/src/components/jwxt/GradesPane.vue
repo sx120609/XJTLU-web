@@ -26,15 +26,26 @@
         <span v-if="statGpaCredits" class="stat">
           · 已出分换算 GPA <b>{{ statGpa.toFixed(2) }}</b> / 4.0
         </span>
-        <el-tooltip placement="top">
-          <template #content>
-            非学校官方 GPA；按 XJTLU / 利物浦英国百分制分档换算并按学分加权<br/>
-            70–100（First）→ 3.80–4.00<br/>
-            60–69（2:1）→ 3.30–3.79 · 50–59（2:2）→ 3.00–3.29<br/>
-            40–49（Third）→ 2.00 · 40 以下 → 2.00 以下
+        <el-popover placement="bottom-end" trigger="click" :width="isMobile ? 310 : 410" popper-class="gpa-scale-popover">
+          <template #reference>
+            <button type="button" class="gpa-info-button" aria-label="查看 GPA 换算标准">
+              <el-icon><InfoFilled /></el-icon>
+            </button>
           </template>
-          <el-icon class="hint-icon"><InfoFilled /></el-icon>
-        </el-tooltip>
+          <div class="gpa-scale-card">
+            <div class="gpa-scale-head">
+              <b>4.0 GPA 换算标准</b>
+              <span>英国课程成绩换算</span>
+            </div>
+            <div class="gpa-scale-grid gpa-scale-grid-head">
+              <span>英国课程成绩</span><span>字母成绩</span><span>4.0 绩点</span>
+            </div>
+            <div v-for="band in FOUR_POINT_GRADE_SCALE" :key="band.label" class="gpa-scale-grid">
+              <span>{{ band.label }}</span><strong>{{ band.letter }}</strong><strong>{{ band.gpa.toFixed(1) }}</strong>
+            </div>
+            <small>非学校官方 GPA；课程 GPA 与总 GPA 均按此表换算，并按学分加权。</small>
+          </div>
+        </el-popover>
       </div>
     </div>
 
@@ -153,9 +164,9 @@
                 <span class="score-pill" :style="{ color: gpaColor(row.gpa) }">换算 GPA {{ row.gpa?.toFixed(2) ?? "—" }}</span>
               </div>
               <div v-if="props.source === 'jwxt'" class="grade-detail">
-                <span>平时 {{ row.usual || "—" }}</span>
-                <span>期中 {{ row.midterm || "—" }}</span>
-                <span>期末 {{ row.final || "—" }}</span>
+                <span :style="{ color: scoreColor(row.usual) }">平时 {{ row.usual || "—" }}</span>
+                <span :style="{ color: scoreColor(row.midterm) }">期中 {{ row.midterm || "—" }}</span>
+                <span :style="{ color: scoreColor(row.final) }">期末 {{ row.final || "—" }}</span>
               </div>
               <details v-if="row.components?.length" class="mobile-assessments">
                 <summary>分项成绩 {{ row.components.length }} 项</summary>
@@ -164,7 +175,7 @@
                     <b>{{ component.title }}</b>
                     <small>{{ component.type || 'Assessment' }} · 占比 {{ component.percentage || '—' }}</small>
                   </span>
-                  <strong :class="{ pending: !component.mark }">{{ component.mark || "待发布" }}</strong>
+                  <strong :class="{ pending: !component.mark }" :style="component.mark ? { color: scoreColor(component.mark) } : undefined">{{ component.mark || "待发布" }}</strong>
                 </div>
               </details>
             </article>
@@ -184,7 +195,7 @@
                           <b>{{ component.title }}</b>
                           <small>{{ component.type || 'Assessment' }} · 占比 {{ component.percentage || '—' }}</small>
                         </span>
-                        <strong :class="{ pending: !component.mark }">{{ component.mark || "待发布" }}</strong>
+                        <strong :class="{ pending: !component.mark }" :style="component.mark ? { color: scoreColor(component.mark) } : undefined">{{ component.mark || "待发布" }}</strong>
                       </div>
                     </div>
                   </div>
@@ -214,13 +225,13 @@
               <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
               <el-table-column v-if="!isMobile && props.source === 'jwxt'" prop="hours" label="学时" width="70" align="right" />
               <el-table-column v-if="props.source === 'jwxt'" label="平时" width="60" align="right">
-                <template #default="{ row }">{{ row.usual || "—" }}</template>
+                <template #default="{ row }"><span :style="{ color: scoreColor(row.usual) }">{{ row.usual || "—" }}</span></template>
               </el-table-column>
               <el-table-column v-if="props.source === 'jwxt'" label="期中" width="60" align="right">
-                <template #default="{ row }">{{ row.midterm || "—" }}</template>
+                <template #default="{ row }"><span :style="{ color: scoreColor(row.midterm) }">{{ row.midterm || "—" }}</span></template>
               </el-table-column>
               <el-table-column v-if="props.source === 'jwxt'" label="期末" width="60" align="right">
-                <template #default="{ row }">{{ row.final || "—" }}</template>
+                <template #default="{ row }"><span :style="{ color: scoreColor(row.final) }">{{ row.final || "—" }}</span></template>
               </el-table-column>
               <el-table-column label="性质" width="80">
                 <template #default="{ row }">
@@ -241,6 +252,13 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
+import {
+  FOUR_POINT_GRADE_SCALE,
+  calculateWeightedFourPointGpa,
+  gpaColor,
+  scoreColor,
+  scoreToFourPointGpa as scoreToGpa,
+} from "@/utils/gpaScale";
 
 interface GradeRow {
   semester: string;
@@ -320,25 +338,12 @@ watch(() => props.data, (v) => {
 }, { immediate: true });
 watch(() => props.loading, (v) => { loading.value = Boolean(v); }, { immediate: true });
 
-function scoreToGpa(score?: string): number | undefined {
-  const raw = String(score ?? "").trim();
-  if (!raw) return undefined;
-  const scoreNum = parseFloat(raw);
-  if (!Number.isFinite(scoreNum)) return undefined;
-  const mark = Math.min(100, Math.max(0, scoreNum));
-  let gpa: number;
-  if (mark >= 70) gpa = 3.8 + ((mark - 70) / 30) * 0.2;
-  else if (mark >= 60) gpa = 3.3 + ((mark - 60) / 10) * 0.49;
-  else if (mark >= 50) gpa = 3.0 + ((mark - 50) / 10) * 0.29;
-  else if (mark >= 40) gpa = 2.0;
-  else gpa = (mark / 40) * 2.0;
-  return Math.round(Math.min(4, Math.max(0, gpa)) * 100) / 100;
-}
-
 function normalizeGradeRow(row: GradeRow): GradeRow {
+  const converted = scoreToGpa(row.score);
+  if (converted !== undefined) return { ...row, gpa: converted };
   const gpa = typeof row.gpa === "number" ? row.gpa : Number(row.gpa);
   if (Number.isFinite(gpa)) return { ...row, gpa };
-  return { ...row, gpa: scoreToGpa(row.score) };
+  return { ...row, gpa: undefined };
 }
 
 function normalizeParsedGrades(data: any) {
@@ -474,21 +479,11 @@ function semCredits(rows: GradeRow[]) {
   return rows.reduce((s, g) => s + (Number.isFinite(g.credits) ? (g.credits as number) : 0), 0);
 }
 function semGpa(rows: GradeRow[]) {
-  let sum = 0, cred = 0;
-  for (const g of rows) {
-    if (typeof g.gpa === "number" && typeof g.credits === "number") {
-      sum += g.gpa * g.credits; cred += g.credits;
-    }
-  }
-  return cred ? sum / cred : 0;
+  return calculateWeightedFourPointGpa(rows).gpa ?? 0;
 }
 
 function gpaCredits(rows: GradeRow[]) {
-  return rows.reduce((sum, grade) => (
-    typeof grade.gpa === "number" && typeof grade.credits === "number"
-      ? sum + grade.credits
-      : sum
-  ), 0);
+  return calculateWeightedFourPointGpa(rows).credits;
 }
 
 const statGpa = computed(() => {
@@ -556,19 +551,6 @@ function sortRowsByPublishedScore(rows: GradeRow[]) {
     .map(({ row }) => row);
 }
 
-function scoreColor(n: number | null) {
-  if (n === null) return "var(--cpu-text)";
-  if (n >= 85) return "#16a34a";
-  if (n >= 60) return "var(--cpu-text)";
-  return "#dc2626";
-}
-function gpaColor(g?: number) {
-  if (g === undefined) return "var(--cpu-text-muted)";
-  if (g >= 3.8) return "#16a34a";
-  if (g >= 2.0) return "var(--cpu-text)";
-  return "#dc2626";
-}
-
 function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" | "danger" {
   if (!attr) return "info";
   if (/必修/.test(attr)) return "danger";
@@ -632,7 +614,38 @@ function requestMessage(error: unknown) {
 .lbl { font-size: 12px; color: var(--cpu-text-secondary); }
 .stat { font-size: 13px; color: var(--cpu-text-secondary); }
 .stat b { color: var(--cpu-primary); font-size: 15px; }
-.hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; font-size: 14px; }
+.gpa-info-button {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
+  border-radius: 50%;
+  color: var(--cpu-primary);
+  background: var(--cpu-primary-soft);
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+.gpa-info-button:hover { transform: translateY(-1px); border-color: var(--cpu-primary); }
+.gpa-info-button:focus-visible { outline: 2px solid color-mix(in srgb, var(--cpu-primary) 38%, transparent); outline-offset: 2px; }
+.gpa-scale-card { color: var(--cpu-text); }
+.gpa-scale-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.gpa-scale-head b { font-size: 15px; }
+.gpa-scale-head span { color: var(--cpu-text-secondary); font-size: 11px; }
+.gpa-scale-grid {
+  display: grid;
+  grid-template-columns: 1.4fr .8fr .8fr;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 9px;
+  border-top: 1px solid var(--cpu-border-soft);
+  text-align: center;
+  font-size: 12px;
+}
+.gpa-scale-grid strong { color: var(--cpu-primary); font-size: 13px; }
+.gpa-scale-grid-head { min-height: 36px; border: 0; border-radius: 8px; color: var(--cpu-text-secondary); background: var(--cpu-surface-subtle); font-weight: 600; }
+.gpa-scale-card > small { display: block; margin-top: 10px; color: var(--cpu-text-muted); font-size: 10px; line-height: 1.55; }
 code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px; }
 
 .gpa-tool {

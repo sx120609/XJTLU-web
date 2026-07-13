@@ -1,7 +1,9 @@
 import { defineStore } from "pinia";
 import { siteApi, type FeatureMap, type PublicSiteConfig } from "@/api/site";
 
-export const DEFAULT_SITE_NAME = "XJTLU 校园服务";
+export const DEFAULT_SITE_NAME = "靠浦";
+export const DEFAULT_SITE_SUBTITLE = "重塑校园生活的可能";
+export const DEFAULT_SITE_LOGO_URL = "/brand/kaopu-mark.svg";
 
 function applySiteIdentity(siteName: string) {
   if (typeof document === "undefined") return;
@@ -20,7 +22,7 @@ function applySiteIdentity(siteName: string) {
 function applySiteSubtitle(siteSubtitle: string) {
   if (typeof document === "undefined") return;
   const launchSubtitle = document.querySelector<HTMLElement>(".app-launch-subtitle");
-  if (launchSubtitle) launchSubtitle.textContent = siteSubtitle || "西交利物浦校园互助服务";
+  if (launchSubtitle) launchSubtitle.textContent = siteSubtitle || DEFAULT_SITE_SUBTITLE;
 }
 
 function applySiteLogo(siteLogoUrl: string) {
@@ -28,7 +30,7 @@ function applySiteLogo(siteLogoUrl: string) {
   const launchLogo = document.querySelector<HTMLImageElement>(".app-launch-logo");
   if (launchLogo) {
     if (!launchLogo.dataset.defaultSrc) launchLogo.dataset.defaultSrc = launchLogo.src;
-    launchLogo.src = siteLogoUrl || launchLogo.dataset.defaultSrc || "/apple-touch-icon-v3.png?v=20260530-hw";
+    launchLogo.src = siteLogoUrl || launchLogo.dataset.defaultSrc || DEFAULT_SITE_LOGO_URL;
   }
   document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]')
     .forEach((link) => {
@@ -44,8 +46,8 @@ function applySiteLogo(siteLogoUrl: string) {
 export const useSiteStore = defineStore("site", {
   state: () => ({
     siteName: DEFAULT_SITE_NAME,
-    siteSubtitle: "西交利物浦校园互助服务",
-    siteLogoUrl: "",
+    siteSubtitle: DEFAULT_SITE_SUBTITLE,
+    siteLogoUrl: DEFAULT_SITE_LOGO_URL,
     features: { forum: false, market: false, coursereview: false, electric: false, sponsor: false } as FeatureMap,
     siteOrigin: "",
     siteFilingNumber: "",
@@ -69,8 +71,8 @@ export const useSiteStore = defineStore("site", {
           }
           if (configResult.status === "fulfilled") {
             this.siteName = configResult.value.siteName || DEFAULT_SITE_NAME;
-            this.siteSubtitle = configResult.value.siteSubtitle || "西交利物浦校园互助服务";
-            this.siteLogoUrl = configResult.value.siteLogoUrl || "";
+            this.siteSubtitle = configResult.value.siteSubtitle || DEFAULT_SITE_SUBTITLE;
+            this.siteLogoUrl = configResult.value.siteLogoUrl || DEFAULT_SITE_LOGO_URL;
             this.siteOrigin = configResult.value.siteOrigin || "";
             this.siteFilingNumber = configResult.value.siteFilingNumber || "";
             applySiteIdentity(this.siteName);
@@ -94,8 +96,8 @@ export const useSiteStore = defineStore("site", {
     },
     applyConfig(config: Partial<PublicSiteConfig>) {
       if (config.siteName !== undefined) this.siteName = config.siteName || DEFAULT_SITE_NAME;
-      if (config.siteSubtitle !== undefined) this.siteSubtitle = config.siteSubtitle || "西交利物浦校园互助服务";
-      if (config.siteLogoUrl !== undefined) this.siteLogoUrl = config.siteLogoUrl || "";
+      if (config.siteSubtitle !== undefined) this.siteSubtitle = config.siteSubtitle || DEFAULT_SITE_SUBTITLE;
+      if (config.siteLogoUrl !== undefined) this.siteLogoUrl = config.siteLogoUrl || DEFAULT_SITE_LOGO_URL;
       if (config.siteOrigin !== undefined) this.siteOrigin = config.siteOrigin || "";
       if (config.siteFilingNumber !== undefined) this.siteFilingNumber = config.siteFilingNumber || "";
       applySiteIdentity(this.siteName);

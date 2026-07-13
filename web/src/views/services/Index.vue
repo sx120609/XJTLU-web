@@ -5,25 +5,15 @@
         <h2>校园服务</h2>
         <p>连接 XJTLU 融合门户，并集中展示站内校园工具。</p>
       </div>
-      <a href="https://ehall.xjtlu.edu.cn/default/index.html#/hall" target="_blank" rel="noopener noreferrer">
+      <a href="https://ehall.xjtlu.edu.cn/default/index.html#/apps" target="_blank" rel="noopener noreferrer">
         官方融合门户
       </a>
     </header>
 
-    <EhallServicesPane v-if="auth.isLoggedIn" />
-    <section v-else class="login-card">
-      <span class="lock-icon"><el-icon><Lock /></el-icon></span>
-      <div>
-        <h3>登录后连接融合门户</h3>
-        <p>使用 XJTLU 统一认证登录后，系统会自动建立短期门户会话；学校密码不会保存。</p>
-      </div>
-      <el-button type="primary" @click="$router.push({ name: 'login', query: { redirect: '/services' } })">前往登录</el-button>
-    </section>
-
     <section class="tool-section" v-loading="toolsLoading">
       <div class="section-head">
         <div>
-          <h3>校园小工具</h3>
+          <h3>校园工具</h3>
           <p>反馈、问卷和临时查询等站内服务。</p>
         </div>
         <el-button type="primary" plain @click="$router.push('/services/tools')">
@@ -52,6 +42,16 @@
           <el-icon><Right /></el-icon>
         </button>
       </div>
+    </section>
+
+    <EhallServicesPane v-if="auth.isLoggedIn" />
+    <section v-else class="login-card">
+      <span class="lock-icon"><el-icon><Lock /></el-icon></span>
+      <div>
+        <h3>登录后连接融合门户</h3>
+        <p>使用 XJTLU 统一认证登录后，系统会自动建立短期门户会话；学校密码不会保存。</p>
+      </div>
+      <el-button type="primary" @click="$router.push({ name: 'login', query: { redirect: '/services' } })">前往登录</el-button>
     </section>
   </div>
 </template>

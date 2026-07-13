@@ -8,6 +8,7 @@ export interface Board {
   icon?: string;
   color?: string;
   order: number;
+  section?: "general" | "study" | "social" | null;
   type: "normal" | "announce" | "market" | "question" | "coursereview";
   readOnly: boolean;
   anonymousEnabled: boolean;

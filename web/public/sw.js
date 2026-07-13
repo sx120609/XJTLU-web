@@ -74,8 +74,8 @@ function offlineShellResponse() {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#168776" />
-    <title>药大拾间 · 离线课表</title>
+    <meta name="theme-color" content="#6D5CE7" />
+    <title>靠浦 · 离线课表</title>
     <style>
       :root { color-scheme: light; }
       html, body {
@@ -105,8 +105,8 @@ function offlineShellResponse() {
         align-items: center;
         padding: 6px 10px;
         border-radius: 999px;
-        background: rgba(22, 135, 118, 0.10);
-        color: #168776;
+        background: rgba(109, 92, 231, 0.10);
+        color: #6D5CE7;
         font-size: 12px;
         font-weight: 700;
         letter-spacing: 0.02em;
@@ -141,7 +141,7 @@ function offlineShellResponse() {
         align-items: center;
         justify-content: space-between;
         padding: 12px 14px 10px;
-        background: rgba(22, 135, 118, 0.08);
+        background: rgba(109, 92, 231, 0.08);
         color: #145f53;
         font-size: 13px;
         font-weight: 700;
@@ -193,7 +193,7 @@ function offlineShellResponse() {
         margin-top: 16px;
       }
       a, button {
-        color: #168776;
+        color: #6D5CE7;
         text-decoration: none;
         font-weight: 700;
         font: inherit;
@@ -202,7 +202,7 @@ function offlineShellResponse() {
         border: 0;
         border-radius: 999px;
         padding: 10px 14px;
-        background: #168776;
+        background: #6D5CE7;
         color: #ffffff;
         cursor: pointer;
       }

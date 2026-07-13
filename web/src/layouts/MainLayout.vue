@@ -13,7 +13,7 @@
     <header v-if="!hideChrome && !useNativeShell" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
-          <span class="brand-logo"><img v-if="site.siteLogoUrl" :src="site.siteLogoUrl" alt="" /><template v-else>西</template></span>
+          <span class="brand-logo"><img :src="site.siteLogoUrl || '/brand/kaopu-mark.svg'" alt="靠浦" /></span>
           <span class="brand-text">
             <span class="brand-name">{{ site.siteName }}</span>
             <span class="brand-sub">{{ site.siteSubtitle }}</span>
@@ -40,28 +40,6 @@
           >
             {{ item.label }}
           </router-link>
-          <el-dropdown
-            v-if="desktopOverflowNavItems.length"
-            class="top-nav-more"
-            trigger="click"
-            @command="goDesktopNav"
-          >
-            <button type="button" class="top-nav-more-btn">
-              <span>更多</span>
-              <el-icon><ArrowDown /></el-icon>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item
-                  v-for="item in desktopOverflowNavItems"
-                  :key="item.to"
-                  :command="item.to"
-                >
-                  {{ item.fullLabel || item.label }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
         </nav>
 
         <div class="top-right">
@@ -277,7 +255,6 @@ import {
   Menu,
   House,
   ChatLineRound,
-  Reading,
   UserFilled,
   Goods,
   Service,
@@ -343,7 +320,6 @@ const layoutStyle = computed(() => (
 const searchPlaceholder = computed(() => {
   const scopes: string[] = [];
   if (site.features.forum && auth.canAccessForum) scopes.push("帖子");
-  if (site.features.coursereview && auth.canAccessForum) scopes.push("课程");
   scopes.push("公告");
   scopes.push("服务");
   return `搜索${scopes.join(" / ")}`;
@@ -354,7 +330,6 @@ type DesktopNavItem = { to: string; label: string; fullLabel?: string };
 const nicknameHint = computed(() => {
   const actions: string[] = [];
   if (site.features.forum) actions.push("发帖、回复");
-  if (site.features.coursereview) actions.push("课程点评");
   if (!actions.length) return "后续使用站内功能时会显示昵称";
   return `后续${actions.join("和")}都会显示昵称`;
 });
@@ -368,27 +343,18 @@ const desktopNavItems = computed(() => {
   items.push({ to: "/home", label: "首页" });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
   if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "商城", fullLabel: "商城" });
-  items.push({ to: "/announcements", label: "公告" });
   items.push({ to: "/services", label: "服务", fullLabel: "校园服务" });
   items.push({ to: "/academic", label: "教务", fullLabel: "eBridge 教务" });
-  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", fullLabel: "课程点评" });
   return items;
 });
 
 const desktopPrimaryNavItems = computed(() => {
-  const primary = new Set(["/home", "/forum", "/market", "/announcements", "/services", "/academic"]);
-  return desktopNavItems.value.filter((item) => primary.has(item.to));
-});
-
-const desktopOverflowNavItems = computed(() => {
-  const primary = new Set(desktopPrimaryNavItems.value.map((item) => item.to));
-  return desktopNavItems.value.filter((item) => !primary.has(item.to));
+  return desktopNavItems.value;
 });
 
 const mobileNavItems = computed(() => {
   return [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
-    { to: "/announcements", label: "公告", icon: Bell, match: ["/announcements"] },
     { to: "/services", label: "服务", icon: Service, match: ["/services"] },
     { to: "/academic", label: "教务", icon: Calendar, match: ["/academic"], auth: true },
     { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
@@ -401,8 +367,6 @@ const drawerItems = computed(() => {
   items.push({ to: "/messages", label: "消息", icon: Message });
   if (auth.isMod) items.push({ to: "/admin", label: "管理后台", icon: Tools });
   if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
-  items.push({ to: "/announcements", label: "校园公告", icon: Bell });
-  if (site.features.coursereview && auth.canAccessForum) items.push({ to: "/coursereview", label: "课评", icon: Reading });
   if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "商城", icon: Goods });
   items.push({ to: "/services", label: "校园服务", icon: Service });
   items.push({ to: "/academic", label: "eBridge 教务", icon: Calendar });
@@ -552,11 +516,6 @@ function updateKeyboardState() {
 
 function goSearch() {
   if (q.value.trim()) router.push({ name: "search", query: { q: q.value.trim() } });
-}
-
-function goDesktopNav(command: string | number | object) {
-  const to = String(command || "");
-  if (to) router.push(to);
 }
 
 function resolveMobileTo(item: { to: string; auth?: boolean }) {
@@ -729,35 +688,6 @@ function setAppearanceMode(command: string | number | object) {
 
 .top-nav a:hover { background: var(--cpu-surface-subtle); color: var(--cpu-primary); }
 .top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: rgba(20, 143, 123, 0.08); }
-
-.top-nav-more {
-  flex: 0 0 auto;
-}
-
-.top-nav-more-btn {
-  display: inline-flex;
-  height: 32px;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--cpu-text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0 9px;
-  white-space: nowrap;
-}
-
-.top-nav-more-btn:hover,
-.top-nav-more-btn:focus-visible {
-  color: var(--cpu-primary);
-  background: var(--cpu-surface-subtle);
-  outline: none;
-}
 
 .top-right {
   display: flex;

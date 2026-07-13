@@ -143,6 +143,7 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
   assert.equal(maxActiveHomeRequests, 1, "same-user eBridge requests must not race cookie snapshots");
   assert.deepEqual(overview.student, { id: "2469480", name: "Test Student" });
   assert.equal(overview.academicYear, "2025/26");
+  assert.deepEqual(overview.gpaSummary, { gpa: 4, credits: 5, courseCount: 1 });
   assert.equal(overview.grades.length, 3);
   assert.deepEqual(overview.grades[0], {
     academicYear: "2025/26",
@@ -151,6 +152,8 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
     moduleTitle: "C Programming",
     credit: "5.0",
     mark: "94%",
+    gpa: 4,
+    letterGrade: "A",
     grade: "P",
     attempt: "1",
     additionalLearning: false,
@@ -174,6 +177,8 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
     moduleTitle: "Electronic Circuits",
     credit: "5",
     mark: "",
+    gpa: null,
+    letterGrade: "",
     grade: "",
     attempt: "",
     additionalLearning: false,

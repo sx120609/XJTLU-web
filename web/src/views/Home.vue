@@ -182,7 +182,7 @@ const visibleServices = computed(() => summary.value?.services ?? []);
 const homeServiceEntries = computed(() => {
   const builtins = [
     { id: "academic", name: "我的教务", icon: "🎓", url: "/academic", needSso: true },
-    { id: "tools", name: "校园小工具", icon: "🧰", url: "/services/tools", needSso: false },
+    { id: "tools", name: "校园工具", icon: "🧰", url: "/services/tools", needSso: false },
     { id: "hall", name: "服务大厅", icon: "🧭", url: "/services", needSso: false },
     { id: "ehall", name: "融合门户", icon: "🏫", url: "https://ehall.xjtlu.edu.cn/default/index.html#/hall", needSso: true },
   ];
@@ -193,7 +193,6 @@ let loadSeq = 0;
 
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "常用校园服务"];
-  if (site.features.coursereview && auth.canAccessForum) labels.splice(2, 0, "课程点评");
   if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "校园商城");
   if (site.features.forum && auth.canAccessForum) labels.unshift("校园讨论");
   return labels;
@@ -317,7 +316,7 @@ function normalizeHomeError(error: unknown) {
 }
 
 .hero {
-  background: linear-gradient(135deg, #168776 0%, #2da391 60%, #0f6557 100%);
+  background: linear-gradient(135deg, #5747c8 0%, #6d5ce7 58%, #8b7cf6 100%);
   color: #fff;
   border-radius: 16px;
   padding: 32px 36px;
@@ -344,9 +343,9 @@ function normalizeHomeError(error: unknown) {
 .hero h1 { margin: 0 0 6px; font-size: 32px; }
 .hero p { margin: 0 0 16px; opacity: 0.9; font-size: 15px; }
 .hero-actions { display: flex; gap: 10px; }
-.hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #168776; }
+.hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #6d5ce7; }
 .hero-actions .el-button:hover { background: #fff; }
-.hero-actions .el-button--primary { background: #fff; color: #168776; }
+.hero-actions .el-button--primary { background: #fff; color: #6d5ce7; }
 
 :global(html[data-theme="dark"] .hero-actions .el-button) {
   background: rgba(255, 255, 255, 0.10);

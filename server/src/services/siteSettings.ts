@@ -304,9 +304,9 @@ const cache: Record<FeatureKey, boolean> = {
 let globalPinnedTopicIdsCache: number[] = [];
 
 const configCache: SiteConfig = {
-  siteName: "XJTLU 校园服务",
-  siteSubtitle: "西交利物浦校园互助服务",
-  siteLogoUrl: "",
+  siteName: "靠浦",
+  siteSubtitle: "重塑校园生活的可能",
+  siteLogoUrl: "/brand/kaopu-mark.svg",
   siteOrigin: "",
   siteFilingNumber: "",
   aiReviewEnabled: false,
@@ -390,7 +390,7 @@ export function normalizeSiteName(input: string | null | undefined): string {
     .replace(/[\r\n\t]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 40) || "XJTLU 校园服务";
+    .slice(0, 40) || "靠浦";
 }
 
 export function normalizeSiteSubtitle(input: string | null | undefined): string {
@@ -398,7 +398,7 @@ export function normalizeSiteSubtitle(input: string | null | undefined): string 
     .replace(/[\r\n\t]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 80) || "西交利物浦校园互助服务";
+    .slice(0, 80) || "重塑校园生活的可能";
 }
 
 export function normalizeSiteLogoUrl(input: string | null | undefined): string {

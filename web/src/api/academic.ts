@@ -15,6 +15,8 @@ export interface AcademicGrade {
   moduleTitle: string;
   credit: string;
   mark: string;
+  gpa: number | null;
+  letterGrade: string;
   grade: string;
   attempt: string;
   additionalLearning: boolean;
@@ -46,6 +48,7 @@ export interface AcademicOverview {
   student: { id: string; name: string };
   academicYear: string;
   grades: AcademicGrade[];
+  gpaSummary: { gpa: number | null; credits: number; courseCount: number };
   exams: AcademicExam[];
   updatedAt: string;
 }
