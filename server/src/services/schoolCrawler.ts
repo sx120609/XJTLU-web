@@ -9,6 +9,7 @@ import { isDev } from "../config";
 import { runWithDistributedLock } from "./cache";
 import { invalidateBoardCaches, invalidateForumCaches } from "./cacheInvalidation";
 import { crawlSchoolFeedSource } from "./schoolCrawlerTransport";
+import { runTrackedJob } from "./runtimeHealth";
 
 /** 单次抓取某个源 */
 export async function runOnce(sourceId: number, opts: { dryRun?: boolean } = {}) {
@@ -139,14 +140,15 @@ export async function resetSourceAndRun(sourceId: number) {
   return runOnce(source.id);
 }
 
+let schedulerStarted = false;
+
 /** 启动定时任务（每分钟检查一次，按 cronMinutes 决定是否运行） */
 export function startScheduler() {
-  let started = false;
   const TICK = 60_000;
   const lastRun = new Map<number, number>();
   let timer: NodeJS.Timeout | null = null;
 
-  const tick = async () => {
+  const tick = async () => runTrackedJob("school-crawler", "校园内容同步", async () => {
     await runWithDistributedLock("school-crawler:tick", 55_000, async () => {
       const sources = await prisma.schoolFeedSource.findMany({ where: { enabled: true } });
       const now = Date.now();
@@ -159,10 +161,10 @@ export function startScheduler() {
         });
       }
     });
-  };
+  }, TICK);
 
-  if (started) return;
-  started = true;
+  if (schedulerStarted) return;
+  schedulerStarted = true;
 
   // 启动 5 秒后跑首次，避开启动密集 IO
   setTimeout(() => {

@@ -1,6 +1,6 @@
 import { request } from "./request";
 
-export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor" | "promotion";
 export type FeatureMap = Record<FeatureKey, boolean>;
 export type PublicSiteConfig = {
   siteName: string;

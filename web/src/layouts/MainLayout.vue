@@ -9,6 +9,7 @@
     }"
     :style="layoutStyle"
   >
+    <a v-if="!hideChrome && !useNativeShell" class="skip-link" href="#main-content">跳到主要内容</a>
     <!-- 顶栏 -->
     <header v-if="!hideChrome && !useNativeShell" class="topbar">
       <div class="topbar-inner">
@@ -67,10 +68,6 @@
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-button v-if="auth.canAccessForum && site.features.forum" class="post-btn" type="primary" size="default" @click="$router.push('/post')">
-              <el-icon><Edit /></el-icon>
-              <span class="post-label">发帖</span>
-            </el-button>
             <el-tooltip content="消息">
               <el-button text @click="$router.push('/messages')">
                 <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
@@ -103,9 +100,6 @@
           <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
             <el-icon><Refresh /></el-icon>
           </el-button>
-          <el-button v-if="auth.canAccessForum && site.features.forum" text class="touch-icon-btn" aria-label="发帖" @click="$router.push('/post')">
-            <el-icon><Edit /></el-icon>
-          </el-button>
           <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
             <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
               <el-icon><Bell /></el-icon>
@@ -120,7 +114,7 @@
     </header>
 
     <!-- 主内容 -->
-    <main class="main" :class="{ 'main--bare': hideChrome, 'main--full-width': fullWidthContent && !hideChrome }">
+    <main id="main-content" class="main" :class="{ 'main--bare': hideChrome, 'main--full-width': fullWidthContent && !hideChrome }" tabindex="-1">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -129,18 +123,22 @@
     </main>
 
     <footer v-if="!hideChrome && !useNativeShell" class="footer">
-      <span class="footer-item">© 2026 {{ site.siteName }} · {{ site.siteSubtitle }}</span>
-      <a class="footer-item" href="https://github.com/sx120609/XJTLU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
-      <span class="footer-item">非学校官方站点</span>
-      <a
-        v-if="site.siteFilingNumber"
-        class="footer-item"
-        href="https://beian.miit.gov.cn/"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {{ site.siteFilingNumber }}
-      </a>
+      <div class="footer-inner">
+        <section class="footer-brand">
+          <img :src="site.siteLogoUrl || '/brand/kaopu-mark.svg'" alt="" />
+          <div><b>{{ site.siteName }}</b><span>{{ site.siteSubtitle }}</span></div>
+        </section>
+        <nav aria-label="页脚导航">
+          <router-link to="/market">校园市集</router-link><router-link to="/market/wanted">求购</router-link><router-link to="/learning">学习中心</router-link><router-link to="/square">广场</router-link><router-link to="/services">工具</router-link>
+        </nav>
+        <section class="footer-safety"><b>校内互助提醒</b><span>公共区域见面 · 当面验货 · 学生商品款由双方直接结算</span></section>
+        <div class="footer-bottom">
+          <span class="footer-item">© 2026 {{ site.siteName }}</span>
+          <a class="footer-item" href="https://github.com/sx120609/XJTLU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <span class="footer-item">非学校官方站点</span>
+          <a v-if="site.siteFilingNumber" class="footer-item" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ site.siteFilingNumber }}</a>
+        </div>
+      </div>
     </footer>
 
     <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
@@ -249,7 +247,6 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
   Search,
-  Edit,
   Bell,
   ArrowDown,
   Menu,
@@ -318,11 +315,7 @@ const layoutStyle = computed(() => (
 ));
 
 const searchPlaceholder = computed(() => {
-  const scopes: string[] = [];
-  if (site.features.forum && auth.canAccessForum) scopes.push("帖子");
-  scopes.push("公告");
-  scopes.push("服务");
-  return `搜索${scopes.join(" / ")}`;
+  return "搜索商品 / 求购 / 帖子 / 校园资源";
 });
 
 type DesktopNavItem = { to: string; label: string; fullLabel?: string };
@@ -339,13 +332,13 @@ function reloadPage() {
 }
 
 const desktopNavItems = computed(() => {
-  const items: DesktopNavItem[] = [];
-  items.push({ to: "/home", label: "首页" });
-  if (site.features.forum) items.push({ to: "/forum", label: "论坛" });
-  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "商城", fullLabel: "商城" });
-  items.push({ to: "/services", label: "服务", fullLabel: "校园服务" });
-  items.push({ to: "/academic", label: "教务", fullLabel: "eBridge 教务" });
-  return items;
+  return [
+    { to: "/home", label: "首页" },
+    { to: "/market", label: "市集", fullLabel: "校园市集" },
+    { to: "/square", label: "广场", fullLabel: "校园广场" },
+    { to: "/services", label: "工具", fullLabel: "校园工具" },
+    { to: "/profile", label: "我的" },
+  ] as DesktopNavItem[];
 });
 
 const desktopPrimaryNavItems = computed(() => {
@@ -355,20 +348,20 @@ const desktopPrimaryNavItems = computed(() => {
 const mobileNavItems = computed(() => {
   return [
     { to: "/home", label: "首页", icon: House, match: ["/home"] },
-    { to: "/services", label: "服务", icon: Service, match: ["/services"] },
-    { to: "/academic", label: "教务", icon: Calendar, match: ["/academic"], auth: true },
+    { to: "/market", label: "市集", icon: Goods, match: ["/market"] },
+    { to: "/square", label: "广场", icon: ChatLineRound, match: ["/square", "/forum"] },
+    { to: "/services", label: "工具", icon: Service, match: ["/services", "/academic"] },
     { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
   ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
 
 const drawerItems = computed(() => {
   const items: { to: string; label: string; icon: any }[] = [];
-  if (auth.canAccessForum && site.features.forum) items.push({ to: "/post", label: "发帖", icon: Edit });
   items.push({ to: "/messages", label: "消息", icon: Message });
   if (auth.isMod) items.push({ to: "/admin", label: "管理后台", icon: Tools });
-  if (site.features.forum) items.push({ to: "/forum", label: "论坛", icon: ChatLineRound });
-  if (site.features.market && auth.canAccessForum) items.push({ to: "/market", label: "商城", icon: Goods });
-  items.push({ to: "/services", label: "校园服务", icon: Service });
+  if (site.features.forum) items.push({ to: "/square", label: "广场", icon: ChatLineRound });
+  if (site.features.market) items.push({ to: "/market", label: "市集", icon: Goods });
+  items.push({ to: "/services", label: "工具", icon: Service });
   items.push({ to: "/academic", label: "eBridge 教务", icon: Calendar });
   items.push({ to: "/search", label: "搜索", icon: Search });
   return items;
@@ -840,7 +833,6 @@ function setAppearanceMode(command: string | number | object) {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px 14px;
   font-size: 12px;
   color: var(--cpu-text-muted);
 }
@@ -858,6 +850,20 @@ function setAppearanceMode(command: string | number | object) {
 .mobile-tabbar {
   display: none;
 }
+
+.footer-inner { width: min(1200px, 100%); display: grid; grid-template-columns: minmax(220px, 1fr) auto minmax(260px, 1fr); align-items: center; gap: 20px 34px; }
+.footer-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.footer-brand img { width: 38px; height: 38px; object-fit: contain; }
+.footer-brand div { display: grid; min-width: 0; }
+.footer-brand b { color: var(--cpu-text); font-size: 15px; }
+.footer-brand span { overflow: hidden; color: var(--cpu-text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.footer-inner nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; }
+.footer-inner nav a { color: var(--cpu-text-secondary); text-decoration: none; }
+.footer-inner nav a:hover { color: var(--cpu-primary); }
+.footer-safety { display: grid; justify-self: end; gap: 3px; text-align: right; }
+.footer-safety b { color: var(--cpu-text); font-size: 12px; }
+.footer-safety span { color: var(--cpu-text-secondary); font-size: 10px; }
+.footer-bottom { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px 14px; padding-top: 13px; border-top: 1px solid var(--cpu-border-soft); }
 
 .layout-root--tabbar-fallback.keyboard-open .main {
   padding-bottom: 12px;
@@ -1130,6 +1136,12 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (max-width: 768px) {
+  .footer-inner { grid-template-columns: 1fr; gap: 16px; }
+  .footer-brand { justify-content: center; }
+  .footer-inner nav { order: 2; }
+  .footer-safety { order: 3; justify-self: stretch; padding: 10px 12px; border-radius: 10px; background: var(--cpu-surface-soft); text-align: center; }
+  .footer-bottom { order: 4; }
+
   .layout-root.keyboard-open .main {
     padding-bottom: 12px;
   }

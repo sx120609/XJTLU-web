@@ -20,7 +20,7 @@
           <el-radio-button value="hot">最热</el-radio-button>
         </el-radio-group>
         <el-button v-if="canPost" type="primary" @click="goPost">
-          <el-icon><Edit /></el-icon> 发帖
+          <el-icon><Edit /></el-icon> {{ board?.slug === 'wanted-demand' ? '发布需求' : '发帖' }}
         </el-button>
       </div>
     </div>
@@ -182,6 +182,10 @@ function onSortChange() {
 function goPost() {
   if (!auth.isLoggedIn) {
     router.push({ name: "login", query: { redirect: route.fullPath } });
+    return;
+  }
+  if (board.value?.slug === "wanted-demand") {
+    router.push({ name: "publish-wanted" });
     return;
   }
   router.push({ name: "post", query: { board: route.params.slug } });

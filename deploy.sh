@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 药大拾间 一键部署脚本（Debian / Ubuntu）
+# 靠浦 XJTLU 一键部署脚本（Debian / Ubuntu）
 #
 # 用法：
 #   ./deploy.sh                  # 首次部署：装依赖 + 初始化 DB + 构建前端 + 启动
@@ -531,6 +531,10 @@ ensure_ffmpeg() {
   log "ffmpeg 已安装：$(ffmpeg -version 2>/dev/null | head -n 1)"
 }
 
+generate_secret() {
+  node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))'
+}
+
 ensure_env() {
   if [ ! -f "$ENV_FILE" ]; then
     log "首次部署，创建 server/.env"
@@ -538,7 +542,7 @@ ensure_env() {
 PORT=$PORT
 DATABASE_URL=""
 POSTGRES_DATABASE_URL=""
-JWT_SECRET="$(openssl rand -hex 32 2>/dev/null || echo "please-change-me-$(date +%s)")"
+JWT_SECRET="$(generate_secret)"
 JWT_EXPIRES_IN="7d"
 NODE_ENV=production
 TRUST_PROXY_HOPS="0"
@@ -587,7 +591,7 @@ ensure_proxy_env() {
     cat > server/.env <<EOF
 NODE_ENV=production
 PROXY_PORT=$PROXY_PORT
-PROXY_AUTH="$(openssl rand -hex 32 2>/dev/null || echo "please-change-proxy-auth-$(date +%s)")"
+PROXY_AUTH="$(generate_secret)"
 EOF
     log "已生成随机 PROXY_AUTH；请把同一个值配置到主服务 JWXT_PROXY_AUTH"
   fi
@@ -624,7 +628,7 @@ ensure_agent_env() {
   [ "${#token}" -ge 32 ] && [ "${#token}" -le 512 ] \
     || err "JWXT_AGENT_TOKEN 长度必须在 32 到 512 个字符之间"
   if [ -z "$(env_get JWT_SECRET)" ]; then
-    env_set JWT_SECRET "$(openssl rand -hex 32 2>/dev/null || echo "agent-local-secret-$(date +%s)-$RANDOM")"
+    env_set JWT_SECRET "$(generate_secret)"
     log "已为 Agent 生成本机 JWT_SECRET"
   fi
   if [ -z "$(env_get REDIS_ENABLED)" ]; then
@@ -675,10 +679,9 @@ do_db_init() {
     cd server && node -e 'const { PrismaClient } = require("@prisma/client"); const p = new PrismaClient(); p.user.count().then((c) => { console.log(c); }).catch(() => { console.log(""); process.exitCode = 1; }).finally(() => p.$disconnect());' 2>/dev/null | tr -d '[:space:]'
   )"
   if [ -z "$user_count" ] || [ "$user_count" = "0" ]; then
-    log "检测到空 PostgreSQL 库，写入种子数据"
-    npm run db:seed --prefix server
+    log "检测到空 PostgreSQL 库；生产部署不写入开发测试账号，默认板块将在服务启动时安全补齐"
   else
-    log "检测到 PostgreSQL 已有数据（User: $user_count），跳过 seed"
+    log "检测到 PostgreSQL 已有数据（User: $user_count），保留现有业务数据"
   fi
   log "清理旧 CPU-web 公告源与服务数据"
   npm run db:cleanup:xjtlu --prefix server

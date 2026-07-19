@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { amountCentsToMoney, moneyToAmountCents } from "./epay";
+import { runTrackedJob } from "./runtimeHealth";
 
 const SPONSOR_CONFIG_KEY = "sponsor.config";
 const SPONSOR_ORDER_EXPIRE_MS = 3 * 60 * 60 * 1000;
@@ -149,7 +150,12 @@ export function startSponsorOrderExpiryPoller() {
   if (sponsorOrderExpiryPollerStarted) return;
   sponsorOrderExpiryPollerStarted = true;
   const tick = () => {
-    runWithDistributedLock("sponsor-order-expiry:tick", 4 * 60_000, async () => closeExpiredSponsorOrders()).catch((error) => {
+    runTrackedJob(
+      "sponsor-order-expiry",
+      "赞助订单到期处理",
+      () => runWithDistributedLock("sponsor-order-expiry:tick", 4 * 60_000, async () => closeExpiredSponsorOrders()),
+      SPONSOR_ORDER_EXPIRE_SWEEP_MS,
+    ).catch((error) => {
       console.warn("[sponsor] close expired orders failed", error);
     });
   };

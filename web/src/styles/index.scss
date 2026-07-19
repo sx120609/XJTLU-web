@@ -155,10 +155,6 @@ canvas {
   box-shadow: var(--cpu-shadow-md);
 }
 
-.cpu-card + .cpu-card {
-  margin-top: 16px;
-}
-
 .cpu-section-title {
   font-size: 18px;
   font-weight: 600;
@@ -1098,5 +1094,40 @@ html[data-theme="dark"] {
   .el-message {
     right: 12px !important;
     max-width: calc(100dvw - 24px);
+  }
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 10000;
+  top: 8px;
+  left: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--cpu-primary);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--cpu-primary) 64%, white);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

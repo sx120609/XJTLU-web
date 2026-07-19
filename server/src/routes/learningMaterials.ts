@@ -9,6 +9,7 @@ import { prisma } from "../prisma";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
+import { positiveRouteInteger, queryPage, querySize } from "../utils/query";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import {
@@ -40,6 +41,13 @@ import {
   type LearningMaterialProfileInput,
 } from "../services/learningMaterials";
 import { normalizeMulterOriginalNames } from "../utils/uploadFilename";
+import { MARKET_PUBLIC_USER_SELECT } from "../services/marketPublicUser";
+import {
+  PAID_LEARNING_MATERIALS_ENABLED,
+  PAID_MATERIAL_DISABLED_MESSAGE,
+  isAllowedLearningMaterialPrice,
+} from "../services/marketPolicy";
+import { evaluateMarketContent } from "../services/marketTrust";
 
 export const learningMaterialsRouter = Router();
 const materialStaffRequired: RequestHandler = (req, _res, next) => {
@@ -54,6 +62,31 @@ const PRIVATE_MATERIAL_UPLOAD_TMP = path.resolve(process.cwd(), "runtime", "lear
 const MAX_MATERIAL_FILE_BYTES = 100 * 1024 * 1024;
 mkdirSync(PRIVATE_MATERIAL_UPLOAD_TMP, { recursive: true });
 
+async function ensureLearningMaterialCategory() {
+  return prisma.marketCategory.upsert({
+    where: { slug: CATEGORY },
+    update: {
+      name: "免费原创",
+      icon: "📁",
+      description: "同学原创、已获授权或基于公开资料整理的免费学习内容",
+      fulfillmentType: "digital",
+      imageRequired: false,
+      enabled: true,
+      sort: 30,
+    },
+    create: {
+      slug: CATEGORY,
+      name: "免费原创",
+      icon: "📁",
+      description: "同学原创、已获授权或基于公开资料整理的免费学习内容",
+      fulfillmentType: "digital",
+      imageRequired: false,
+      enabled: true,
+      sort: 30,
+    },
+  });
+}
+
 const materialFileUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, callback) => callback(null, PRIVATE_MATERIAL_UPLOAD_TMP),
@@ -65,16 +98,6 @@ const materialFileUpload = multer({
     callback(null, true);
   },
 });
-
-const publicUserSelect = {
-  id: true,
-  username: true,
-  nickname: true,
-  avatar: true,
-  role: true,
-  studentSso: true,
-  createdAt: true,
-} as const;
 
 const safeFileSelect = {
   id: true,
@@ -89,7 +112,7 @@ const safeFileSelect = {
 
 function materialItemInclude(viewerId?: number): any {
   return {
-    seller: { select: publicUserSelect },
+    seller: { select: MARKET_PUBLIC_USER_SELECT },
     images: { orderBy: [{ sort: "asc" as const }, { id: "asc" as const }] },
     topic: { select: { id: true, replyCount: true, likeCount: true, hidden: true, aiReviewStatus: true } },
     favorites: viewerId ? { where: { userId: viewerId }, select: { userId: true } } : false,
@@ -303,8 +326,8 @@ async function assertPublishableProfile(input: LearningMaterialProfileInput, use
 
 learningMaterialsRouter.get("/meta", async (req, res, next) => {
   try {
-    await ensureDefaultTypes();
-    const [category, itemCount, incompleteCount, types] = await Promise.all([
+    await Promise.all([ensureDefaultTypes(), ensureLearningMaterialCategory()]);
+    const [category, itemCount, incompleteCount, types, contentRules] = await Promise.all([
       prisma.marketCategory.findUnique({ where: { slug: CATEGORY } }),
       prisma.marketItem.count({ where: { category: CATEGORY, status: "active" } }),
       prisma.marketItem.count({ where: { category: CATEGORY, status: "active", learningMaterial: null } }),
@@ -318,6 +341,11 @@ learningMaterialsRouter.get("/meta", async (req, res, next) => {
         },
         orderBy: [{ status: "asc" }, { sort: "asc" }, { id: "asc" }],
       }),
+      prisma.marketSafetyRule.findMany({
+        where: { enabled: true, scope: { in: ["learning", "all"] } },
+        select: { id: true, scope: true, category: true, action: true, note: true },
+        orderBy: [{ action: "asc" }, { id: "asc" }],
+      }),
     ]);
     if (!category || !category.enabled) throw Errors.notFound("特色学习资料分类不存在");
     ok(res, {
@@ -328,6 +356,7 @@ learningMaterialsRouter.get("/meta", async (req, res, next) => {
       originalityOptions: LEARNING_MATERIAL_ORIGINALITY,
       supportCategories: LEARNING_MATERIAL_SUPPORT_CATEGORIES,
       types,
+      contentRules,
       legacyIncompleteCount: incompleteCount,
     });
   } catch (error) { next(error); }
@@ -380,8 +409,9 @@ learningMaterialsRouter.post("/types", authRequired, validate(customTypeSchema),
 learningMaterialsRouter.get("/items", async (req, res, next) => {
   try {
     if (!isFeatureOn("market")) throw Errors.forbidden("商城当前已关闭");
-    const page = Math.max(1, Number(req.query.page || 1));
-    const size = Math.min(60, Math.max(1, Number(req.query.size || 24)));
+    await ensureLearningMaterialCategory();
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 24, 1, 60);
     const status = String(req.query.status || "active");
     const q = String(req.query.q || "").trim();
     const courseCode = normalizeCourseCode(String(req.query.courseCode || ""));
@@ -435,7 +465,8 @@ learningMaterialsRouter.get("/items", async (req, res, next) => {
 
 learningMaterialsRouter.get("/items/:id", async (req, res, next) => {
   try {
-    const id = Number(req.params.id);
+    const id = positiveRouteInteger(req.params.id);
+    if (!id) throw Errors.badRequest("学习资料 ID 不合法");
     const item = await prisma.marketItem.findUnique({ where: { id }, include: materialItemInclude(req.user?.userId) });
     if (!item || item.category !== CATEGORY || (item.status === "hidden" && !["admin", "mod"].includes(req.user?.role || "") && req.user?.userId !== item.sellerId)) {
       throw Errors.notFound("学习资料不存在");
@@ -458,9 +489,12 @@ learningMaterialsRouter.post("/items/:id/purchase", authRequired, async (req, re
     await ensureUserCanSpeak(buyerId);
     const item = await prisma.marketItem.findUnique({
       where: { id: itemId },
-      include: { learningMaterial: { include: { activeVersion: true } }, seller: { select: publicUserSelect } },
+      include: { learningMaterial: { include: { activeVersion: true } }, seller: { select: MARKET_PUBLIC_USER_SELECT } },
     });
     if (!item || item.category !== CATEGORY || item.status !== "active") throw Errors.badRequest("该学习资料当前不可购买");
+    if (!PAID_LEARNING_MATERIALS_ENABLED && !isAllowedLearningMaterialPrice(item.priceCents)) {
+      throw Errors.forbidden(PAID_MATERIAL_DISABLED_MESSAGE);
+    }
     if (item.sellerId === buyerId) throw Errors.badRequest("不能购买自己发布的学习资料");
     if (!item.learningMaterial?.activeVersionId || !item.learningMaterial.activeVersion) throw Errors.badRequest("该资料尚未发布可交付文件版本");
     const existing = await prisma.marketOrder.findFirst({
@@ -478,8 +512,8 @@ learningMaterialsRouter.post("/items/:id/purchase", authRequired, async (req, re
     }
     const config = await prisma.marketConfig.upsert({
       where: { id: 1 },
-      update: { commissionBps: 0 },
-      create: { id: 1, commissionBps: 0, learningMaterialCommissionBps: 500 },
+      update: { commissionBps: 0, learningMaterialCommissionBps: 0 },
+      create: { id: 1, commissionBps: 0, learningMaterialCommissionBps: 0 },
     });
     const amounts = calculateMarketOrderAmounts(item.priceCents, marketCommissionBpsForItem(item, config));
     const now = new Date();
@@ -529,7 +563,7 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
     await requireVerifiedMaterialUser(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
-    await ensureDefaultTypes();
+    await Promise.all([ensureDefaultTypes(), ensureLearningMaterialCategory()]);
     const input = req.body as z.infer<typeof materialItemInputSchema>;
     await getUsableType(input.profile.typeId, userId, input.draft);
     if (!input.draft) await assertPublishableProfile(input.profile, userId);
@@ -539,7 +573,18 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
     const board = await prisma.board.findUnique({ where: { slug: "market" } });
     if (!board) throw Errors.notFound("商城板块不存在");
     const amount = priceCents(input.price) ?? 0;
+    if (!PAID_LEARNING_MATERIALS_ENABLED && !isAllowedLearningMaterialPrice(amount)) {
+      throw Errors.badRequest(PAID_MATERIAL_DISABLED_MESSAGE);
+    }
     const originalAmount = priceCents(input.originalPrice);
+    const contentSafety = await evaluateMarketContent(prisma, [
+      input.title,
+      input.description,
+      input.profile.originalityStatement,
+    ], "learning");
+    if (contentSafety.action === "block") {
+      throw Errors.badRequest(contentSafety.matches[0]?.note || "该资料不符合免费原创内容发布规则");
+    }
     const metadata = {
       marketItem: true,
       learningMaterial: true,
@@ -596,6 +641,7 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
           campus: "",
           location: "",
           status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",
+          moderationNote: contentSafety.action === "review" ? (contentSafety.matches[0]?.note || "内容需要人工复核") : "",
           images: { create: input.images.map((url, sort) => ({ url, sort })) },
           learningMaterial: { create: profileData(input.profile) },
         },
@@ -622,6 +668,10 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
     if (!current || current.category !== CATEGORY) throw Errors.notFound("学习资料不存在");
     if (current.sellerId !== userId && !["admin", "mod"].includes(req.user!.role)) throw Errors.forbidden("无权修改该资料");
     const input = req.body as z.infer<typeof materialItemPatchSchema>;
+    const requestedPrice = input.price === undefined ? current.priceCents : (priceCents(input.price) ?? 0);
+    if (!PAID_LEARNING_MATERIALS_ENABLED && !isAllowedLearningMaterialPrice(requestedPrice)) {
+      throw Errors.badRequest(PAID_MATERIAL_DISABLED_MESSAGE);
+    }
     if (input.status && !["admin", "mod"].includes(req.user!.role) && !["active", "withdrawn", "draft"].includes(input.status)) {
       throw Errors.forbidden("不能切换到该资料状态");
     }
@@ -647,6 +697,17 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
     if (isPublishing && !current.learningMaterial?.activeVersion && !current.digitalDeliveryEncrypted) {
       throw Errors.badRequest("正式发布前请先上传并发布至少一个资料文件版本");
     }
+    const nextTitle = input.title === undefined ? current.title : input.title;
+    const nextDescription = input.description === undefined ? current.description : input.description;
+    const contentSafety = await evaluateMarketContent(prisma, [
+      nextTitle,
+      nextDescription,
+      nextProfile.originalityStatement,
+    ], "learning");
+    if (contentSafety.action === "block") {
+      throw Errors.badRequest(contentSafety.matches[0]?.note || "该资料不符合免费原创内容发布规则");
+    }
+    const requiresRuleReview = contentSafety.action === "review" && (isPublishing || current.status === "active");
     const updated = await prisma.$transaction(async (tx) => {
       if (input.images) {
         await tx.marketImage.deleteMany({ where: { itemId: id } });
@@ -658,8 +719,10 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
           data: {
             title: input.title,
             content: input.description,
-            locked: input.status === "withdrawn" ? true : input.status === "active" ? false : undefined,
-            hidden: input.status === "active" ? false : input.status === "draft" ? true : undefined,
+             locked: input.status === "withdrawn" ? true : input.status === "active" ? false : undefined,
+             hidden: requiresRuleReview ? true : input.status === "active" ? false : input.status === "draft" ? true : undefined,
+             aiReviewStatus: requiresRuleReview ? "manual_requested" : undefined,
+             aiReviewReason: requiresRuleReview ? (contentSafety.matches[0]?.note || "内容需要人工复核") : undefined,
             metadata: JSON.stringify({
               ...previousTopicMeta,
               price: input.price === undefined ? Number(amountCentsToMoney(current.priceCents)) : Number(input.price),
@@ -677,7 +740,8 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
         description: input.description,
         priceCents: input.price === undefined ? undefined : priceCents(input.price),
         originalPriceCents: input.originalPrice === undefined ? undefined : priceCents(input.originalPrice),
-        status: input.status || (input.draft === undefined ? undefined : input.draft ? "draft" : "active"),
+        status: requiresRuleReview ? "reviewing" : input.status || (input.draft === undefined ? undefined : input.draft ? "draft" : "active"),
+        moderationNote: requiresRuleReview ? (contentSafety.matches[0]?.note || "内容需要人工复核") : undefined,
       };
       if (input.profile) {
         await tx.learningMaterialProfile.upsert({
@@ -686,7 +750,7 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
           create: { itemId: id, ...profileData(nextProfile) },
         });
       }
-      if (isPublishing && !wasPublished && current.topic) {
+      if (isPublishing && !requiresRuleReview && !wasPublished && current.topic) {
         await tx.user.update({ where: { id: current.sellerId }, data: { postCount: { increment: 1 } } });
         await tx.board.update({ where: { id: current.topic.boardId }, data: { topicCount: { increment: 1 } } });
       }
@@ -808,11 +872,11 @@ learningMaterialsRouter.get("/library", authRequired, async (req, res, next) => 
     const accesses = await prisma.learningMaterialAccess.findMany({
       where: { userId: req.user!.userId, revokedAt: null },
       include: {
-        order: { include: { item: { include: { seller: { select: publicUserSelect }, images: { orderBy: { sort: "asc" } } } } } },
+        order: { include: { item: { include: { seller: { select: MARKET_PUBLIC_USER_SELECT }, images: { orderBy: { sort: "asc" } } } } } },
         version: {
           include: {
             files: { where: { status: "active" }, select: safeFileSelect, orderBy: { id: "asc" } },
-            profile: { include: { type: true, item: { include: { seller: { select: publicUserSelect }, images: { orderBy: { sort: "asc" } }, topic: true, _count: { select: { favorites: true, offers: true } } } } } },
+            profile: { include: { type: true, item: { include: { seller: { select: MARKET_PUBLIC_USER_SELECT }, images: { orderBy: { sort: "asc" } }, topic: true, _count: { select: { favorites: true, offers: true } } } } } },
           },
         },
       },
@@ -874,10 +938,10 @@ const supportActionSchema = z.object({ action: z.enum(["resolve", "reopen", "esc
 
 function supportInclude() {
   return {
-    buyer: { select: publicUserSelect },
-    seller: { select: publicUserSelect },
+    buyer: { select: MARKET_PUBLIC_USER_SELECT },
+    seller: { select: MARKET_PUBLIC_USER_SELECT },
     order: { include: { item: { include: { images: { orderBy: { sort: "asc" as const }, take: 1 }, learningMaterial: { include: { type: true } } } } } },
-    messages: { include: { sender: { select: publicUserSelect } }, orderBy: { createdAt: "asc" as const }, take: 300 },
+    messages: { include: { sender: { select: MARKET_PUBLIC_USER_SELECT } }, orderBy: { createdAt: "asc" as const }, take: 300 },
   } as const;
 }
 
@@ -970,7 +1034,7 @@ learningMaterialsRouter.post("/support/:id/messages", authRequired, validate(sup
     if (["closed"].includes(ticket.status)) throw Errors.badRequest("该售后服务单已经关闭");
     const isBuyer = ticket.buyerId === userId;
     const message = await prisma.$transaction(async (tx) => {
-      const created = await tx.learningMaterialSupportMessage.create({ data: { ticketId: id, senderId: userId, content: req.body.content }, include: { sender: { select: publicUserSelect } } });
+      const created = await tx.learningMaterialSupportMessage.create({ data: { ticketId: id, senderId: userId, content: req.body.content }, include: { sender: { select: MARKET_PUBLIC_USER_SELECT } } });
       await tx.learningMaterialSupportTicket.update({
         where: { id },
         data: { status: isBuyer ? "waiting_seller" : "waiting_buyer", responseDueAt: isBuyer ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null },
@@ -1059,7 +1123,7 @@ learningMaterialsRouter.get("/admin/overview", authRequired, materialStaffRequir
 learningMaterialsRouter.get("/admin/types", authRequired, materialStaffRequired, async (_req, res, next) => {
   try {
     const list = await prisma.learningMaterialType.findMany({
-      include: { createdBy: { select: publicUserSelect }, mergedInto: true, _count: { select: { materials: true } } },
+      include: { createdBy: { select: MARKET_PUBLIC_USER_SELECT }, mergedInto: true, _count: { select: { materials: true } } },
       orderBy: [{ status: "desc" }, { sort: "asc" }, { createdAt: "desc" }],
     });
     ok(res, list.map(serializeAdminMaterialType));
@@ -1093,7 +1157,7 @@ learningMaterialsRouter.patch("/admin/types/:id", authRequired, materialStaffReq
       if (current.status !== "approved") throw Errors.badRequest("只有审核通过的资料类型可以重新启用");
       await prisma.learningMaterialType.update({ where: { id }, data: { enabled: true } });
     }
-    const updated = await prisma.learningMaterialType.findUnique({ where: { id }, include: { createdBy: { select: publicUserSelect }, mergedInto: true, _count: { select: { materials: true } } } });
+    const updated = await prisma.learningMaterialType.findUnique({ where: { id }, include: { createdBy: { select: MARKET_PUBLIC_USER_SELECT }, mergedInto: true, _count: { select: { materials: true } } } });
     ok(res, serializeAdminMaterialType(updated));
   } catch (error) { next(error); }
 });

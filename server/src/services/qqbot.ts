@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { runWithDistributedLock } from "./cache";
+import { runTrackedJob } from "./runtimeHealth";
 import { ensureForumAccessEnabled } from "./forumAccess";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
@@ -2390,12 +2391,14 @@ async function replyToPrivateForPosting(
 export function startQqNotificationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
-  const tick = () => runWithDistributedLock("qqbot-notification-dispatch:tick", 25_000, async () => {
-    await Promise.all([
-      dispatchRecentQqNotifications(),
-      syncPendingDoubtFriendRequests({ reason: "poller" }),
-    ]);
-  }).catch((error) => {
+  const tick = () => runTrackedJob("qqbot-notification", "QQBot 通知派发", () => (
+    runWithDistributedLock("qqbot-notification-dispatch:tick", 25_000, async () => {
+      await Promise.all([
+        dispatchRecentQqNotifications(),
+        syncPendingDoubtFriendRequests({ reason: "poller" }),
+      ]);
+    })
+  ), 30_000).catch((error) => {
     console.warn("[qqbot] notification dispatch failed", error);
   });
   connectQqBotWebSocket().catch((error) => {

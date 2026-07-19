@@ -10,7 +10,7 @@ import { prisma } from "../prisma";
 import { broadcastSiteSettingsReload } from "./runtimeBroadcast";
 import { normalizeFallbackModelList } from "./modelFallback";
 
-export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor" | "promotion";
 export type AnonymousTierConfig = {
   reputation: number;
   quota: number;
@@ -96,7 +96,7 @@ export type SitePromptDefaults = Pick<
   | "aiEditSimilarityUserPrompt"
 >;
 
-export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric", "sponsor"];
+export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric", "sponsor", "promotion"];
 export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
   { reputation: 30, quota: 1 },
   { reputation: 60, quota: 2 },
@@ -300,6 +300,7 @@ const cache: Record<FeatureKey, boolean> = {
   coursereview: true,
   electric: true,
   sponsor: true,
+  promotion: true,
 };
 let globalPinnedTopicIdsCache: number[] = [];
 
@@ -863,9 +864,10 @@ export function enabledBoardTypes(): string[] {
 
 export function featureClosedMessage(type: string | null | undefined): string {
   const feature = featureForBoardType(type);
-  if (feature === "market") return "商城当前已关闭";
+  if (feature === "market") return "市集当前已关闭";
   if (feature === "coursereview") return "课程点评当前已关闭";
   if (feature === "forum") return "论坛当前已关闭";
+  if (feature === "promotion") return "推广与合作商户展示当前已关闭";
   return "该功能当前不可用";
 }
 

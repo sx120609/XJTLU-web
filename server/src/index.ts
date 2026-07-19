@@ -7,6 +7,7 @@ import { loadFeatures } from "./services/siteSettings";
 import { loadStorageConfig } from "./services/storageConfig";
 import { startWeiwallSyncScheduler } from "./services/weiwallSync";
 import { startXjtluAnnouncementSyncScheduler } from "./services/xjtluAnnouncementSync";
+import { backfillWantedDemandTopics } from "./services/wantedDemandTopic";
 
 async function start() {
   const app = createApp();
@@ -23,6 +24,11 @@ async function start() {
     if (createdBoards.length) {
       console.log(`🏛️  已补齐默认板块: ${createdBoards.map((board) => board.name).join("、")}`);
     }
+    const backfilledWantedTopics = await backfillWantedDemandTopics().catch((e) => {
+      console.warn("backfillWantedDemandTopics failed:", e?.message);
+      return 0;
+    });
+    if (backfilledWantedTopics) console.log(`🧾 已补齐求购需求帖子: ${backfilledWantedTopics} 条`);
     await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
     await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));
     startScheduler();
@@ -32,6 +38,6 @@ async function start() {
 }
 
 start().catch((error) => {
-  console.error("CPU-web 后端启动失败", error);
+  console.error("靠浦服务端启动失败", error);
   process.exit(1);
 });

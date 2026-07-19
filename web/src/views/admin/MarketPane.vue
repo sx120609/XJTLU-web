@@ -1,128 +1,388 @@
 <template>
   <div class="market-admin" v-loading="loading">
-    <div class="pane-head"><div><h2>商城运营</h2><p>商品品类、平台支付、退款、举报与卖家结算集中处理。支付沿用系统易支付配置。</p></div><el-button @click="load">刷新</el-button></div>
-    <section class="commission-card">
-      <div><h3>学习资料平台服务费</h3><p>实体二手商品固定 0% 不抽成；只有靠浦特色学习资料按此比例计费，并在订单生成时锁定。</p></div>
-      <div class="commission-form"><el-input-number v-model="learningMaterialCommissionRate" :min="0" :max="50" :precision="2" :step="0.5" /><span>%</span><el-button type="primary" :loading="savingConfig" @click="saveConfig">保存比例</el-button></div>
-    </section>
-    <section class="material-admin-card">
-      <header><div><h3>特色学习资料治理</h3><p>审核卖家创建的资料类型，监控资料、版本、文件和升级售后。合并类型会自动迁移已有资料。</p></div><el-tag v-if="materialOverview.pendingTypes" type="warning">{{ materialOverview.pendingTypes }} 个待审核</el-tag></header>
-      <div class="material-summary"><span><b>{{ materialOverview.activeItems }}</b>在售资料</span><span><b>{{ materialOverview.activeVersions }}</b>有效版本</span><span><b>{{ materialOverview.files }}</b>私有文件</span><span><b>{{ materialOverview.incompleteProfiles }}</b>待补元数据</span><span><b>{{ materialOverview.escalatedTickets }}</b>平台介入</span></div>
-      <el-table :data="materialTypes" size="small">
-        <el-table-column label="资料类型" min-width="190"><template #default="{row}"><b>{{row.name}}</b><small>{{row.source==='builtin'?'平台预设':`卖家创建 · ${row.createdBy?.nickname || row.createdBy?.username || '未知'}`}}</small></template></el-table-column>
-        <el-table-column label="资料数" width="85"><template #default="{row}">{{row._count?.profiles || 0}}</template></el-table-column>
-        <el-table-column label="状态" width="105"><template #default="{row}"><el-tag :type="materialTypeStatusType(row)">{{materialTypeStatus(row)}}</el-tag></template></el-table-column>
-        <el-table-column label="合并到" min-width="130"><template #default="{row}">{{row.mergedInto?.name || '—'}}</template></el-table-column>
-        <el-table-column label="操作" min-width="250" align="right"><template #default="{row}"><el-button v-if="row.status==='pending'" link type="success" @click="updateMaterialType(row,'approve')">通过</el-button><el-button v-if="row.status==='pending'" link type="danger" @click="updateMaterialType(row,'reject')">拒绝</el-button><el-button v-if="row.status==='approved'&&row.enabled" link @click="updateMaterialType(row,'disable')">停用</el-button><el-button v-if="row.status==='approved'&&!row.enabled" link type="success" @click="updateMaterialType(row,'enable')">启用</el-button><el-button v-if="row.status!=='merged'" link type="primary" @click="mergeMaterialType(row)">合并</el-button></template></el-table-column>
-      </el-table>
-      <div v-if="materialTickets.length" class="escalated-list"><h4>需要处理的资料售后</h4><article v-for="ticket in materialTickets" :key="ticket.id"><div><b>{{ticket.order?.item?.title || `订单 #${ticket.orderId}`}}</b><span>{{ticket.status==='escalated'?'平台介入':ticket.status}} · {{ticket.buyer?.nickname || ticket.buyer?.username}} → {{ticket.seller?.nickname || ticket.seller?.username}}</span></div><router-link :to="{name:'market-learning-material-support',query:{ticket:ticket.id}}">进入服务单</router-link></article></div>
-    </section>
+    <div class="pane-head">
+      <div>
+        <h2>市集运营</h2>
+        <p>管理实体商品品类、交易内容与举报。学生商品款由买家直接支付给卖家。</p>
+      </div>
+      <el-button @click="load">刷新</el-button>
+    </div>
+
+    <el-alert
+      type="warning"
+      :closable="false"
+      show-icon
+      title="学生商品支付、退款、结算、提现及付费数字资料已冻结；历史交易记录仅供审计查看。"
+    />
+
     <section class="category-card">
-      <header><div><h3>商品品类</h3><p>品类会实时同步到商城首页和发布页面；“电子资料”类型使用付款后线上发货。</p></div><el-button type="primary" size="small" @click="openCategory()">新增品类</el-button></header>
+      <header>
+        <div>
+          <h3>实体商品品类</h3>
+          <p>品类会同步到市集和发布页；当前阶段禁止新增或恢复数字商品品类。</p>
+        </div>
+        <el-button type="primary" size="small" @click="openCategory()">新增品类</el-button>
+      </header>
       <el-table :data="categories" size="small">
-        <el-table-column label="品类" min-width="180"><template #default="{row}"><b>{{row.icon}} {{row.name}}</b><small>{{row.slug}}</small></template></el-table-column>
+        <el-table-column label="品类" min-width="180">
+          <template #default="{ row }">
+            <b>{{ row.icon }} {{ row.name }}</b>
+            <small>{{ row.slug }}</small>
+          </template>
+        </el-table-column>
         <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
-        <el-table-column label="交付" width="105"><template #default="{row}"><el-tag :type="row.fulfillmentType==='digital'?'success':'info'">{{row.fulfillmentType==='digital'?'线上发货':'实体交付'}}</el-tag></template></el-table-column>
-        <el-table-column label="图片" width="90"><template #default="{row}">{{row.imageRequired?'出售必填':'选填'}}</template></el-table-column>
+        <el-table-column label="交付" width="115">
+          <template #default="{ row }">
+            <el-tag :type="row.fulfillmentType === 'digital' ? 'warning' : 'info'">
+              {{ row.fulfillmentType === "digital" ? "已停用数字类" : "实体交付" }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="图片" width="95">
+          <template #default="{ row }">{{ row.imageRequired ? "出售必填" : "选填" }}</template>
+        </el-table-column>
         <el-table-column prop="itemCount" label="商品数" width="80" />
         <el-table-column prop="sort" label="排序" width="70" />
-        <el-table-column label="状态" width="80"><template #default="{row}"><el-tag :type="row.enabled?'success':'info'">{{row.enabled?'启用':'停用'}}</el-tag></template></el-table-column>
-        <el-table-column label="操作" width="145"><template #default="{row}"><el-button link type="primary" @click="openCategory(row)">编辑</el-button><el-button link type="danger" @click="removeCategory(row)">删除</el-button></template></el-table-column>
+        <el-table-column label="状态" width="80">
+          <template #default="{ row }">
+            <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? "启用" : "停用" }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="145">
+          <template #default="{ row }">
+            <el-button link type="primary" :disabled="row.fulfillmentType === 'digital'" @click="openCategory(row)">编辑</el-button>
+            <el-button link type="danger" :disabled="row.fulfillmentType === 'digital'" @click="removeCategory(row)">删除</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </section>
+
     <div class="summary">
-      <article><b>{{ overview.counts?.active || 0 }}</b><span>在售</span></article><article><b>{{ overview.counts?.reserved || 0 }}</b><span>已预订</span></article><article><b>{{ overview.counts?.sold || 0 }}</b><span>已售</span></article><article><b>{{ pendingReports }}</b><span>待处理举报</span></article><article><b>{{ pendingRefunds }}</b><span>待处理退款</span></article><article><b>{{ availableSettlements }}</b><span>待结算</span></article>
+      <article><b>{{ overview.counts?.active || 0 }}</b><span>在售</span></article>
+      <article><b>{{ overview.counts?.reserved || 0 }}</b><span>已预订</span></article>
+      <article><b>{{ overview.counts?.sold || 0 }}</b><span>已成交</span></article>
+      <article><b>{{ pendingReview }}</b><span>待审核内容</span></article>
+      <article><b>{{ pendingReports }}</b><span>待处理举报</span></article>
+      <article><b>{{ pendingAppeals }}</b><span>待处理申诉</span></article>
     </div>
-    <el-alert type="info" :closable="false" show-icon title="支付说明">买家通过易支付付款，异步签名回调确认到账；退款需在易支付商户后台完成后，将退款单号登记在这里，平台才会恢复商品与订单状态。</el-alert>
+
     <el-tabs v-model="tab">
-      <el-tab-pane label="退款处理" name="refunds">
-        <el-table :data="overview.refunds || []" stripe>
-          <el-table-column label="订单/商品" min-width="220"><template #default="{row}"><b>#{{row.orderId}} {{row.order?.item?.title}}</b><small>{{row.order?.buyer?.nickname}} → {{row.order?.seller?.nickname}}</small></template></el-table-column>
-          <el-table-column prop="amount" label="金额" width="100"><template #default="{row}">¥{{row.amount}}</template></el-table-column>
-          <el-table-column prop="reason" label="原因" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="status" label="状态" width="100"><template #default="{row}"><el-tag :type="statusType(row.status)">{{statusLabel(row.status)}}</el-tag></template></el-table-column>
-          <el-table-column label="操作" width="290"><template #default="{row}"><el-button v-if="row.status==='pending'" size="small" @click="handleRefund(row,'approved')">批准</el-button><el-button v-if="['pending','approved'].includes(row.status)" size="small" type="success" @click="completeRefund(row)">登记已退款</el-button><el-button v-if="['pending','approved'].includes(row.status)" size="small" type="danger" plain @click="handleRefund(row,'rejected')">拒绝</el-button></template></el-table-column>
-        </el-table>
-        <el-empty v-if="!overview.refunds?.length" description="暂无退款申请" />
+      <el-tab-pane label="发布审核" name="moderation">
+        <h3 class="table-title">待审核商品</h3>
+        <el-table :data="overview.reviewItems || []" stripe>
+          <el-table-column label="商品" min-width="220"><template #default="{ row }"><router-link :to="`/market/item/${row.id}`">{{ row.title }}</router-link><small>{{ row.seller?.nickname || '校园用户' }} · ¥{{ row.price }}</small></template></el-table-column>
+          <el-table-column prop="category" label="品类" width="120" /><el-table-column prop="flaws" label="瑕疵说明" min-width="180" show-overflow-tooltip /><el-table-column label="操作" width="210"><template #default="{ row }"><el-button size="small" type="primary" @click="moderateItem(row, 'active')">通过</el-button><el-button size="small" type="danger" plain @click="moderateItem(row, 'hidden')">移除</el-button></template></el-table-column>
+        </el-table><el-empty v-if="!overview.reviewItems?.length" description="暂无待审核商品" />
+
+        <h3 class="table-title spaced">求购审核与过期记录</h3>
+        <el-table :data="overview.wantedModeration || []" stripe>
+          <el-table-column label="求购" min-width="220"><template #default="{ row }"><router-link :to="`/market/wanted/${row.id}`">{{ row.title }}</router-link><small>{{ row.author?.nickname || '校园用户' }} · 预算 ¥{{ row.budgetMin }}–{{ row.budgetMax }}</small></template></el-table-column>
+          <el-table-column prop="status" label="状态" width="100"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
+          <el-table-column prop="description" label="需求说明" min-width="180" show-overflow-tooltip /><el-table-column label="操作" width="210"><template #default="{ row }"><el-button v-if="row.status !== 'active'" size="small" type="primary" @click="moderateWanted(row, 'active')">通过/恢复</el-button><el-button v-if="row.status !== 'removed'" size="small" type="danger" plain @click="moderateWanted(row, 'removed')">移除</el-button></template></el-table-column>
+        </el-table><el-empty v-if="!overview.wantedModeration?.length" description="暂无待审核或过期求购" />
       </el-tab-pane>
-      <el-tab-pane label="卖家结算" name="settlements">
-        <el-table :data="overview.settlements || []" stripe>
-          <el-table-column label="订单/商品" min-width="220"><template #default="{row}"><b>#{{row.orderId}} {{row.order?.item?.title}}</b><small>卖家：{{row.seller?.nickname || row.seller?.username}}</small></template></el-table-column>
-          <el-table-column label="成交/佣金/应结" width="180"><template #default="{row}"><b>¥{{row.order?.amount}}</b><small>佣金 ¥{{row.order?.platformFee}} · 应结 ¥{{row.amount}}</small></template></el-table-column>
-          <el-table-column prop="status" label="状态" width="100"><template #default="{row}"><el-tag :type="statusType(row.status)">{{statusLabel(row.status)}}</el-tag></template></el-table-column>
-          <el-table-column label="操作" width="300"><template #default="{row}"><el-button size="small" @click="showPayout(row)">收款资料</el-button><el-button v-if="row.status==='available'" size="small" @click="updateSettlement(row,'held')">暂缓</el-button><el-button v-if="row.status!=='settled'" size="small" type="success" @click="settle(row)">登记已结算</el-button></template></el-table-column>
-        </el-table>
-        <el-empty v-if="!overview.settlements?.length" description="暂无结算单" />
+
+      <el-tab-pane label="过期商品" name="expired">
+        <el-table :data="overview.expiredItems || []" stripe><el-table-column label="商品" min-width="220"><template #default="{ row }"><router-link :to="`/market/item/${row.id}`">{{ row.title }}</router-link><small>{{ row.seller?.nickname || '校园用户' }} · ¥{{ row.price }}</small></template></el-table-column><el-table-column prop="expiresAt" label="过期时间" min-width="170"><template #default="{ row }">{{ new Date(row.expiresAt).toLocaleString('zh-CN') }}</template></el-table-column><el-table-column label="操作" width="130"><template #default="{ row }"><el-button size="small" @click="moderateItem(row, 'active')">恢复 30 天</el-button></template></el-table-column></el-table><el-empty v-if="!overview.expiredItems?.length" description="暂无过期商品" />
       </el-tab-pane>
-      <el-tab-pane label="商品举报" name="reports">
+
+      <el-tab-pane label="市集举报" name="reports">
         <el-table :data="overview.reports || []" stripe>
-          <el-table-column label="商品" min-width="220"><template #default="{row}"><router-link :to="reportRoute(row)">{{row.item?.title}}</router-link><small>举报人：{{row.reporter?.nickname || row.reporter?.username}}</small></template></el-table-column>
-          <el-table-column prop="reason" label="原因" width="140" /><el-table-column prop="detail" label="详情" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="status" label="状态" width="100"><template #default="{row}"><el-tag :type="statusType(row.status)">{{statusLabel(row.status)}}</el-tag></template></el-table-column>
-          <el-table-column label="操作" width="260"><template #default="{row}"><el-button v-if="row.status==='pending'" size="small" type="danger" @click="handleReport(row,true)">下架并处理</el-button><el-button v-if="row.status==='pending'" size="small" @click="handleReport(row,false)">驳回</el-button></template></el-table-column>
+          <el-table-column label="举报对象" min-width="220">
+            <template #default="{ row }">
+              <router-link v-if="reportRoute(row)" :to="reportRoute(row)">{{ reportTarget(row) }}</router-link><b v-else>{{ reportTarget(row) }}</b>
+              <small>{{ reportType(row.type) }} · 举报人：{{ row.reporter?.nickname || "校园用户" }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column prop="reason" label="原因" width="140" />
+          <el-table-column prop="detail" label="详情" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="操作" width="260">
+            <template #default="{ row }">
+              <el-button v-if="row.status === 'pending'" size="small" type="danger" @click="handleReport(row, true)">处置并处理</el-button>
+              <el-button v-if="row.status === 'pending'" size="small" @click="handleReport(row, false)">驳回</el-button>
+            </template>
+          </el-table-column>
         </el-table>
-        <el-empty v-if="!overview.reports?.length" description="暂无商品举报" />
+        <el-empty v-if="!overview.reports?.length" description="暂无市集举报" />
       </el-tab-pane>
-      <el-tab-pane label="全部订单" name="orders">
+
+      <el-tab-pane label="信用处理与申诉" name="trust">
+        <div class="table-toolbar"><div><h3>违规与功能限制</h3><p>处罚会进入用户自己的信用记录；限制发布和限制交易由接口统一执行。</p></div><el-button type="primary" size="small" @click="violationOpen = true">新增处理</el-button></div>
+        <el-table :data="overview.violations || []" stripe><el-table-column label="用户" min-width="130"><template #default="{ row }"><b>{{ row.user?.nickname || `用户 #${row.userId}` }}</b><small>#{{ row.userId }}</small></template></el-table-column><el-table-column prop="reason" label="原因" min-width="220" show-overflow-tooltip /><el-table-column label="等级 / 措施" min-width="160"><template #default="{ row }"><el-tag size="small" :type="row.level === 'serious' ? 'danger' : 'warning'">{{ violationLevel(row.level) }}</el-tag> {{ violationAction(row.action) }}</template></el-table-column><el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.status === 'active' ? 'danger' : 'info'">{{ statusLabel(row.status) }}</el-tag></template></el-table-column><el-table-column label="期限" width="170"><template #default="{ row }">{{ row.expiresAt ? new Date(row.expiresAt).toLocaleString('zh-CN') : '长期' }}</template></el-table-column><el-table-column label="操作" width="100"><template #default="{ row }"><el-button v-if="row.status === 'active'" link type="primary" @click="revokeViolation(row)">撤销</el-button></template></el-table-column></el-table>
+        <h3 class="table-title spaced">用户申诉</h3>
+        <el-table :data="overview.appeals || []" stripe><el-table-column label="用户" min-width="130"><template #default="{ row }">{{ row.user?.nickname || `用户 #${row.userId}` }}</template></el-table-column><el-table-column prop="content" label="申诉说明" min-width="260" show-overflow-tooltip /><el-table-column label="原处理" min-width="190"><template #default="{ row }">{{ row.violation?.reason }} · {{ violationAction(row.violation?.action) }}</template></el-table-column><el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.status === 'pending' ? 'warning' : row.status === 'approved' ? 'success' : 'info'">{{ statusLabel(row.status) }}</el-tag></template></el-table-column><el-table-column label="操作" width="150"><template #default="{ row }"><template v-if="row.status === 'pending'"><el-button link type="success" @click="handleAppeal(row, 'approved')">通过</el-button><el-button link type="danger" @click="handleAppeal(row, 'rejected')">驳回</el-button></template></template></el-table-column></el-table><el-empty v-if="!overview.appeals?.length" description="暂无申诉" />
+      </el-tab-pane>
+
+      <el-tab-pane label="内容规则" name="rules">
+        <div class="table-toolbar"><div><h3>关键词与风险规则</h3><p>规则保存在数据库中，可分别用于市集、广场和免费原创；禁止类直接拦截，风险类进入人工复核。</p></div><el-button type="primary" size="small" @click="openRule()">新增规则</el-button></div>
+        <el-table :data="overview.safetyRules || []" stripe><el-table-column prop="keyword" label="关键词" min-width="130" /><el-table-column label="作用范围" width="110"><template #default="{ row }">{{ ruleScopeLabel(row.scope) }}</template></el-table-column><el-table-column prop="category" label="风险分类" min-width="150" /><el-table-column label="动作" width="100"><template #default="{ row }"><el-tag :type="row.action === 'block' ? 'danger' : 'warning'">{{ row.action === 'block' ? '禁止发布' : '人工复核' }}</el-tag></template></el-table-column><el-table-column prop="note" label="说明" min-width="220" show-overflow-tooltip /><el-table-column label="状态" width="90"><template #default="{ row }"><el-switch :model-value="row.enabled" @change="toggleRule(row, $event)" /></template></el-table-column><el-table-column label="操作" width="130"><template #default="{ row }"><el-button link type="primary" @click="openRule(row)">编辑</el-button><el-button link type="danger" @click="removeRule(row)">删除</el-button></template></el-table-column></el-table>
+      </el-tab-pane>
+
+      <el-tab-pane label="管理日志" name="logs">
+        <el-alert type="info" :closable="false" show-icon title="日志不记录联系方式、账户、令牌等敏感字段。" />
+        <el-table :data="overview.actionLogs || []" stripe><el-table-column label="时间" width="180"><template #default="{ row }">{{ new Date(row.createdAt).toLocaleString('zh-CN') }}</template></el-table-column><el-table-column label="管理员" width="130"><template #default="{ row }">{{ row.actor?.nickname || '系统' }}</template></el-table-column><el-table-column prop="summary" label="操作摘要" min-width="260" /><el-table-column label="对象" min-width="160"><template #default="{ row }">{{ row.targetType }} {{ row.targetId ? `#${row.targetId}` : '' }}</template></el-table-column><el-table-column prop="ip" label="来源 IP" width="150" /></el-table>
+      </el-tab-pane>
+
+      <el-tab-pane label="历史交易记录" name="orders">
         <el-table :data="overview.orders || []" stripe>
-          <el-table-column prop="outTradeNo" label="平台订单号" min-width="210" /><el-table-column label="商品" min-width="200"><template #default="{row}">{{row.item?.title}}</template></el-table-column><el-table-column label="买家/卖家" min-width="170"><template #default="{row}">{{row.buyer?.nickname}} / {{row.seller?.nickname}}</template></el-table-column><el-table-column label="金额明细" width="170"><template #default="{row}"><b>¥{{row.amount}}</b><small>佣金 ¥{{row.platformFee}} · 卖家 ¥{{row.sellerAmount}}</small></template></el-table-column><el-table-column prop="payType" label="通道" width="90" /><el-table-column prop="status" label="状态" width="110"><template #default="{row}"><el-tag :type="statusType(row.status)">{{statusLabel(row.status)}}</el-tag></template></el-table-column>
+          <el-table-column prop="id" label="记录" width="90"><template #default="{ row }">#{{ row.id }}</template></el-table-column>
+          <el-table-column label="商品" min-width="200"><template #default="{ row }">{{ row.item?.title }}</template></el-table-column>
+          <el-table-column label="买家 / 卖家" min-width="170"><template #default="{ row }">{{ row.buyer?.nickname }} / {{ row.seller?.nickname }}</template></el-table-column>
+          <el-table-column label="约定价格" width="120"><template #default="{ row }"><b>¥{{ row.amount }}</b></template></el-table-column>
+          <el-table-column prop="status" label="状态" width="130"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
         </el-table>
       </el-tab-pane>
     </el-tabs>
-    <el-dialog v-model="payoutOpen" title="卖家收款资料" width="440px"><el-descriptions v-if="payoutProfile" :column="1" border><el-descriptions-item label="方式">{{payoutProfile.method}}</el-descriptions-item><el-descriptions-item label="真实姓名">{{payoutProfile.realName}}</el-descriptions-item><el-descriptions-item label="账号">{{payoutProfile.account}}</el-descriptions-item><el-descriptions-item label="认证">{{payoutProfile.verified?'已认证':'未认证'}}</el-descriptions-item></el-descriptions><el-alert type="warning" :closable="false" title="敏感信息仅用于本次结算，请勿复制或另作他用。" /></el-dialog>
+
     <el-dialog v-model="categoryOpen" :title="editingCategoryId ? '编辑品类' : '新增品类'" width="500px">
       <el-form label-position="top">
-        <div class="category-form-grid"><el-form-item label="图标"><el-input v-model="categoryForm.icon" maxlength="12" /></el-form-item><el-form-item label="品类名称"><el-input v-model="categoryForm.name" maxlength="30" /></el-form-item></div>
-        <el-form-item label="品类标识"><el-input v-model="categoryForm.slug" :disabled="Boolean(editingCategoryId)" maxlength="40" placeholder="仅小写字母、数字、下划线或短横线" /></el-form-item>
+        <div class="category-form-grid">
+          <el-form-item label="图标"><el-input v-model="categoryForm.icon" maxlength="12" /></el-form-item>
+          <el-form-item label="品类名称"><el-input v-model="categoryForm.name" maxlength="30" /></el-form-item>
+        </div>
+        <el-form-item label="品类标识">
+          <el-input v-model="categoryForm.slug" :disabled="Boolean(editingCategoryId)" maxlength="40" placeholder="仅小写字母、数字、下划线或短横线" />
+        </el-form-item>
         <el-form-item label="品类说明"><el-input v-model="categoryForm.description" maxlength="120" /></el-form-item>
-        <div class="category-form-grid"><el-form-item label="交付类型"><el-select v-model="categoryForm.fulfillmentType"><el-option label="实体交付" value="physical" /><el-option label="线上发货" value="digital" /></el-select></el-form-item><el-form-item label="排序"><el-input-number v-model="categoryForm.sort" :min="0" :max="9999" /></el-form-item></div>
+        <div class="category-form-grid">
+          <el-form-item label="交付类型"><el-select v-model="categoryForm.fulfillmentType" disabled><el-option label="实体交付" value="physical" /></el-select></el-form-item>
+          <el-form-item label="排序"><el-input-number v-model="categoryForm.sort" :min="0" :max="9999" /></el-form-item>
+        </div>
         <el-switch v-model="categoryForm.imageRequired" active-text="出售时图片必填" inactive-text="图片选填" />
         <el-switch v-model="categoryForm.enabled" active-text="启用品类" inactive-text="停用品类" />
       </el-form>
-      <template #footer><el-button @click="categoryOpen=false">取消</el-button><el-button type="primary" :loading="savingCategory" @click="saveCategory">保存</el-button></template>
+      <template #footer>
+        <el-button @click="categoryOpen = false">取消</el-button>
+        <el-button type="primary" :loading="savingCategory" @click="saveCategory">保存</el-button>
+      </template>
     </el-dialog>
+    <el-dialog v-model="ruleOpen" :title="editingRuleId ? '编辑内容规则' : '新增内容规则'" width="500px"><el-form label-position="top"><el-form-item label="关键词"><el-input v-model="ruleForm.keyword" maxlength="80" /></el-form-item><div class="category-form-grid"><el-form-item label="作用范围"><el-select v-model="ruleForm.scope"><el-option label="市集" value="market" /><el-option label="广场" value="forum" /><el-option label="免费原创" value="learning" /><el-option label="全部" value="all" /></el-select></el-form-item><el-form-item label="风险分类"><el-input v-model="ruleForm.category" maxlength="80" /></el-form-item><el-form-item label="处理动作"><el-select v-model="ruleForm.action"><el-option label="禁止发布" value="block" /><el-option label="人工复核" value="review" /></el-select></el-form-item></div><el-form-item label="规则说明"><el-input v-model="ruleForm.note" maxlength="500" /></el-form-item><el-switch v-model="ruleForm.enabled" active-text="启用规则" inactive-text="停用规则" /></el-form><template #footer><el-button @click="ruleOpen = false">取消</el-button><el-button type="primary" @click="saveRule">保存</el-button></template></el-dialog>
+    <el-dialog v-model="violationOpen" title="新增市集信用处理" width="520px"><el-form label-position="top"><el-form-item label="用户 ID"><el-input-number v-model="violationForm.userId" :min="1" controls-position="right" /></el-form-item><div class="category-form-grid"><el-form-item label="违规类型"><el-input v-model="violationForm.type" maxlength="80" placeholder="例如：禁售物品、交易骚扰" /></el-form-item><el-form-item label="处理等级"><el-select v-model="violationForm.level"><el-option label="提醒" value="warning" /><el-option label="一般" value="moderate" /><el-option label="严重" value="serious" /></el-select></el-form-item></div><div class="category-form-grid"><el-form-item label="处理措施"><el-select v-model="violationForm.action"><el-option label="警告" value="warning" /><el-option label="限制发布" value="restrict_publish" /><el-option label="限制交易" value="restrict_trade" /></el-select></el-form-item><el-form-item label="限制天数（0 为长期）"><el-input-number v-model="violationForm.days" :min="0" :max="3650" controls-position="right" /></el-form-item></div><el-form-item label="处理原因"><el-input v-model="violationForm.reason" type="textarea" :rows="4" maxlength="500" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="violationOpen = false">取消</el-button><el-button type="primary" @click="createViolation">确认处理</el-button></template></el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, type MarketCategoryOption } from "@/api/market";
-import { learningMaterialsApi, type LearningMaterialAdminOverview, type LearningMaterialSupportTicket, type LearningMaterialType } from "@/api/learningMaterials";
+import { marketApi, type MarketCategoryOption, type MarketSafetyRule } from "@/api/market";
 
-const loading = ref(false); const tab = ref("refunds"); const overview = reactive<any>({ counts:{}, reports:[], refunds:[], settlements:[], orders:[] }); const payoutOpen=ref(false); const payoutProfile=ref<any>(null); const learningMaterialCommissionRate=ref(5); const savingConfig=ref(false);
-const categories=ref<MarketCategoryOption[]>([]);const categoryOpen=ref(false);const editingCategoryId=ref(0);const savingCategory=ref(false);const categoryForm=reactive({slug:'',name:'',icon:'📦',description:'',fulfillmentType:'physical' as 'physical'|'digital',imageRequired:true,enabled:true,sort:0});
-const materialOverview=reactive<LearningMaterialAdminOverview>({activeItems:0,draftItems:0,incompleteProfiles:0,activeVersions:0,files:0,pendingTypes:0,escalatedTickets:0});const materialTypes=ref<LearningMaterialType[]>([]);
-const materialTickets=ref<LearningMaterialSupportTicket[]>([]);
-const pendingReports=computed(()=>overview.reports.filter((row:any)=>row.status==='pending').length); const pendingRefunds=computed(()=>overview.refunds.filter((row:any)=>['pending','approved'].includes(row.status)).length); const availableSettlements=computed(()=>overview.settlements.filter((row:any)=>row.status==='available').length);
-const labels:Record<string,string>={pending:'待处理',approved:'已批准',completed:'已退款',rejected:'已拒绝',failed:'失败',available:'待结算',held:'暂缓',settled:'已结算',pending_payment:'待支付',paid:'已支付',delivering:'交付中',disputed:'争议中',refunded:'已退款',cancelled:'已取消',resolved:'已处理'};
-function statusLabel(status:string){return labels[status]||status} function statusType(status:string){if(['completed','settled','resolved'].includes(status))return 'success';if(['rejected','failed','disputed'].includes(status))return 'danger';if(['pending','pending_payment','available'].includes(status))return 'warning';return 'info'}
-async function load(){loading.value=true;try{const [nextOverview,config,nextCategories,nextMaterialOverview,nextMaterialTypes,nextMaterialTickets]=await Promise.all([marketApi.adminOverview({suppressErrorMessage:true}),marketApi.adminConfig({suppressErrorMessage:true}),marketApi.adminCategories({suppressErrorMessage:true}),learningMaterialsApi.adminOverview({suppressErrorMessage:true}),learningMaterialsApi.adminTypes({suppressErrorMessage:true}),learningMaterialsApi.supportTickets({suppressErrorMessage:true})]);Object.assign(overview,nextOverview);learningMaterialCommissionRate.value=config.learningMaterialCommissionRate;categories.value=nextCategories;Object.assign(materialOverview,nextMaterialOverview);materialTypes.value=nextMaterialTypes;materialTickets.value=nextMaterialTickets.filter(ticket=>ticket.status==='escalated')}catch(error){ElMessage.error(error instanceof Error?error.message:'商城运营数据加载失败')}finally{loading.value=false}}
-async function saveConfig(){savingConfig.value=true;try{const config=await marketApi.adminUpdateConfig(learningMaterialCommissionRate.value);learningMaterialCommissionRate.value=config.learningMaterialCommissionRate;ElMessage.success(`学习资料平台服务费已设置为 ${config.learningMaterialCommissionRate}%，实体商品仍为 0%`)}finally{savingConfig.value=false}}
-function materialTypeStatus(row:LearningMaterialType){if(row.status==='merged')return '已合并';if(row.status==='pending')return '待审核';if(row.status==='rejected')return '已拒绝';return row.enabled?'已启用':'已停用'}
-function materialTypeStatusType(row:LearningMaterialType){if(row.status==='pending')return 'warning';if(row.status==='rejected')return 'danger';if(row.status==='merged'||!row.enabled)return 'info';return 'success'}
-async function updateMaterialType(row:LearningMaterialType,action:'approve'|'reject'|'enable'|'disable'){if(['reject','disable'].includes(action))await ElMessageBox.confirm(`确认${action==='reject'?'拒绝':'停用'}“${row.name}”？`,'资料类型治理',{type:'warning'});await learningMaterialsApi.adminUpdateType(row.id,{action});ElMessage.success('资料类型状态已更新');await load()}
-async function mergeMaterialType(row:LearningMaterialType){const candidates=materialTypes.value.filter(item=>item.id!==row.id&&item.status==='approved'&&item.enabled);if(!candidates.length)return ElMessage.warning('当前没有可用的合并目标');const names=candidates.map(item=>`${item.id}：${item.name}`).join('；');const {value}=await ElMessageBox.prompt(`输入目标类型 ID。可选：${names}`,'合并资料类型',{inputPattern:/^\d+$/,inputErrorMessage:'请输入有效的类型 ID',confirmButtonText:'确认合并'});const target=candidates.find(item=>item.id===Number(value));if(!target)return ElMessage.warning('目标类型不可用');await ElMessageBox.confirm(`“${row.name}”下已有资料将全部迁移到“${target.name}”，确认继续？`,'不可逆操作',{type:'warning'});await learningMaterialsApi.adminUpdateType(row.id,{action:'merge',targetTypeId:target.id});ElMessage.success('资料类型已合并，关联资料已迁移');await load()}
-function reportRoute(row:any){return row.item?.category==='digital_goods'?{name:'market-learning-material-item',params:{id:row.itemId}}:{name:'market-item',params:{id:row.itemId}}}
-function openCategory(row?:MarketCategoryOption){editingCategoryId.value=row?.id||0;const last=categories.value[categories.value.length-1];Object.assign(categoryForm,row?{slug:row.slug,name:row.name,icon:row.icon,description:row.description,fulfillmentType:row.fulfillmentType,imageRequired:row.imageRequired,enabled:row.enabled,sort:row.sort}:{slug:'',name:'',icon:'📦',description:'',fulfillmentType:'physical',imageRequired:true,enabled:true,sort:(last?.sort||0)+10});categoryOpen.value=true}
-async function saveCategory(){if(!categoryForm.name.trim()||!categoryForm.slug.trim())return ElMessage.warning('请填写品类名称和标识');savingCategory.value=true;try{if(editingCategoryId.value){await marketApi.adminUpdateCategory(editingCategoryId.value,{name:categoryForm.name.trim(),icon:categoryForm.icon.trim()||'📦',description:categoryForm.description.trim(),fulfillmentType:categoryForm.fulfillmentType,imageRequired:categoryForm.imageRequired,enabled:categoryForm.enabled,sort:categoryForm.sort})}else{await marketApi.adminCreateCategory({...categoryForm,slug:categoryForm.slug.trim(),name:categoryForm.name.trim(),icon:categoryForm.icon.trim()||'📦',description:categoryForm.description.trim()})}categoryOpen.value=false;ElMessage.success('商品品类已保存');await load()}finally{savingCategory.value=false}}
-async function removeCategory(row:MarketCategoryOption){if(row.itemCount)return ElMessage.warning(`该品类已有 ${row.itemCount} 件商品，请编辑并停用`);await ElMessageBox.confirm('删除后不可恢复，确认继续？','删除品类',{type:'warning'});await marketApi.adminDeleteCategory(row.id);ElMessage.success('品类已删除');await load()}
-async function handleRefund(row:any,status:'approved'|'rejected'){const {value}=await ElMessageBox.prompt(status==='approved'?'批准备注（可选）':'拒绝原因','处理退款',{inputValue:'',confirmButtonText:'确认'});await marketApi.adminHandleRefund(row.id,{status,note:value});ElMessage.success('退款状态已更新');await load()}
-async function completeRefund(row:any){const {value}=await ElMessageBox.prompt('请先在易支付商户后台完成退款，再填写支付平台退款单号','登记已退款',{inputPattern:/\S+/,inputErrorMessage:'必须填写退款单号',confirmButtonText:'确认已退款'});await marketApi.adminHandleRefund(row.id,{status:'completed',providerRefundNo:value,note:'已在易支付商户后台完成退款'});ElMessage.success('退款完成并已恢复订单状态');await load()}
-async function handleReport(row:any,hideItem:boolean){const action=hideItem?'resolved':'rejected';const {value}=await ElMessageBox.prompt(hideItem?'填写下架处理说明':'填写驳回说明','处理商品举报',{inputValue:'',confirmButtonText:'确认'});await marketApi.adminHandleReport(row.id,{status:action,note:value,hideItem});ElMessage.success('举报已处理');await load()}
-async function showPayout(row:any){await ElMessageBox.confirm('即将解密显示卖家敏感收款资料，仅可用于本次结算。','安全确认',{type:'warning'});payoutProfile.value=await marketApi.adminPayoutProfile(row.id);payoutOpen.value=true}
-async function updateSettlement(row:any,status:'available'|'held'|'settled',reference='',note=''){await marketApi.adminHandleSettlement(row.id,{status,reference,note});ElMessage.success('结算状态已更新');await load()}
-async function settle(row:any){const {value}=await ElMessageBox.prompt('完成转账后填写银行/支付平台流水号','登记已结算',{inputPattern:/\S+/,inputErrorMessage:'必须填写流水号',confirmButtonText:'确认已打款'});await updateSettlement(row,'settled',value,'管理员确认已向卖家打款')}
+const loading = ref(false);
+const tab = ref("moderation");
+const overview = reactive<any>({ counts: {}, reviewItems: [], expiredItems: [], wantedModeration: [], reports: [], orders: [], safetyRules: [], violations: [], appeals: [], actionLogs: [] });
+const categories = ref<MarketCategoryOption[]>([]);
+const categoryOpen = ref(false);
+const editingCategoryId = ref(0);
+const savingCategory = ref(false);
+const ruleOpen = ref(false);
+const editingRuleId = ref(0);
+const ruleForm = reactive({ keyword: "", scope: "market" as MarketSafetyRule["scope"], category: "prohibited", action: "block" as "block" | "review", enabled: true, note: "" });
+const violationOpen = ref(false);
+const violationForm = reactive({ userId: 1, type: "content", level: "warning" as "warning" | "moderate" | "serious", action: "warning" as "warning" | "restrict_publish" | "restrict_trade", days: 7, reason: "" });
+const categoryForm = reactive({
+  slug: "",
+  name: "",
+  icon: "📦",
+  description: "",
+  fulfillmentType: "physical" as const,
+  imageRequired: true,
+  enabled: true,
+  sort: 0,
+});
+
+const pendingReports = computed(() => overview.reports.filter((row: any) => row.status === "pending").length);
+const pendingAppeals = computed(() => overview.appeals.filter((row: any) => row.status === "pending").length);
+const pendingReview = computed(() => (overview.reviewItems?.length || 0) + (overview.wantedModeration?.filter((row: any) => row.status === "reviewing").length || 0));
+const labels: Record<string, string> = {
+  pending: "待处理",
+  approved: "已批准",
+  completed: "已完成",
+  rejected: "已拒绝",
+  failed: "失败",
+  available: "待结算（历史）",
+  held: "暂缓（历史）",
+  settled: "已结算（历史）",
+  pending_payment: "待支付（历史）",
+  paid: "已支付（历史）",
+  delivering: "已预订",
+  disputed: "争议中",
+  refunded: "已退款（历史）",
+  cancelled: "已取消",
+  resolved: "已处理",
+  reviewing: "审核中",
+  active: "进行中",
+  expired: "已过期",
+  removed: "已移除",
+  reserved: "已预订",
+  sold: "已成交",
+  no_show: "爽约结束",
+  revoked: "已撤销",
+};
+
+function statusLabel(status: string) {
+  return labels[status] || status;
+}
+
+function statusType(status: string) {
+  if (["completed", "settled", "resolved"].includes(status)) return "success";
+  if (["rejected", "failed", "disputed"].includes(status)) return "danger";
+  if (["pending", "pending_payment", "available"].includes(status)) return "warning";
+  return "info";
+}
+
+async function load() {
+  loading.value = true;
+  try {
+    const [nextOverview, nextCategories] = await Promise.all([
+      marketApi.adminOverview({ suppressErrorMessage: true }),
+      marketApi.adminCategories({ suppressErrorMessage: true }),
+    ]);
+    Object.assign(overview, nextOverview);
+    categories.value = nextCategories;
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "市集运营数据加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
+
+function reportRoute(row: any) { if (row.itemId) return `/market/item/${row.itemId}`; if (row.wantedPostId) return `/market/wanted/${row.wantedPostId}`; if (row.reportedUserId) return `/market/seller/${row.reportedUserId}`; return ""; }
+function reportTarget(row: any) { return row.item?.title || row.wantedPost?.title || row.reportedUser?.nickname || (row.order ? `交易 ${row.order.outTradeNo}` : `举报 #${row.id}`); }
+function reportType(value: string) { return ({ listing: "商品", wanted: "求购", user: "用户", trade: "交易" } as Record<string, string>)[value] || value; }
+function violationLevel(value: string) { return ({ warning: "提醒", moderate: "一般", serious: "严重" } as Record<string, string>)[value] || value; }
+function violationAction(value: string) { return ({ warning: "警告", restrict_publish: "限制发布", restrict_trade: "限制交易" } as Record<string, string>)[value] || value; }
+
+function ruleScopeLabel(scope: MarketSafetyRule["scope"]) { return ({ market: "市集", forum: "广场", learning: "免费原创", all: "全部" } as const)[scope] || scope; }
+function openRule(row?: MarketSafetyRule) { editingRuleId.value = row?.id || 0; Object.assign(ruleForm, row ? { keyword: row.keyword, scope: row.scope, category: row.category, action: row.action, enabled: row.enabled, note: row.note } : { keyword: "", scope: "market", category: "prohibited", action: "block", enabled: true, note: "" }); ruleOpen.value = true; }
+async function saveRule() { if (!ruleForm.keyword.trim() || !ruleForm.category.trim()) return void ElMessage.warning("请填写关键词和风险分类"); if (editingRuleId.value) await marketApi.adminUpdateSafetyRule(editingRuleId.value, ruleForm); else await marketApi.adminCreateSafetyRule(ruleForm); ruleOpen.value = false; ElMessage.success("安全规则已保存"); await load(); }
+async function toggleRule(row: MarketSafetyRule, value: boolean | string | number) { await marketApi.adminUpdateSafetyRule(row.id, { enabled: Boolean(value) }); await load(); }
+async function removeRule(row: MarketSafetyRule) { await ElMessageBox.confirm(`确认删除关键词规则“${row.keyword}”？`, "删除安全规则", { type: "warning" }); await marketApi.adminDeleteSafetyRule(row.id); ElMessage.success("规则已删除"); await load(); }
+async function createViolation() { if (!violationForm.userId || violationForm.reason.trim().length < 2) return void ElMessage.warning("请填写用户 ID 和处理原因"); const expiresAt = violationForm.days > 0 ? new Date(Date.now() + violationForm.days * 86400000).toISOString() : null; await marketApi.adminCreateViolation({ userId: violationForm.userId, type: violationForm.type, level: violationForm.level, action: violationForm.action, reason: violationForm.reason, expiresAt }); violationOpen.value = false; violationForm.reason = ""; ElMessage.success("信用处理已生效"); await load(); }
+async function revokeViolation(row: any) { const { value } = await ElMessageBox.prompt("请填写撤销原因", "撤销市集处理", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminRevokeViolation(row.id, value); ElMessage.success("处理已撤销"); await load(); }
+async function handleAppeal(row: any, status: "approved" | "rejected") { const { value } = await ElMessageBox.prompt("请填写申诉处理结论和依据", status === "approved" ? "通过申诉" : "驳回申诉", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminHandleAppeal(row.id, { status, note: value }); ElMessage.success("申诉已处理"); await load(); }
+
+function openCategory(row?: MarketCategoryOption) {
+  if (row?.fulfillmentType === "digital") return;
+  editingCategoryId.value = row?.id || 0;
+  const last = categories.value[categories.value.length - 1];
+  Object.assign(categoryForm, row ? {
+    slug: row.slug,
+    name: row.name,
+    icon: row.icon,
+    description: row.description,
+    fulfillmentType: "physical",
+    imageRequired: row.imageRequired,
+    enabled: row.enabled,
+    sort: row.sort,
+  } : {
+    slug: "",
+    name: "",
+    icon: "📦",
+    description: "",
+    fulfillmentType: "physical",
+    imageRequired: true,
+    enabled: true,
+    sort: (last?.sort || 0) + 10,
+  });
+  categoryOpen.value = true;
+}
+
+async function saveCategory() {
+  if (!categoryForm.name.trim() || !categoryForm.slug.trim()) return ElMessage.warning("请填写品类名称和标识");
+  savingCategory.value = true;
+  try {
+    if (editingCategoryId.value) {
+      await marketApi.adminUpdateCategory(editingCategoryId.value, {
+        name: categoryForm.name.trim(),
+        icon: categoryForm.icon.trim() || "📦",
+        description: categoryForm.description.trim(),
+        fulfillmentType: "physical",
+        imageRequired: categoryForm.imageRequired,
+        enabled: categoryForm.enabled,
+        sort: categoryForm.sort,
+      });
+    } else {
+      await marketApi.adminCreateCategory({
+        ...categoryForm,
+        fulfillmentType: "physical",
+        slug: categoryForm.slug.trim(),
+        name: categoryForm.name.trim(),
+        icon: categoryForm.icon.trim() || "📦",
+        description: categoryForm.description.trim(),
+      });
+    }
+    categoryOpen.value = false;
+    ElMessage.success("商品品类已保存");
+    await load();
+  } finally {
+    savingCategory.value = false;
+  }
+}
+
+async function removeCategory(row: MarketCategoryOption) {
+  if (row.fulfillmentType === "digital") return ElMessage.warning("历史数字品类已冻结，不能修改或删除");
+  if (row.itemCount) return ElMessage.warning(`该品类已有 ${row.itemCount} 件商品，请编辑并停用`);
+  await ElMessageBox.confirm("删除后不可恢复，确认继续？", "删除品类", { type: "warning" });
+  await marketApi.adminDeleteCategory(row.id);
+  ElMessage.success("品类已删除");
+  await load();
+}
+
+async function handleReport(row: any, hideItem: boolean) {
+  const action = hideItem ? "resolved" : "rejected";
+  const { value } = await ElMessageBox.prompt(hideItem ? "填写处置说明" : "填写驳回说明", "处理市集举报", {
+    inputValue: "",
+    confirmButtonText: "确认",
+  });
+  await marketApi.adminHandleReport(row.id, { status: action, note: value, hideItem });
+  ElMessage.success("举报已处理");
+  await load();
+}
+
+async function moderateItem(row: any, status: string) {
+  const { value } = await ElMessageBox.prompt(status === "active" ? "可填写审核说明（选填）" : "请填写移除原因", status === "active" ? "通过商品" : "移除商品", { inputValue: "", inputPattern: status === "active" ? undefined : /\S+/, inputErrorMessage: "请填写移除原因" });
+  await marketApi.adminUpdateItem(row.id, { status, note: value });
+  ElMessage.success("商品状态已更新");
+  await load();
+}
+
+async function moderateWanted(row: any, status: "active" | "removed") {
+  const { value } = await ElMessageBox.prompt(status === "active" ? "可填写审核说明（选填）" : "请填写移除原因", status === "active" ? "通过求购" : "移除求购", { inputValue: "", inputPattern: status === "active" ? undefined : /\S+/, inputErrorMessage: "请填写移除原因" });
+  await marketApi.adminUpdateWanted(row.id, { status, note: value });
+  ElMessage.success("求购状态已更新");
+  await load();
+}
+
 onMounted(load);
 </script>
 
 <style scoped>
-.market-admin{padding:4px}.pane-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}.pane-head h2{margin:0 0 6px}.pane-head p{margin:0;color:#728096}.commission-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px;border:1px solid #cde9e2;border-radius:13px;background:#f0fdfa}.commission-card h3{margin:0 0 5px}.commission-card p{margin:0;color:#64748b;font-size:12px}.commission-form{display:flex;align-items:center;gap:8px}.summary{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:16px 0}.summary article{display:flex;flex-direction:column;padding:16px;background:#f6f8fb;border:1px solid #e6ebf2;border-radius:12px}.summary b{font-size:26px;color:#108773}.summary span{color:#6f7c90}.el-alert{margin-bottom:14px}.el-table small{display:block;color:#8491a5;margin-top:4px}.el-table b{display:block}.el-table a{color:#168c78;text-decoration:none}@media(max-width:1000px){.summary{grid-template-columns:repeat(3,1fr)}}@media(max-width:600px){.summary{grid-template-columns:repeat(2,1fr)}.pane-head,.commission-card{align-items:flex-start;flex-direction:column;gap:12px}.pane-head p{font-size:12px}.commission-form{width:100%;flex-wrap:wrap}}
-.category-card{margin:16px 0;padding:16px 18px;border:1px solid #e1e8ef;border-radius:13px;background:#fff}.category-card>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}.category-card h3{margin:0 0 5px}.category-card p{margin:0;color:#64748b;font-size:12px}.category-form-grid{display:grid;grid-template-columns:1fr 2fr;gap:14px}
-.material-admin-card{margin:16px 0;padding:16px 18px;border:1px solid var(--cpu-border-soft);border-radius:13px;background:var(--cpu-card)}.material-admin-card>header{display:flex;align-items:flex-start;justify-content:space-between;gap:15px}.material-admin-card h3{margin:0 0 5px}.material-admin-card header p{margin:0;color:var(--cpu-text-secondary);font-size:12px}.material-summary{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.material-summary span{padding:7px 9px;border-radius:8px;background:var(--cpu-surface-soft);color:var(--cpu-text-secondary);font-size:10px}.material-summary b{margin-right:4px;color:var(--cpu-primary);font-size:15px}
-.escalated-list{margin-top:15px;padding-top:13px;border-top:1px solid var(--cpu-border-soft)}.escalated-list h4{margin:0 0 8px}.escalated-list article{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px;border-radius:8px;background:var(--cpu-surface-soft)}.escalated-list article+article{margin-top:6px}.escalated-list article div{display:flex;min-width:0;flex-direction:column}.escalated-list article span{color:var(--cpu-text-secondary);font-size:9px}.escalated-list a{flex:none;color:var(--cpu-primary);font-size:10px;text-decoration:none}
-@media(max-width:600px){.category-card>header{flex-direction:column}.category-form-grid{grid-template-columns:1fr}}
-.commission-card{border-color:var(--cpu-border-soft);background:var(--cpu-primary-soft)}.commission-card p,.category-card p,.pane-head p{color:var(--cpu-text-secondary)}.summary article{border-color:var(--cpu-border-soft);background:var(--cpu-surface-soft)}.summary span,.el-table small{color:var(--cpu-text-secondary)}.category-card{border-color:var(--cpu-border-soft);background:var(--cpu-card)}.category-card .el-switch+.el-switch{margin-left:18px}
-:global(html[data-theme="dark"]) .commission-card{box-shadow:inset 0 0 0 1px rgba(45,212,191,.05)}
-.commission-card{border-color:var(--cpu-border-soft)!important;background:var(--cpu-primary-soft)!important}.category-card{border-color:var(--cpu-border-soft)!important;background:var(--cpu-card)!important}
+.market-admin { padding: 4px; }
+.pane-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.pane-head h2 { margin: 0 0 6px; }
+.pane-head p { margin: 0; color: var(--cpu-text-secondary); }
+.el-alert { margin-bottom: 14px; }
+.category-card { margin: 16px 0; padding: 16px 18px; border: 1px solid var(--cpu-border-soft); border-radius: 13px; background: var(--cpu-card); }
+.category-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.category-card h3 { margin: 0 0 5px; }
+.category-card p { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.category-form-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; }
+.summary { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin: 16px 0; }
+.summary article { display: flex; flex-direction: column; padding: 16px; background: var(--cpu-surface-soft); border: 1px solid var(--cpu-border-soft); border-radius: 12px; }
+.summary b { font-size: 26px; color: var(--cpu-primary); }
+.summary span, .el-table small { color: var(--cpu-text-secondary); }
+.el-table small, .el-table b { display: block; }
+.el-table small { margin-top: 4px; }
+.el-table a { color: var(--cpu-primary); text-decoration: none; }
+.table-title { margin: 6px 0 12px; font-size: 15px; }.table-title.spaced { margin-top: 26px; }
+.table-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 6px 0 14px; }.table-toolbar h3 { margin: 0 0 5px; }.table-toolbar p { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; }
+@media (max-width: 1000px) { .summary { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) {
+  .summary { grid-template-columns: 1fr; }
+  .pane-head, .category-card > header { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .pane-head p { font-size: 12px; }
+  .category-form-grid { grid-template-columns: 1fr; }
+}
 </style>

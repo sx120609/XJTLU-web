@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { runWithDistributedLock } from "./cache";
+import { runTrackedJob } from "./runtimeHealth";
 import {
   exportXjtluEhallSession,
   getXjtluEhallNoticesFromEncryptedSession,
@@ -169,15 +170,15 @@ export async function listSharedXjtluAnnouncements(limit = 50) {
 }
 
 export function startXjtluAnnouncementSyncScheduler() {
-  const tick = async () => {
+  const tick = async () => runTrackedJob("xjtlu-announcement-sync", "融合门户公告同步", async () => {
     const config = await ensureConfig();
     if (!config.enabled || !config.encryptedSession) return;
     const elapsed = config.lastRunAt ? Date.now() - config.lastRunAt.getTime() : Number.POSITIVE_INFINITY;
     if (elapsed < config.intervalMinutes * 60_000) return;
-    await syncXjtluAnnouncementsNow().catch((error) => {
-      console.warn("XJTLU announcement sync failed:", (error as Error)?.message || error);
-    });
-  };
+    await syncXjtluAnnouncementsNow();
+  }, 60_000).catch((error) => {
+    console.warn("XJTLU announcement sync failed:", (error as Error)?.message || error);
+  });
   const timer = setInterval(() => void tick(), 60_000);
   timer.unref?.();
   setTimeout(() => void tick(), 3_000).unref?.();

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { ok } from "../utils/response";
+import { queryPage, querySize } from "../utils/query";
 import { withCache } from "../services/cache";
 import { verifyToken } from "../utils/jwt";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
@@ -9,6 +10,9 @@ import { isForumStaffRole, resolveForumAccess } from "../services/forumAccess";
 import { decodeTopicForViewer } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
+import { amountCentsToMoney } from "../services/epay";
+import { MARKET_PUBLIC_USER_SELECT } from "../services/marketPublicUser";
+import { refreshExpiredPromotions, serializeItemPromotions } from "../services/promotion";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -44,9 +48,10 @@ homeRouter.get("/summary", async (req, res, next) => {
     const readableBoardTypes = enabledBoardTypes();
     const contentBoardTypes = readableBoardTypes.filter((type) => type !== "announce");
     const globalPinnedIds = getGlobalPinnedTopicIds();
+    await refreshExpiredPromotions();
     const publicSummary = await withCache(
       "home",
-      ["summary-xjtlu-v2", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-xjtlu-v3", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
@@ -87,6 +92,25 @@ homeRouter.get("/summary", async (req, res, next) => {
         return { pinnedTopics, hotTopics, latestTopics, announce, services };
       },
     );
+    // 推广位必须在管理员确认后立即生效，不进入一分钟的首页内容缓存。
+    const promotionNow = new Date();
+    const promotions = await prisma.marketItem.findMany({
+      where: {
+        status: "active",
+        visibility: "public",
+        deliveryType: "physical",
+        homeFeaturedUntil: { gt: promotionNow },
+        homePromotionOrderId: { not: null },
+        homePromotionOrder: { is: { status: "confirmed", startsAt: { lte: promotionNow }, expiresAt: { gt: promotionNow } } },
+      },
+      orderBy: [{ homeFeaturedUntil: "desc" }, { createdAt: "desc" }],
+      take: 4,
+      include: {
+        seller: { select: MARKET_PUBLIC_USER_SELECT },
+        images: { orderBy: [{ sort: "asc" }, { id: "asc" }], take: 1 },
+        homePromotionOrder: { select: { id: true, status: true, type: true, startsAt: true, expiresAt: true } },
+      },
+    });
 
     const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
 
@@ -114,6 +138,19 @@ homeRouter.get("/summary", async (req, res, next) => {
       services: publicSummary.services
         .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
         .map(normalizeServiceCard),
+      promotions: promotions.map((item: any) => ({
+        id: item.id,
+        sellerId: item.sellerId,
+        title: item.title,
+        description: item.description,
+        category: item.category,
+        price: amountCentsToMoney(item.priceCents),
+        priceCents: item.priceCents,
+        campus: item.campus,
+        cover: item.images?.[0]?.url || "",
+        seller: item.seller,
+         promotion: serializeItemPromotions(item, promotionNow).home,
+      })),
     });
   } catch (e) { next(e); }
 });
@@ -156,8 +193,8 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     }
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     if (!forumAccessEnabled) return ok(res, { page: 1, size: LATEST_FEED_DEFAULT_SIZE, total: 0, pins: [], list: [] });
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, LATEST_FEED_DEFAULT_SIZE, 10, 50);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const where = { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes }, slug: { not: WEIWALL_BOARD_SLUG } } } as const;

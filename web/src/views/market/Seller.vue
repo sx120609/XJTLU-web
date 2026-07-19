@@ -58,7 +58,7 @@
                 </router-link>
                 <div class="order-copy">
                   <strong>{{ order.item?.title || `商品 #${order.itemId}` }}</strong>
-                  <span>买家：{{ order.buyer?.nickname || order.buyer?.username || '—' }}</span>
+                  <span>买家：{{ order.buyer?.nickname || '校园用户' }}</span>
                   <span v-if="order.deliveryType === 'digital'">线上发货 · {{ order.digitalDeliveredAt ? '已自动发放' : '待买家付款' }}</span>
                   <span v-if="order.meetupLocation">交付：{{ order.meetupLocation }}</span>
                   <small>{{ fmtDate(order.createdAt) }}</small>

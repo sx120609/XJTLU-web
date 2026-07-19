@@ -9,6 +9,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
+import { queryPage, querySize } from "../../utils/query";
 import { adminOnly, modOrAbove } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
 import { resetSourceAndRun, runAllOnce } from "../../services/schoolCrawler";
@@ -114,6 +115,9 @@ import {
 import { getJwxtAgentState } from "../../services/jwxtAgentGateway";
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
+import { getRuntimeHealthSnapshot } from "../../services/runtimeHealth";
+import { getCacheMetricsSnapshot } from "../../services/cache";
+import { getHttpPerformanceSnapshot } from "../../middleware/requestObservability";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "xjtlu-web-db-restore-upload");
@@ -183,6 +187,29 @@ function jwxtAgentAdminSnapshot() {
 
 adminRouter.get("/jwxt-agents", adminOnly, (_req, res) => {
   ok(res, jwxtAgentAdminSnapshot());
+});
+
+adminRouter.get("/system/health", adminOnly, async (_req, res) => {
+  const startedAt = Date.now();
+  let databaseOk = false;
+  let databaseError: string | null = null;
+  try {
+    await prisma.$queryRaw`SELECT 1 AS "ok"`;
+    databaseOk = true;
+  } catch (error) {
+    databaseError = error instanceof Error ? error.message.replace(/\s+/g, " ").slice(0, 200) : "数据库探测失败";
+  }
+  ok(res, {
+    generatedAt: new Date().toISOString(),
+    database: {
+      ok: databaseOk,
+      latencyMs: Date.now() - startedAt,
+      error: databaseError,
+    },
+    cache: getCacheMetricsSnapshot(),
+    http: getHttpPerformanceSnapshot(),
+    ...getRuntimeHealthSnapshot(),
+  });
 });
 
 adminRouter.patch("/jwxt-agents", adminOnly, validate(jwxtAgentConfigSchema), async (req, res, next) => {
@@ -280,8 +307,8 @@ adminRouter.get("/users", modOrAbove, async (req, res, next) => {
     const loginFrom = String(req.query.loginFrom ?? "").trim();
     const loginTo = String(req.query.loginTo ?? "").trim();
     const sort = String(req.query.sort ?? "login-desc");
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 30, 10, 100);
 
     const where: any = {};
     if (q) where.OR = [
@@ -624,8 +651,8 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
     const boardSlug = req.query.board ? String(req.query.board) : undefined;
     const hidden = req.query.hidden === "1" ? true : req.query.hidden === "0" ? false : undefined;
     const reviewStatus = req.query.reviewStatus ? String(req.query.reviewStatus) : undefined;
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(50, Math.max(10, Number(req.query.size ?? 20)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 20, 10, 50);
 
     const where: any = {};
     if (q) where.OR = [
@@ -1038,8 +1065,8 @@ adminRouter.get("/forum-videos", adminOnly, async (req, res, next) => {
   try {
     ok(res, await listForumVideoQueue({
       status: req.query.status ? String(req.query.status) as any : undefined,
-      page: Number(req.query.page ?? 1),
-      size: Number(req.query.size ?? 20),
+      page: queryPage(req.query.page),
+      size: querySize(req.query.size, 20, 1, 100),
     }));
   } catch (e) { next(e); }
 });
@@ -1555,8 +1582,8 @@ adminRouter.get("/sponsor-orders", adminOnly, async (req, res, next) => {
     await closeExpiredSponsorOrders();
     const q = String(req.query.q ?? "").trim();
     const status = String(req.query.status ?? "").trim();
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 20)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 20, 10, 100);
     const where: any = {};
     if (status && status !== "all") where.status = status;
     if (q) {
@@ -1634,8 +1661,8 @@ adminRouter.get("/sponsor-logs", adminOnly, async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
     const signOk = req.query.signOk === "1" ? true : req.query.signOk === "0" ? false : undefined;
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 20)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 20, 10, 100);
     const where: any = {};
     if (q) where.OR = [{ outTradeNo: { contains: q } }, { result: { contains: q } }];
     if (typeof signOk === "boolean") where.signOk = signOk;
@@ -2121,8 +2148,8 @@ adminRouter.get("/ai-review/logs", adminOnly, async (req, res, next) => {
     }).catch(() => null);
     const kind = String(req.query.kind ?? "").trim();
     const status = String(req.query.status ?? "").trim();
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 30, 10, 100);
     const where: any = {};
     if (kind) where.kind = kind;
     if (status) where.status = status;
@@ -2152,6 +2179,7 @@ const featurePatchSchema = z.object({
   coursereview: z.boolean().optional(),
   electric: z.boolean().optional(),
   sponsor: z.boolean().optional(),
+  promotion: z.boolean().optional(),
 });
 
 adminRouter.patch("/features", adminOnly, validate(featurePatchSchema), async (req, res, next) => {

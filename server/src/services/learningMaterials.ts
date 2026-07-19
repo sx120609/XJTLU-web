@@ -135,7 +135,9 @@ export function publishedMaterialProfileErrors(input: Partial<LearningMaterialPr
   else if (!isValidCourseCode(courseCode)) errors.push("课程代码格式不正确");
   if (!input.typeId) errors.push("请选择资料类型");
   if (!input.applicableSemester || !semesterValues.includes(input.applicableSemester)) errors.push("请选择适用学期");
-  if (!input.rightsConfirmed) errors.push("请确认拥有资料的发布与售卖权利");
+  if (!input.originalityKind || !originalityValues.has(input.originalityKind as any)) errors.push("请选择资料来源与原创类型");
+  if (!String(input.originalityStatement || "").trim()) errors.push("请填写原创或授权情况说明");
+  if (!input.rightsConfirmed) errors.push("请确认拥有资料的发布和分享权利");
   return errors;
 }
 

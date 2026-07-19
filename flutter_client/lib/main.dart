@@ -66,11 +66,13 @@ final class CpuTab {
     required this.label,
     required this.icon,
     required this.path,
+    this.prominent = false,
   });
 
   final String label;
   final IconData icon;
   final String path;
+  final bool prominent;
 }
 
 const cpuTabs = <CpuTab>[
@@ -80,18 +82,18 @@ const cpuTabs = <CpuTab>[
     path: '/home',
   ),
   CpuTab(
-    label: '教务',
-    icon: Icons.menu_book_outlined,
-    path: '/jwxt',
+    label: '市集',
+    icon: Icons.storefront_outlined,
+    path: '/market',
   ),
   CpuTab(
-    label: '课表',
-    icon: Icons.calendar_month_outlined,
-    path: '/schedule',
+    label: '广场',
+    icon: Icons.forum_outlined,
+    path: '/square',
   ),
   CpuTab(
-    label: '服务',
-    icon: Icons.widgets_outlined,
+    label: '工具',
+    icon: Icons.grid_view_outlined,
     path: '/services',
   ),
   CpuTab(
@@ -247,9 +249,9 @@ final class _CpuShellState extends State<CpuShell> {
 
   int? _tabIndexForPath(String path) {
     if (path == '/' || path.startsWith('/home')) return 0;
-    if (path.startsWith('/jwxt')) return 1;
-    if (path.startsWith('/schedule')) return 2;
-    if (path.startsWith('/services')) return 3;
+    if (path.startsWith('/market') || path.startsWith('/publish/listing') || path.startsWith('/publish/wanted')) return 1;
+    if (path.startsWith('/square') || path.startsWith('/forum') || path.startsWith('/post')) return 2;
+    if (path.startsWith('/services') || path.startsWith('/academic')) return 3;
     if (path.startsWith('/profile') ||
         path.startsWith('/messages') ||
         path.startsWith('/admin') ||
@@ -408,7 +410,30 @@ final class _CpuBottomTabItem extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(tab.icon, size: 20, color: color),
+                if (tab.prominent)
+                  Container(
+                    width: 32,
+                    height: 32,
+                    margin: const EdgeInsets.only(top: -8),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [CpuPalette.teal, Color(0xFF6D5CE7)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(11),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x386D5CE7),
+                          blurRadius: 12,
+                          offset: Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Icon(tab.icon, size: 22, color: Colors.white),
+                  )
+                else
+                  Icon(tab.icon, size: 20, color: color),
                 const SizedBox(height: 3),
                 Text(
                   tab.label,

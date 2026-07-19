@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
+import { boundedQueryInteger, queryPage, querySize } from "../../utils/query";
 import { validate } from "../../middleware/validate";
 import {
   buildQqBotDebugExport,
@@ -154,8 +155,8 @@ qqBotAdminRouter.delete("/groups/:id", async (req, res, next) => {
 
 qqBotAdminRouter.get("/logs", async (req, res, next) => {
   try {
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 30, 10, 100);
     const status = String(req.query.status ?? "").trim();
     const eventType = String(req.query.eventType ?? "").trim();
     const where: any = {};
@@ -179,7 +180,7 @@ qqBotAdminRouter.get("/debug-export", async (req, res, next) => {
   try {
     const status = String(req.query.status ?? "").trim();
     const eventType = String(req.query.eventType ?? "").trim();
-    const take = Math.min(200, Math.max(20, Number(req.query.take ?? 80) || 80));
+    const take = boundedQueryInteger(req.query.take, { fallback: 80, min: 20, max: 200 });
     const payload = await buildQqBotDebugExport({ status, eventType, take });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     res.setHeader("Content-Type", "application/json; charset=utf-8");

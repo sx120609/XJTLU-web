@@ -132,6 +132,15 @@
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
       </div>
 
+      <router-link v-if="topic.linkedMarketItem" :to="`/market/item/${topic.linkedMarketItem.id}`" class="linked-market-card">
+        <div class="linked-cover"><img v-if="topic.linkedMarketItem.images?.[0]?.url" :src="topic.linkedMarketItem.images[0].url" :alt="topic.linkedMarketItem.title" /><span v-else>🛍️</span></div>
+        <div><small>关联商品</small><b>{{ topic.linkedMarketItem.title }}</b><span>¥{{ moneyFromCents(topic.linkedMarketItem.priceCents) }} · {{ linkedStatusLabel(topic.linkedMarketItem.status) }}</span></div><em>查看商品 →</em>
+      </router-link>
+      <router-link v-else-if="topic.linkedWantedPost" :to="`/market/wanted/${topic.linkedWantedPost.id}`" class="linked-market-card wanted">
+        <div class="linked-cover"><span>📣</span></div>
+        <div><small>关联求购</small><b>{{ topic.linkedWantedPost.title }}</b><span>预算 ¥{{ moneyFromCents(topic.linkedWantedPost.budgetMinCents) }}–{{ moneyFromCents(topic.linkedWantedPost.budgetMaxCents) }} · {{ linkedStatusLabel(topic.linkedWantedPost.status) }}</span></div><em>查看求购 →</em>
+      </router-link>
+
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
         <span>正文中有 {{ topic.imageReview.pendingCount }} 张图片正在审核，审核通过后会自动显示。</span>
         <el-button v-if="canReviewTopicImages" link type="warning" @click="openTopicImageReviewDialog">手动复核图片</el-button>
@@ -655,6 +664,14 @@ const router = useRouter();
 const auth = useAuthStore();
 const site = useSiteStore();
 
+function moneyFromCents(value: number) {
+  return (Number(value || 0) / 100).toFixed(2).replace(/\.00$/, "");
+}
+
+function linkedStatusLabel(value: string) {
+  return ({ active: "进行中", reserved: "已预留", sold: "已成交", withdrawn: "已撤回", responded: "已有回应", matched: "已匹配", completed: "已完成", cancelled: "已取消", expired: "已过期" } as Record<string, string>)[value] || value;
+}
+
 const topic = ref<Topic | null>(null);
 const replies = ref<Reply[]>([]);
 const loading = ref(false);
@@ -828,11 +845,10 @@ const replyAnonymousHint = computed(() => {
   if ((anonymousState?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
   return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
 });
-const canEdit = computed(() =>
-  auth.user?.id === topic.value?.authorId ||
-  auth.isAdmin ||
-  (auth.isMod && !isReadOnly.value)
-);
+const canEdit = computed(() => {
+  if (topic.value?.metadata?.kind === "wanted_demand") return false;
+  return auth.user?.id === topic.value?.authorId || auth.isAdmin || (auth.isMod && !isReadOnly.value);
+});
 const canRequestTopicManualReview = computed(() => Boolean(
   auth.isLoggedIn &&
   auth.user?.id === topic.value?.authorId &&
@@ -1833,3 +1849,6 @@ async function onDelete() {
 <style scoped lang="scss" src="./styles/topic-share.scss"></style>
 <style scoped lang="scss" src="./styles/topic-state.scss"></style>
 <style scoped lang="scss" src="./styles/topic-responsive.scss"></style>
+<style scoped>
+.linked-market-card{display:flex;align-items:center;gap:12px;margin:16px 0;padding:13px;border:1px solid rgba(22,135,118,.24);border-radius:12px;color:var(--cpu-text);background:rgba(22,135,118,.06);text-decoration:none}.linked-market-card:hover{border-color:var(--cpu-primary)}.linked-market-card.wanted{border-color:rgba(109,92,231,.25);background:rgba(109,92,231,.06)}.linked-cover{display:grid;place-items:center;width:58px;height:58px;flex:0 0 58px;overflow:hidden;border-radius:9px;background:var(--cpu-card);font-size:24px}.linked-cover img{width:100%;height:100%;object-fit:cover}.linked-market-card>div:nth-child(2){display:flex;min-width:0;flex:1;flex-direction:column;gap:3px}.linked-market-card small{color:var(--cpu-primary);font-size:9px;font-weight:700}.linked-market-card b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.linked-market-card span{color:var(--cpu-text-secondary);font-size:10px}.linked-market-card em{color:var(--cpu-primary);font-size:11px;font-style:normal;white-space:nowrap}@media(max-width:560px){.linked-market-card em{display:none}}
+</style>

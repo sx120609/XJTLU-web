@@ -41,6 +41,14 @@ const localCacheValues = new Map<string, { value: string; expiresAt: number }>()
 const localCacheVersions = new Map<string, number>();
 const localLocks = new Map<string, { token: string; expiresAt: number }>();
 const inflightLoads = new Map<string, Promise<string>>();
+const cacheMetrics = {
+  sharedHits: 0,
+  localHits: 0,
+  misses: 0,
+  coalescedLoads: 0,
+  writes: 0,
+  localFallbackWrites: 0,
+};
 
 function cacheVersionKey(domain: string) {
   return buildRedisKey(VERSION_PREFIX, domain);
@@ -112,14 +120,22 @@ export async function withCache<T>(
   const key = cacheEntryKey(domain, version, parts);
   const shared = await readRedisString(key);
   if (shared.available) {
-    if (shared.value !== null) return JSON.parse(shared.value) as T;
+    if (shared.value !== null) {
+      cacheMetrics.sharedHits += 1;
+      return JSON.parse(shared.value) as T;
+    }
   } else {
     const fallback = readLocalValue(key);
-    if (fallback !== null) return JSON.parse(fallback) as T;
+    if (fallback !== null) {
+      cacheMetrics.localHits += 1;
+      return JSON.parse(fallback) as T;
+    }
   }
+  cacheMetrics.misses += 1;
 
   const existingLoad = inflightLoads.get(key);
   if (existingLoad) {
+    cacheMetrics.coalescedLoads += 1;
     return JSON.parse(await existingLoad) as T;
   }
 
@@ -127,7 +143,11 @@ export async function withCache<T>(
     const value = await loader();
     const payload = JSON.stringify(value);
     const stored = await writeRedisString(key, payload, ttlMs);
-    if (!stored) writeLocalValue(key, payload, ttlMs);
+    cacheMetrics.writes += 1;
+    if (!stored) {
+      cacheMetrics.localFallbackWrites += 1;
+      writeLocalValue(key, payload, ttlMs);
+    }
     return payload;
   })();
 
@@ -142,16 +162,43 @@ export async function withCache<T>(
 export async function getCachedJson<T>(key: string): Promise<T | null> {
   const shared = await readRedisString(key);
   if (shared.available) {
-    return shared.value ? JSON.parse(shared.value) as T : null;
+    if (shared.value) {
+      cacheMetrics.sharedHits += 1;
+      return JSON.parse(shared.value) as T;
+    }
+    cacheMetrics.misses += 1;
+    return null;
   }
   const fallback = readLocalValue(key);
-  return fallback ? JSON.parse(fallback) as T : null;
+  if (fallback) {
+    cacheMetrics.localHits += 1;
+    return JSON.parse(fallback) as T;
+  }
+  cacheMetrics.misses += 1;
+  return null;
 }
 
 export async function setCachedJson(key: string, value: unknown, ttlMs: number) {
   const payload = JSON.stringify(value);
   const stored = await writeRedisString(key, payload, ttlMs);
-  if (!stored) writeLocalValue(key, payload, ttlMs);
+  cacheMetrics.writes += 1;
+  if (!stored) {
+    cacheMetrics.localFallbackWrites += 1;
+    writeLocalValue(key, payload, ttlMs);
+  }
+}
+
+export function getCacheMetricsSnapshot() {
+  const hits = cacheMetrics.sharedHits + cacheMetrics.localHits;
+  const lookups = hits + cacheMetrics.misses;
+  return {
+    ...cacheMetrics,
+    hits,
+    lookups,
+    hitRate: lookups ? Number(((hits / lookups) * 100).toFixed(2)) : 0,
+    localEntries: localCacheValues.size,
+    inflightLoads: inflightLoads.size,
+  };
 }
 
 export async function deleteCachedKeys(...keys: string[]) {

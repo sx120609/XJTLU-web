@@ -2,6 +2,8 @@ import { Router } from "express";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import { z } from "zod";
@@ -16,6 +18,7 @@ import {
   prepareMediaLocalFileForProcessing,
   resolveMediaLocalPathFromUploadUrl,
   saveMediaAsset,
+  saveMediaAssetFromFile,
 } from "../services/mediaStorage";
 import { registerForumVideoAsset } from "../services/videoModeration";
 import { createVideoPosterAsset } from "../services/videoPoster";
@@ -35,8 +38,13 @@ const MIME_EXT: Record<string, string> = {
 
 const MAX_IMAGE_BYTES = 600 * 1024;
 const MAX_MEDIA_BYTES = 120 * 1024 * 1024;
+const PROXY_MEDIA_UPLOAD_DIR = path.join(tmpdir(), "xjtlu-web-media-upload");
+mkdirSync(PROXY_MEDIA_UPLOAD_DIR, { recursive: true });
 const uploadMedia = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, PROXY_MEDIA_UPLOAD_DIR),
+    filename: (_req, file, callback) => callback(null, `${Date.now()}-${randomUUID()}${path.extname(file.originalname || "").slice(0, 16)}`),
+  }),
   limits: { fileSize: MAX_MEDIA_BYTES },
 });
 
@@ -214,9 +222,10 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
     return next(error);
   });
 }, async (req, res, next) => {
+  const temporaryPath = req.file?.path || "";
   try {
     const file = req.file;
-    if (!file?.buffer?.length) throw Errors.badRequest("请先选择要上传的媒体文件");
+    if (!file?.path || !file.size) throw Errors.badRequest("请先选择要上传的媒体文件");
     const mimeType = normalizeMimeType(file.mimetype);
     const kind = resolveMediaKind(mimeType, file.originalname);
     if (!kind) throw Errors.badRequest("仅支持 JPG、PNG、WebP、GIF 图片或 MP4、WebM、MOV、M4V、MKV、OGV 视频");
@@ -224,9 +233,10 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
     const ext = resolveUploadExtension(kind, mimeType, file.originalname);
     if (!ext) throw Errors.badRequest("当前文件格式暂不支持上传");
     const relativePath = buildForumMediaRelativePath(ext);
-    const saved = await saveMediaAsset({
+    const saved = await saveMediaAssetFromFile({
       relativePath,
-      buffer: file.buffer,
+      sourcePath: file.path,
+      sizeBytes: file.size,
       contentType: mimeType || undefined,
       mediaKind: kind,
     });
@@ -267,6 +277,8 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
     });
   } catch (e) {
     next(e);
+  } finally {
+    if (temporaryPath) await rm(temporaryPath, { force: true }).catch(() => null);
   }
 });
 

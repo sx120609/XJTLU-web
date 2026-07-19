@@ -26,6 +26,7 @@ export default defineConfig({
     },
   },
   build: {
+    manifest: true,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -39,8 +40,8 @@ export default defineConfig({
           if (id.includes("/viewerjs/") || id.includes("/artplayer/") || id.includes("/html-to-image/") || id.includes("/qrcode/")) {
             return "media-tools";
           }
-          if (id.includes("/xlsx/")) {
-            return "xlsx-tools";
+          if (id.includes("/exceljs/") || id.includes("/jszip/") || id.includes("/uuid/")) {
+            return "excel-tools";
           }
           if (id.includes("/marked/") || id.includes("/dompurify/")) {
             return "markdown-tools";

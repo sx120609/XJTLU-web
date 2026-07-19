@@ -441,6 +441,50 @@ export type DatabaseRestoreResult = {
   provider: "postgresql";
 };
 
+export type SystemHealthSnapshot = {
+  generatedAt: string;
+  database: { ok: boolean; latencyMs: number; error: string | null };
+  process: {
+    startedAt: string;
+    uptimeMs: number;
+    nodeVersion: string;
+    memory: { rssBytes: number; heapUsedBytes: number; heapTotalBytes: number };
+  };
+  cache: {
+    sharedHits: number;
+    localHits: number;
+    misses: number;
+    coalescedLoads: number;
+    writes: number;
+    localFallbackWrites: number;
+    hits: number;
+    lookups: number;
+    hitRate: number;
+    localEntries: number;
+    inflightLoads: number;
+  };
+  http: {
+    retainedRouteCount: number;
+    sampleLimitPerRoute: number;
+    slowestRoutes: Array<{ route: string; requests: number; errors: number; samples: number; p50Ms: number; p95Ms: number; maxMs: number; updatedAt: string }>;
+  };
+  jobs: Array<{
+    key: string;
+    label: string;
+    intervalMs: number | null;
+    status: "waiting" | "running" | "healthy" | "failed";
+    registeredAt: string;
+    lastStartedAt: string | null;
+    lastSucceededAt: string | null;
+    lastFailedAt: string | null;
+    lastDurationMs: number | null;
+    lastError: string | null;
+    runs: number;
+    failures: number;
+    skippedOverlaps: number;
+  }>;
+};
+
 export type EpayConfig = {
   id: number;
   enabled: boolean;
@@ -598,6 +642,7 @@ export type JwxtAgentsAdminPatch = {
 export const adminApi = {
   // 概览
   overview: (options?: RequestOptions) => request.get<AdminOverview>("/admin/overview", undefined, options),
+  systemHealth: (options?: RequestOptions) => request.get<SystemHealthSnapshot>("/admin/system/health", undefined, options),
   jwxtAgents: (options?: RequestOptions) =>
     request.get<JwxtAgentsAdminConfig>("/admin/jwxt-agents", undefined, options),
   updateJwxtAgents: (payload: JwxtAgentsAdminPatch) =>
@@ -764,9 +809,9 @@ export const adminApi = {
   sweepForumVideos: () =>
     request.post<ForumVideoSweepResult>("/admin/ai-review/videos/sweep", {}, { timeout: 120000 }),
   features: (options?: RequestOptions) =>
-    request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", undefined, options),
-  updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean }) =>
-    request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", patch),
+    request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean; promotion: boolean }>("/admin/features", undefined, options),
+  updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean; promotion?: boolean }) =>
+    request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean; promotion: boolean }>("/admin/features", patch),
   // 易支付
   epayConfig: (options?: RequestOptions) => request.get<EpayConfig>("/admin/epay-config", undefined, options),
   updateEpayConfig: (patch: Partial<{

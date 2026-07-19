@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { prisma } from "../prisma";
 import {
@@ -27,6 +27,11 @@ export type SaveMediaAssetInput = {
   buffer: Buffer;
   contentType?: string | null;
   mediaKind?: MediaStorageKind | null;
+};
+
+export type SaveMediaAssetFileInput = Omit<SaveMediaAssetInput, "buffer"> & {
+  sourcePath: string;
+  sizeBytes: number;
 };
 
 export type SaveMediaAssetResult = {
@@ -317,6 +322,25 @@ export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMe
     url: buildUploadUrl(relativePath),
     localPath: cachePath,
   };
+}
+
+export async function saveMediaAssetFromFile(input: SaveMediaAssetFileInput): Promise<SaveMediaAssetResult> {
+  const relativePath = normalizeUploadRelativePath(input.relativePath);
+  if (!(await shouldPreferRemoteMediaStorage(relativePath, input.mediaKind ?? undefined, input.sizeBytes))) {
+    const localPath = localAssetAbsolutePath(relativePath);
+    await mkdir(path.dirname(localPath), { recursive: true });
+    await copyFile(input.sourcePath, localPath);
+    return { backend: "local", relativePath, url: buildUploadUrl(relativePath), localPath };
+  }
+
+  // Modern clients use the direct upload-session path. This fallback remains compatible
+  // with older clients while keeping multipart buffering on disk until remote transfer.
+  const buffer = await readFile(input.sourcePath);
+  const cachePath = cachedAssetAbsolutePath(relativePath);
+  await mkdir(path.dirname(cachePath), { recursive: true });
+  await writeFile(cachePath, buffer);
+  await uploadOneDriveChinaFile(relativePath, buffer, input.contentType || "application/octet-stream");
+  return { backend: "onedrive-cn", relativePath, url: buildUploadUrl(relativePath), localPath: cachePath };
 }
 
 export async function deleteMediaAsset(relativePathInput: string) {

@@ -121,6 +121,8 @@ export const request = {
     instance.get<unknown, T>(url, { ...options, params }),
   post: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
     instance.post<unknown, T>(url, data, options),
+  put: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
+    instance.put<unknown, T>(url, data, options),
   patch: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
     instance.patch<unknown, T>(url, data, options),
   delete: <T = unknown>(url: string, options?: RequestOptions) => instance.delete<unknown, T>(url, options),

@@ -48,7 +48,7 @@ export const useSiteStore = defineStore("site", {
     siteName: DEFAULT_SITE_NAME,
     siteSubtitle: DEFAULT_SITE_SUBTITLE,
     siteLogoUrl: DEFAULT_SITE_LOGO_URL,
-    features: { forum: false, market: false, coursereview: false, electric: false, sponsor: false } as FeatureMap,
+    features: { forum: false, market: false, coursereview: false, electric: false, sponsor: false, promotion: false } as FeatureMap,
     siteOrigin: "",
     siteFilingNumber: "",
     loaded: false,

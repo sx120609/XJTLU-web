@@ -8,6 +8,7 @@ import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } f
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
+import { runTrackedJob } from "./runtimeHealth";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
@@ -105,7 +106,12 @@ export function startForumImageModerationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
   const tick = () => {
-    triggerForumImageModerationDrain(getImageReviewDispatchCapacity())
+    runTrackedJob(
+      "forum-image-moderation",
+      "论坛图片审核",
+      () => triggerForumImageModerationDrain(getImageReviewDispatchCapacity()),
+      IMAGE_REVIEW_POLL_INTERVAL_MS,
+    )
       .catch((error: unknown) => {
         console.warn("[image-review] moderation tick failed", error);
       });

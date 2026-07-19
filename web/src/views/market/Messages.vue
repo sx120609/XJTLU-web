@@ -1,14 +1,14 @@
 <template>
   <div class="market-chat-page cpu-page">
     <header class="chat-head">
-      <div><el-button text @click="$router.push({ name: 'market-mine' })">← 返回我的交易</el-button><h1>交易消息</h1><p>围绕商品和订单沟通，重要交易状态仍以平台订单为准。</p></div>
+      <div><el-button text @click="$router.push({ name: 'market-mine' })">← 返回我的交易</el-button><h1>交易消息</h1><p>围绕商品和预约沟通，重要交易状态以靠浦交易记录为准。</p></div>
     </header>
     <section class="chat-shell" v-loading="loading">
       <aside :class="{ hidden: selectedId && mobileConversation }">
         <div class="aside-title">会话 <el-badge :value="conversations.length" /></div>
         <button v-for="conversation in conversations" :key="conversation.id" class="conversation" :class="{ active: conversation.id === selectedId }" @click="selectConversation(conversation.id)">
           <el-avatar :size="42" :src="conversation.counterpart?.avatar || ''">{{ userInitial(conversation.counterpart) }}</el-avatar>
-          <span><strong>{{ conversation.counterpart?.nickname || conversation.counterpart?.username }}</strong><small>{{ conversation.item?.title }}</small><em>{{ conversation.lastMessage?.content || '开始沟通交易细节' }}</em></span>
+          <span><strong>{{ conversation.counterpart?.nickname || "校园用户" }}</strong><small>{{ conversation.item?.title }}</small><em>{{ conversation.lastMessage?.content || '开始沟通交易细节' }}</em></span>
           <time>{{ shortTime(conversation.lastMessageAt) }}</time>
         </button>
         <el-empty v-if="!loading && !conversations.length" description="暂无交易会话" />
@@ -17,7 +17,7 @@
         <div class="message-head">
           <el-button class="mobile-back" text @click="mobileConversation = false">←</el-button>
           <img v-if="activeConversation.item?.cover" :src="activeConversation.item.cover" alt="" />
-          <div><strong>{{ activeConversation.item?.title }}</strong><small>与 {{ activeConversation.counterpart?.nickname || activeConversation.counterpart?.username }} 沟通</small></div>
+          <div><strong>{{ activeConversation.item?.title }}</strong><small>与 {{ activeConversation.counterpart?.nickname || "校园用户" }} 沟通</small></div>
           <el-button text type="primary" @click="$router.push({ name: 'market-item', params: { id: activeConversation.itemId } })">查看商品</el-button>
         </div>
         <div ref="messageList" class="message-list">
@@ -58,7 +58,7 @@ const mobileConversation = ref(false);
 let pollTimer = 0;
 const activeConversation = computed(() => conversations.value.find((conversation) => conversation.id === selectedId.value) || null);
 
-function userInitial(user?: MarketUser) { return (user?.nickname || user?.username || "?").slice(0, 1).toUpperCase(); }
+function userInitial(user?: MarketUser) { return (user?.nickname || "?").slice(0, 1).toUpperCase(); }
 function shortTime(value?: string | null) { if (!value) return ""; return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 function fullTime(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 async function scrollBottom() { await nextTick(); if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight; }

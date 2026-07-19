@@ -279,7 +279,16 @@ const jwxtAgentOfflineMs = parseIntegerEnv(
 );
 
 const nodeEnv = process.env.NODE_ENV ?? "development";
-const jwtSecret = process.env.JWT_SECRET ?? "xjtlu-web-dev-secret";
+
+export function resolveJwtSecret(environment: string, value: string | undefined) {
+  const configuredSecret = String(value ?? "");
+  if (environment === "production" && configuredSecret.trim().length < 32) {
+    throw new Error("JWT_SECRET must be explicitly configured with at least 32 characters in production");
+  }
+  return configuredSecret || "xjtlu-web-dev-secret";
+}
+
+const jwtSecret = resolveJwtSecret(nodeEnv, process.env.JWT_SECRET);
 const browserSessionIdleMs = parseIntegerEnv(
   "BROWSER_SESSION_IDLE_MS",
   process.env.BROWSER_SESSION_IDLE_MS,

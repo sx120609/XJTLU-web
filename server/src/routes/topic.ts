@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
+import { queryPage, querySize } from "../utils/query";
 import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
@@ -37,8 +38,62 @@ import { ensureForumImageAssetsForContent, summarizeForumImageModerationForConte
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
+import { evaluateMarketContent } from "../services/marketTrust";
+import { WANTED_DEMAND_BOARD_SLUG } from "../services/defaultBoardCatalog";
 
 export const topicRouter = Router();
+
+const topicLinkInclude = {
+  linkedMarketItem: {
+    select: {
+      id: true,
+      title: true,
+      category: true,
+      status: true,
+      priceCents: true,
+      images: { select: { url: true }, orderBy: { sort: "asc" as const }, take: 1 },
+    },
+  },
+  linkedWantedPost: {
+    select: {
+      id: true,
+      title: true,
+      category: true,
+      status: true,
+      budgetMinCents: true,
+      budgetMaxCents: true,
+    },
+  },
+} as const;
+
+async function ensureTopicLinks(input: { linkedMarketItemId?: number | null; linkedWantedPostId?: number | null }) {
+  if (input.linkedMarketItemId) {
+    const item = await prisma.marketItem.findFirst({
+      where: {
+        id: input.linkedMarketItemId,
+        visibility: "public",
+        status: { in: ["active", "reserved", "sold", "withdrawn"] },
+      },
+      select: { id: true },
+    });
+    if (!item) throw Errors.badRequest("关联商品不存在或当前不可公开关联");
+  }
+  if (input.linkedWantedPostId) {
+    const wanted = await prisma.wantedPost.findFirst({
+      where: {
+        id: input.linkedWantedPostId,
+        status: { in: ["active", "responded", "matched", "completed", "cancelled", "expired"] },
+      },
+      select: { id: true },
+    });
+    if (!wanted) throw Errors.badRequest("关联求购不存在或当前不可公开关联");
+  }
+}
+
+function contentRuleMessage(result: Awaited<ReturnType<typeof evaluateMarketContent>>) {
+  const first = result.matches[0];
+  return first?.note || "内容不符合社区发布规则，请修改后再试";
+}
 
 /**
  * 列表：?board=slug&page=1&size=20&sort=hot|new
@@ -46,8 +101,8 @@ export const topicRouter = Router();
 topicRouter.get("/", async (req, res, next) => {
   try {
     const boardSlug = req.query.board ? String(req.query.board) : undefined;
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 20, 5, 50);
     const sort = String(req.query.sort ?? "new");
     const pinnedMode = req.query.pinned ? String(req.query.pinned) : "include";
     const requesterId = req.user?.userId ?? null;
@@ -91,9 +146,10 @@ topicRouter.get("/", async (req, res, next) => {
             skip: (page - 1) * size,
             take: size,
             include: {
-              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
-              board: { select: { id: true, slug: true, name: true, color: true, type: true } },
-              tags: { include: { tag: true } },
+               author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+               board: { select: { id: true, slug: true, name: true, color: true, type: true } },
+               tags: { include: { tag: true } },
+               ...topicLinkInclude,
             },
           }),
           prisma.topic.count({ where }),
@@ -123,6 +179,7 @@ topicRouter.get("/:id", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
+        ...topicLinkInclude,
       },
     });
     if (!topic) throw Errors.notFound();
@@ -143,6 +200,8 @@ const createSchema = z.object({
   metadata: z.record(z.any()).optional(),
   tags: z.array(z.string().max(20)).optional(),
   anonymous: z.boolean().optional(),
+  linkedMarketItemId: z.number().int().positive().nullable().optional(),
+  linkedWantedPostId: z.number().int().positive().nullable().optional(),
 });
 
 const formatSchema = z.object({
@@ -155,12 +214,15 @@ const formatSchema = z.object({
 topicRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    const { boardSlug, title, content, metadata, tags, anonymous = false } = req.body;
+    const { boardSlug, title, content, metadata, tags, anonymous = false, linkedMarketItemId, linkedWantedPostId } = req.body;
     await ensureForumAccessEnabled(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
     await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
+    if (board.slug === WANTED_DEMAND_BOARD_SLUG) {
+      throw Errors.badRequest("求购需求请使用结构化求购发布入口");
+    }
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
       throw Errors.forbidden("该板块为只读公告板，禁止发帖");
     }
@@ -175,6 +237,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     if (anonymous && !board.anonymousEnabled) {
       throw Errors.forbidden("该板块暂不支持匿名发布");
     }
+    await ensureTopicLinks({ linkedMarketItemId, linkedWantedPostId });
+    const contentSafety = await evaluateMarketContent(prisma, [title, content], "forum");
+    if (contentSafety.action !== "allow") throw Errors.badRequest(contentRuleMessage(contentSafety));
 
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
@@ -213,7 +278,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
           lastReplyAt: now,
           lastReplyById: userId,
           isAnonymous: anonymous,
-          anonymousAlias,
+           anonymousAlias,
+           linkedMarketItemId: linkedMarketItemId || null,
+           linkedWantedPostId: linkedWantedPostId || null,
         },
       });
       if (!hiddenByAi) {
@@ -249,6 +316,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         board: { select: { slug: true, name: true, type: true, color: true } },
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
         tags: { include: { tag: true } },
+        ...topicLinkInclude,
       },
     });
 
@@ -324,7 +392,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { type: true } } },
+      include: { board: { select: { type: true, slug: true } } },
     });
     if (!t) throw Errors.notFound();
     const isOwner = t.authorId === req.user!.userId;
@@ -335,6 +403,9 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
 
     const body = req.body as any;
+    if (t.board?.slug === WANTED_DEMAND_BOARD_SLUG && (body.title !== undefined || body.content !== undefined || body.metadata !== undefined)) {
+      throw Errors.badRequest("求购需求请通过求购编辑页面修改");
+    }
     const data: any = {};
     const nextTitle = typeof body.title === "string" && canEditContent ? body.title : t.title;
     const nextContent = typeof body.content === "string" && canEditContent ? body.content : t.content;
@@ -342,6 +413,22 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (typeof body.title === "string" && canEditContent) data.title = body.title;
     if (typeof body.content === "string" && canEditContent) data.content = body.content;
     if (typeof body.metadata === "object" && body.metadata && canEditContent) data.metadata = nextMetadataRaw;
+    if (canEditContent && (body.linkedMarketItemId !== undefined || body.linkedWantedPostId !== undefined)) {
+      const linkedMarketItemId = body.linkedMarketItemId === null ? null : Number(body.linkedMarketItemId);
+      const linkedWantedPostId = body.linkedWantedPostId === null ? null : Number(body.linkedWantedPostId);
+      if (body.linkedMarketItemId !== undefined && linkedMarketItemId !== null && (!Number.isSafeInteger(linkedMarketItemId) || linkedMarketItemId <= 0)) {
+        throw Errors.badRequest("关联商品参数无效");
+      }
+      if (body.linkedWantedPostId !== undefined && linkedWantedPostId !== null && (!Number.isSafeInteger(linkedWantedPostId) || linkedWantedPostId <= 0)) {
+        throw Errors.badRequest("关联求购参数无效");
+      }
+      await ensureTopicLinks({
+        linkedMarketItemId: body.linkedMarketItemId === undefined ? undefined : linkedMarketItemId,
+        linkedWantedPostId: body.linkedWantedPostId === undefined ? undefined : linkedWantedPostId,
+      });
+      if (body.linkedMarketItemId !== undefined) data.linkedMarketItemId = linkedMarketItemId;
+      if (body.linkedWantedPostId !== undefined) data.linkedWantedPostId = linkedWantedPostId;
+    }
     if (typeof body.pinned === "boolean" && isMod) data.pinned = body.pinned;
     if (typeof body.locked === "boolean" && isMod) data.locked = body.locked;
     if (typeof body.hidden === "boolean" && isMod) data.hidden = body.hidden;
@@ -353,6 +440,8 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
 
     if (isOwner && (typeof body.title === "string" || typeof body.content === "string")) {
       await ensureUserCanSpeak(req.user!.userId);
+      const contentSafety = await evaluateMarketContent(prisma, [nextTitle, nextContent], "forum");
+      if (contentSafety.action !== "allow") throw Errors.badRequest(contentRuleMessage(contentSafety));
       const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
       if (similarityThreshold > 0) {
         const similarity = await evaluateTopicEditSimilarity({
@@ -464,6 +553,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
         board: { select: { id: true, slug: true, name: true, color: true, type: true } },
         tags: { include: { tag: true } },
+        ...topicLinkInclude,
       },
     });
     await invalidateForumCaches();
@@ -479,9 +569,10 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { type: true } } },
+      include: { board: { select: { type: true, slug: true } } },
     });
     if (!t) throw Errors.notFound();
+    if (t.board?.slug === WANTED_DEMAND_BOARD_SLUG) throw Errors.badRequest("求购需求请通过求购管理功能结束或移除");
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();

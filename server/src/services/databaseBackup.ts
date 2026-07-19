@@ -255,6 +255,11 @@ async function resolvePgRestoreForArchive(sourcePath: string) {
   throw lastValidationError;
 }
 
+export async function verifyDatabaseBackupArchive(sourcePath: string) {
+  const command = await resolvePgRestoreForArchive(sourcePath);
+  return { valid: true as const, restoreCommand: path.basename(command) };
+}
+
 async function runPgDump(command: string, targetPath: string) {
   const { parsed, env, connectionArgs } = buildPostgresCommandContext();
   await new Promise<void>((resolve, reject) => {

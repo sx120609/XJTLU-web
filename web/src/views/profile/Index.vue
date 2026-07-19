@@ -32,6 +32,7 @@
       </ul>
       <div class="profile-actions">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
+        <el-button plain :disabled="logoutBusy" @click="router.push('/market/mine?tab=trust')">校园身份与交易信用</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       </div>

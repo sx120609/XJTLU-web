@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { amountCentsToMoney, moneyToAmountCents, signEpayParams, verifyEpayParams } from "../src/services/epay";
 import { calculateMarketOrderAmounts, marketCommissionBpsForItem } from "../src/services/marketFinance";
+import {
+  PAID_LEARNING_MATERIALS_ENABLED,
+  STUDENT_MARKET_PAYMENT_ENABLED,
+  directTradeOrderAmounts,
+  isAllowedLearningMaterialPrice,
+} from "../src/services/marketPolicy";
 
 test("market EasyPay callbacks use deterministic signing and reject tampering", () => {
   const key = "market-test-merchant-key";
@@ -29,7 +35,7 @@ test("market payment amounts round-trip in integer cents", () => {
   assert.throws(() => moneyToAmountCents("not-a-number"), /支付金额不正确/);
 });
 
-test("market commission is locked in integer cents for each order", () => {
+test("legacy market finance remains deterministic for historical records", () => {
   assert.deepEqual(calculateMarketOrderAmounts(10_000, 500), {
     amountCents: 10_000,
     commissionBps: 500,
@@ -41,9 +47,20 @@ test("market commission is locked in integer cents for each order", () => {
   assert.equal(calculateMarketOrderAmounts(10_000, 90_000).platformFeeCents, 5_000);
 });
 
-test("physical second-hand goods are free while learning materials use their own commission", () => {
-  const config = { learningMaterialCommissionBps: 1250 };
-  assert.equal(marketCommissionBpsForItem({ category: "books", deliveryType: "physical" }, config), 0);
-  assert.equal(marketCommissionBpsForItem({ category: "digital_goods", deliveryType: "digital" }, config), 1250);
-  assert.equal(marketCommissionBpsForItem({ category: "other", deliveryType: "digital" }, config), 0);
+test("student marketplace uses direct payment with no platform fee", () => {
+  assert.equal(STUDENT_MARKET_PAYMENT_ENABLED, false);
+  assert.deepEqual(directTradeOrderAmounts(10_000), {
+    amountCents: 10_000,
+    commissionBps: 0,
+    platformFeeCents: 0,
+    sellerAmountCents: 10_000,
+  });
+  assert.equal(marketCommissionBpsForItem({ category: "books", deliveryType: "physical" }, { learningMaterialCommissionBps: 1250 }), 0);
+});
+
+test("paid learning materials remain disabled while free content is allowed", () => {
+  assert.equal(PAID_LEARNING_MATERIALS_ENABLED, false);
+  assert.equal(isAllowedLearningMaterialPrice(0), true);
+  assert.equal(isAllowedLearningMaterialPrice(1), false);
+  assert.equal(isAllowedLearningMaterialPrice(10_000), false);
 });

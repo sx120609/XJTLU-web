@@ -1,5 +1,24 @@
 import { request, type RequestOptions } from "./request";
 
+export interface HomePromotion {
+  id: number;
+  sellerId: number;
+  title: string;
+  description: string;
+  category: string;
+  price: string;
+  priceCents: number;
+  campus: string;
+  cover: string;
+  seller: any;
+  promotion: {
+    orderId: number;
+    type: "home_featured";
+    label: "推广";
+    expiresAt: string;
+  };
+}
+
 export interface HomeSummary {
   identity: any;
   pinnedTopics: any[];
@@ -7,6 +26,7 @@ export interface HomeSummary {
   latestTopics: any[];
   announce: any[];
   services: any[];
+  promotions: HomePromotion[];
 }
 
 export const homeApi = {

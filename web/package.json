@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --port 5173",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "verify:budgets": "node scripts/verify-bundle-budgets.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -15,8 +16,9 @@
     "axios": "^1.7.7",
     "dayjs": "^1.11.13",
     "dompurify": "^3.4.3",
-    "echarts": "^5.5.1",
+    "echarts": "^6.1.0",
     "element-plus": "^2.8.7",
+    "exceljs": "^4.4.0",
     "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
     "marked": "^14.1.4",
@@ -26,9 +28,8 @@
     "qrcode": "^1.5.4",
     "viewerjs": "^1.11.7",
     "vue": "^3.5.12",
-    "vue-echarts": "^7.0.3",
-    "vue-router": "^4.4.5",
-    "xlsx": "^0.18.5"
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^4.4.5"
   },
   "devDependencies": {
     "@types/dompurify": "^3.0.5",
@@ -40,5 +41,8 @@
     "unplugin-vue-components": "^0.27.4",
     "vite": "^5.4.10",
     "vue-tsc": "^2.1.10"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

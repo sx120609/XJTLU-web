@@ -529,13 +529,13 @@
                 drag
                 :auto-upload="false"
                 :show-file-list="false"
-                accept=".xlsx,.xls"
+                accept=".xlsx"
                 @change="handleGradeExcelFile"
               >
                 <el-icon><UploadFilled /></el-icon>
                 <div class="el-upload__text">拖拽 Excel 到这里，或点击选择文件</div>
                 <template #tip>
-                  <div class="el-upload__tip">支持 .xlsx / .xls，当前按第一张工作表读取。</div>
+                  <div class="el-upload__tip">支持不超过 5 MB 的 .xlsx，读取第一张工作表，最多 5000 行、100 个字段。</div>
                 </template>
               </el-upload>
 
@@ -1240,7 +1240,11 @@ const fileDeletingId = ref<number | null>(null);
 const fileDownloadingId = ref<number | null>(null);
 const filePreviewingId = ref<number | null>(null);
 const fileNameRepairing = ref(false);
-let xlsxModule: typeof import("xlsx") | null = null;
+let excelModule: typeof import("exceljs") | null = null;
+const GRADE_EXCEL_MAX_BYTES = 5 * 1024 * 1024;
+const GRADE_EXCEL_MAX_ROWS = 5_000;
+const GRADE_EXCEL_MAX_COLUMNS = 100;
+const UNSAFE_EXCEL_COLUMNS = new Set(["__proto__", "prototype", "constructor"]);
 const zipDownloading = ref(false);
 const fileCollectForm = reactive(createDefaultFileCollectForm());
 const fileRenameInsert = reactive<RenameInsertState>({
@@ -1645,27 +1649,59 @@ function copyLink(row: Questionnaire) {
 async function handleGradeExcelFile(uploadFile: UploadFile) {
   const file = uploadFile.raw;
   if (!file) return;
+  if (!/\.xlsx$/i.test(file.name)) {
+    ElMessage.warning("请选择 .xlsx 文件；旧版 .xls 请先在 Excel 中另存为 .xlsx");
+    return;
+  }
+  if (file.size > GRADE_EXCEL_MAX_BYTES) {
+    ElMessage.warning("Excel 文件不能超过 5 MB");
+    return;
+  }
   try {
-    const XLSX = await loadXlsx();
+    const ExcelJS = await loadExcel();
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as any);
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
       ElMessage.warning("Excel 中没有工作表");
       return;
     }
-    const sheet = workbook.Sheets[sheetName];
-    const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
-      header: 1,
-      defval: "",
-      raw: false,
-    });
+    if (sheet.actualRowCount > GRADE_EXCEL_MAX_ROWS + 1) {
+      ElMessage.warning(`Excel 数据不能超过 ${GRADE_EXCEL_MAX_ROWS} 行`);
+      return;
+    }
+    if (sheet.actualColumnCount > GRADE_EXCEL_MAX_COLUMNS) {
+      ElMessage.warning(`Excel 字段不能超过 ${GRADE_EXCEL_MAX_COLUMNS} 个`);
+      return;
+    }
+    const matrix: string[][] = [];
+    for (let rowIndex = 1; rowIndex <= sheet.rowCount; rowIndex += 1) {
+      const row = sheet.getRow(rowIndex);
+      const values: string[] = [];
+      for (let columnIndex = 1; columnIndex <= sheet.columnCount; columnIndex += 1) {
+        values.push(row.getCell(columnIndex).text.trim());
+      }
+      matrix.push(values);
+    }
     const headerRow = matrix.find((row) => row.some((cell) => String(cell ?? "").trim()));
     if (!headerRow) {
       ElMessage.warning("Excel 没有表头");
       return;
     }
-    const columns = headerRow.map((cell) => String(cell ?? "").trim()).filter(Boolean);
+    const columnDefinitions = headerRow
+      .map((cell, index) => ({ name: String(cell ?? "").trim(), index }))
+      .filter((column) => Boolean(column.name));
+    const columns = columnDefinitions.map((column) => column.name);
+    if (columns.length > GRADE_EXCEL_MAX_COLUMNS) {
+      ElMessage.warning(`Excel 字段不能超过 ${GRADE_EXCEL_MAX_COLUMNS} 个`);
+      return;
+    }
+    const unsafeColumn = columns.find((column) => UNSAFE_EXCEL_COLUMNS.has(column.toLowerCase()));
+    if (unsafeColumn) {
+      ElMessage.warning(`Excel 字段名“${unsafeColumn}”不可使用`);
+      return;
+    }
     if (!columns.includes("学号")) {
       ElMessage.warning("Excel 必须包含“学号”字段");
       return;
@@ -1677,9 +1713,9 @@ async function handleGradeExcelFile(uploadFile: UploadFile) {
     const headerIndex = matrix.indexOf(headerRow);
     const rows = matrix.slice(headerIndex + 1)
       .map((line) => {
-        const row: Record<string, string> = {};
-        columns.forEach((column, index) => {
-          row[column] = String(line[index] ?? "").trim();
+        const row = Object.create(null) as Record<string, string>;
+        columnDefinitions.forEach((column) => {
+          row[column.name] = String(line[column.index] ?? "").trim();
         });
         return row;
       })
@@ -1697,7 +1733,7 @@ async function handleGradeExcelFile(uploadFile: UploadFile) {
     gradeForm.studentIdColumn = "学号";
     gradeForm.columns = columns;
     gradeForm.rows = rows;
-    if (!gradeForm.title.trim()) gradeForm.title = file.name.replace(/\.(xlsx|xls)$/i, "");
+    if (!gradeForm.title.trim()) gradeForm.title = file.name.replace(/\.xlsx$/i, "");
     ElMessage.success(`已读取 ${rows.length} 行`);
   } catch {
     ElMessage.error("Excel 解析失败，请检查文件格式");
@@ -2149,7 +2185,7 @@ function resetGradeForm() {
 }
 
 async function downloadGradeTemplate() {
-  const XLSX = await loadXlsx();
+  const ExcelJS = await loadExcel();
   const dataRows = [
     { 学号: "20260001", 姓名: "张三", 课程: "药理学", 平时成绩: "88", 期末成绩: "91", 总评成绩: "90", 备注: "请核对姓名和成绩" },
     { 学号: "20260002", 姓名: "李四", 课程: "药理学", 平时成绩: "84", 期末成绩: "86", 总评成绩: "85", 备注: "" },
@@ -2161,22 +2197,31 @@ async function downloadGradeTemplate() {
     { 字段名: "平时成绩 / 期末成绩 / 总评成绩", 是否必填: "选填", 说明: "成绩字段名称不限，上传后会原样展示。", 示例: "88" },
     { 字段名: "备注", 是否必填: "选填", 说明: "可写核对说明、补充状态、处理提示等。", 示例: "请核对姓名和成绩" },
   ];
-  const dataSheet = XLSX.utils.json_to_sheet(dataRows, { header: ["学号", "姓名", "课程", "平时成绩", "期末成绩", "总评成绩", "备注"] });
-  XLSX.utils.sheet_add_aoa(dataSheet, [
-    [],
-    ["注意事项（上传前请删除本行及以下内容）"],
-    ["字段名", "是否必填", "说明", "示例"],
-    ...helpRows.map((row) => [row.字段名, row.是否必填, row.说明, row.示例]),
-  ], { origin: `A${dataRows.length + 3}` });
-  dataSheet["!cols"] = [{ wch: 24 }, { wch: 10 }, { wch: 58 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 24 }];
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, dataSheet, "可上传示例");
-  XLSX.writeFile(workbook, "成绩表核对示例.xlsx");
+  const workbook = new ExcelJS.Workbook();
+  const dataSheet = workbook.addWorksheet("可上传示例", { views: [{ state: "frozen", ySplit: 1 }] });
+  const headers = ["学号", "姓名", "课程", "平时成绩", "期末成绩", "总评成绩", "备注"];
+  dataSheet.columns = headers.map((header, index) => ({
+    header,
+    key: header,
+    width: [24, 12, 20, 14, 14, 14, 30][index],
+  }));
+  dataSheet.addRows(dataRows);
+  dataSheet.addRow([]);
+  dataSheet.addRow(["注意事项（上传前请删除本行及以下内容）"]);
+  dataSheet.addRow(["字段名", "是否必填", "说明", "示例"]);
+  helpRows.forEach((row) => dataSheet.addRow([row.字段名, row.是否必填, row.说明, row.示例]));
+  dataSheet.getRow(1).font = { bold: true };
+  dataSheet.getRow(dataRows.length + 3).font = { bold: true, color: { argb: "FFB54708" } };
+  const output = await workbook.xlsx.writeBuffer();
+  saveBlob(
+    new Blob([new Uint8Array(output)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    "成绩表核对示例.xlsx"
+  );
 }
 
-async function loadXlsx() {
-  if (!xlsxModule) xlsxModule = await import("xlsx");
-  return xlsxModule;
+async function loadExcel() {
+  if (!excelModule) excelModule = await import("exceljs");
+  return excelModule;
 }
 
 function findDuplicateStudentId(rows: Array<Record<string, string>>, column: string) {

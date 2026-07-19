@@ -14,8 +14,10 @@
     "build": "npm run build --prefix server && npm run build --prefix web",
     "typecheck": "npm run build --prefix server && npm run type-check --prefix web",
     "test": "npm test --prefix server",
-    "verify:full": "npm run test --prefix server && npm run test:integration --prefix server && npm run typecheck --prefix server && npm run build --prefix web",
+    "verify:full": "npm run test --prefix server && npm run test:integration --prefix server && npm run typecheck --prefix server && npm run build --prefix web && npm run verify:budgets --prefix web",
     "verify:materials": "npm run materials:verify --prefix server && npm run build --prefix web",
+    "audit:production": "npm audit --omit=dev --prefix server && npm audit --omit=dev --prefix web && npm audit --prefix desktop",
+    "verify:release": "npm run verify:full && npm run db:validate --prefix server && npm run db:status --prefix server && npm run db:verify:baseline --prefix server && npm run db:verify:backup --prefix server && npm run audit:production",
     "start": "npm run start --prefix server",
     "weiwall": "npm run weiwall --prefix server --"
   },

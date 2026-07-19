@@ -1,0 +1,207 @@
+import crypto from "node:crypto";
+import { config } from "../config";
+import { Errors } from "../utils/response";
+
+export type MarketContentDecision = "allow" | "review" | "block";
+export type MarketAccessAction = "publish" | "trade";
+export type ContentSafetyScope = "market" | "forum" | "learning";
+
+function normalizeContent(value: string) {
+  return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, "");
+}
+
+export async function evaluateMarketContent(
+  prisma: any,
+  fields: Array<string | null | undefined>,
+  scope: ContentSafetyScope = "market",
+) {
+  const content = normalizeContent(fields.filter(Boolean).join("\n"));
+  if (!content) return { action: "allow" as MarketContentDecision, matches: [] as any[] };
+  const rules = await prisma.marketSafetyRule.findMany({
+    where: { enabled: true, scope: { in: [scope, "all"] } },
+    select: { id: true, keyword: true, scope: true, category: true, action: true, note: true },
+    orderBy: [{ action: "asc" }, { id: "asc" }],
+  });
+  const matches = rules.filter((rule: any) => content.includes(normalizeContent(rule.keyword)));
+  const action: MarketContentDecision = matches.some((rule: any) => rule.action === "block")
+    ? "block"
+    : matches.some((rule: any) => rule.action === "review")
+      ? "review"
+      : "allow";
+  return { action, matches };
+}
+
+export async function expireMarketViolations(prisma: any, now = new Date()) {
+  return prisma.marketViolation.updateMany({
+    where: { status: "active", expiresAt: { lte: now } },
+    data: { status: "expired" },
+  });
+}
+
+export async function ensureMarketAccess(prisma: any, userId: number, action: MarketAccessAction, role = "user") {
+  if (["admin", "mod"].includes(role)) return;
+  const now = new Date();
+  await expireMarketViolations(prisma, now);
+  const restrictedActions = action === "publish" ? ["restrict_publish", "restrict_trade"] : ["restrict_trade"];
+  const violation = await prisma.marketViolation.findFirst({
+    where: {
+      userId,
+      status: "active",
+      action: { in: restrictedActions },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, action: true, reason: true, expiresAt: true },
+  });
+  if (!violation) return;
+  const until = violation.expiresAt ? `，限制至 ${violation.expiresAt.toLocaleString("zh-CN")}` : "";
+  throw Errors.forbidden(`该账号的市集${action === "publish" ? "发布" : "交易"}功能已受限${until}：${violation.reason}`);
+}
+
+function contactKey() {
+  return crypto.createHash("sha256").update(`xjtlu-market-contact:${config.jwtSecret}`).digest();
+}
+
+export function sealMarketContact(value: string) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", contactKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString("base64url");
+}
+
+export function openMarketContact(value: string) {
+  const payload = Buffer.from(value, "base64url");
+  if (payload.length < 29) throw new Error("invalid encrypted market contact");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", contactKey(), payload.subarray(0, 12));
+  decipher.setAuthTag(payload.subarray(12, 28));
+  return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]).toString("utf8");
+}
+
+export function maskMarketContact(method: string, rawValue: string) {
+  const value = rawValue.trim();
+  if (method === "email" || value.includes("@")) {
+    const [name = "", host = ""] = value.split("@", 2);
+    return `${name.slice(0, 2) || "*"}***@${host || "***"}`;
+  }
+  const compact = value.replace(/[\s-]/g, "");
+  if (method === "phone" && compact.length >= 7) return `${compact.slice(0, 3)}****${compact.slice(-4)}`;
+  if (compact.length <= 4) return `${compact.slice(0, 1)}***${compact.slice(-1)}`;
+  return `${compact.slice(0, 2)}***${compact.slice(-2)}`;
+}
+
+function trustLevel(score: number) {
+  if (score >= 90) return { code: "excellent", label: "信用优秀" };
+  if (score >= 75) return { code: "reliable", label: "信用可靠" };
+  if (score >= 60) return { code: "normal", label: "信用正常" };
+  return { code: "caution", label: "交易需谨慎" };
+}
+
+export function calculateMarketTrustScore(input: {
+  identityVerified: boolean;
+  completedTradeCount: number;
+  averageRating: number;
+  positiveReviewCount: number;
+  reviewCount: number;
+  noShowCount: number;
+  cancelledByUserCount: number;
+  activeViolations: Array<{ level: string }>;
+}) {
+  const identityPoints = input.identityVerified ? 10 : 0;
+  const tradePoints = Math.min(15, input.completedTradeCount * 2);
+  const ratingPoints = input.reviewCount > 0
+    ? Math.min(15, Math.round((input.averageRating / 5) * 10 + (input.positiveReviewCount / input.reviewCount) * 5))
+    : 0;
+  const violationPenalty = input.activeViolations.reduce((sum, violation) => {
+    if (violation.level === "serious") return sum + 20;
+    if (violation.level === "moderate") return sum + 12;
+    return sum + 6;
+  }, 0);
+  const score = Math.max(0, Math.min(100, 60 + identityPoints + tradePoints + ratingPoints
+    - input.noShowCount * 8 - input.cancelledByUserCount * 2 - violationPenalty));
+  return { score, ...trustLevel(score) };
+}
+
+export async function getMarketTrustProfile(prisma: any, userId: number, includePrivate = false) {
+  const now = new Date();
+  await expireMarketViolations(prisma, now);
+  const [user, completedTradeCount, reviewSummary, positiveReviewCount, noShowCount, cancelledByUserCount, activeViolations] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, nickname: true, avatar: true, role: true, studentSso: true, createdAt: true },
+    }),
+    prisma.marketOrder.count({ where: { status: "completed", OR: [{ buyerId: userId }, { sellerId: userId }] } }),
+    prisma.marketReview.aggregate({ where: { targetUserId: userId }, _avg: { rating: true }, _count: true }),
+    prisma.marketReview.count({ where: { targetUserId: userId, rating: { gte: 4 } } }),
+    prisma.marketOrder.count({
+      where: { OR: [{ buyerId: userId, noShowParty: "buyer" }, { sellerId: userId, noShowParty: "seller" }] },
+    }),
+    prisma.marketOrder.count({ where: { cancelledById: userId } }),
+    prisma.marketViolation.findMany({
+      where: { userId, status: "active", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      select: includePrivate
+        ? { id: true, type: true, level: true, action: true, reason: true, status: true, expiresAt: true, createdAt: true, appeals: { select: { id: true, status: true, content: true, handledNote: true, createdAt: true } } }
+        : { id: true, level: true },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+  if (!user) throw Errors.notFound("用户不存在");
+  const identityVerified = Boolean(user.studentSso || ["admin", "mod"].includes(user.role));
+  const averageRating = Number(reviewSummary._avg.rating || 0);
+  const reviewCount = Number(reviewSummary._count || 0);
+  const trust = calculateMarketTrustScore({
+    identityVerified,
+    completedTradeCount,
+    averageRating,
+    positiveReviewCount,
+    reviewCount,
+    noShowCount,
+    cancelledByUserCount,
+    activeViolations,
+  });
+  return {
+    user,
+    identity: { verified: identityVerified, label: identityVerified ? "校园身份已核验" : "校园身份未核验" },
+    ...trust,
+    completedTradeCount,
+    averageRating,
+    reviewCount,
+    positiveRate: reviewCount ? Math.round((positiveReviewCount / reviewCount) * 100) : 0,
+    noShowCount,
+    cancelledByUserCount,
+    activeViolationCount: activeViolations.length,
+    restrictions: includePrivate ? activeViolations : undefined,
+  };
+}
+
+const sensitiveDetailKey = /contact|account|phone|wechat|qq|email|realname|password|token|secret|encrypted|联系方式|手机号|微信|邮箱/i;
+
+export function sanitizeAdminLogDetail(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeAdminLogDetail);
+  if (!value || typeof value !== "object") return typeof value === "string" ? value.slice(0, 500) : value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !sensitiveDetailKey.test(key))
+    .map(([key, nested]) => [key, sanitizeAdminLogDetail(nested)]));
+}
+
+export async function logMarketAdminAction(prisma: any, input: {
+  actorId?: number | null;
+  action: string;
+  targetType: string;
+  targetId?: string | number | null;
+  summary: string;
+  detail?: unknown;
+  ip?: string;
+}) {
+  const detail = JSON.stringify(sanitizeAdminLogDetail(input.detail ?? {})).slice(0, 4000);
+  return prisma.adminActionLog.create({
+    data: {
+      actorId: input.actorId ?? null,
+      action: input.action,
+      targetType: input.targetType,
+      targetId: input.targetId === null || input.targetId === undefined ? "" : String(input.targetId),
+      summary: input.summary.slice(0, 500),
+      detail,
+      ip: (input.ip || "").slice(0, 120),
+    },
+  });
+}

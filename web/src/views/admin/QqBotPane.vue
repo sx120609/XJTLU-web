@@ -54,7 +54,7 @@
           </el-form-item>
           <el-form-item label="WebSocket 地址">
             <el-input v-model="form.napcatBaseUrl" placeholder="例如 ws://127.0.0.1:3001" :disabled="configDisabled" />
-            <div class="form-tip">这是 CPU-web 后端连接 NapCat 的地址。NapCat 和后端不在同一台机器时，请填后端能访问到的内网或公网地址。</div>
+            <div class="form-tip">这是靠浦后端连接 NapCat 的地址。NapCat 和后端不在同一台机器时，请填后端能访问到的内网或公网地址。</div>
           </el-form-item>
           <el-form-item label="Access Token">
             <el-input v-model="form.accessToken" show-password placeholder="留空则不修改" :disabled="configDisabled">

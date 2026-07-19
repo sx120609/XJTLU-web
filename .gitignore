@@ -26,6 +26,7 @@ local.properties
 # Database
 *.db
 *.db-journal
+runtime/backups/
 server/filestore/data/
 server/filestore/uploads/
 

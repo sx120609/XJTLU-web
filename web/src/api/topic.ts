@@ -8,6 +8,10 @@ export interface Topic {
   title: string;
   content: string;
   metadata: Record<string, any>;
+  linkedMarketItemId?: number | null;
+  linkedWantedPostId?: number | null;
+  linkedMarketItem?: { id: number; title: string; category: string; status: string; priceCents: number; images: Array<{ url: string }> } | null;
+  linkedWantedPost?: { id: number; title: string; category: string; status: string; budgetMinCents: number; budgetMaxCents: number } | null;
   isAnonymous?: boolean;
   anonymousAlias?: string | null;
   pinned: boolean;
@@ -106,7 +110,7 @@ export const topicApi = {
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
   detail: (id: number, options?: RequestOptions) => request.get<Topic>(`/topics/${id}`, undefined, options),
   replies: (id: number, options?: RequestOptions) => request.get<Reply[]>(`/topics/${id}/replies`, undefined, options),
-  create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean }) =>
+  create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean; linkedMarketItemId?: number | null; linkedWantedPostId?: number | null }) =>
     request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>("/topics", payload),
   update: (id: number, payload: Partial<Topic>) =>
     request.patch<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>(`/topics/${id}`, payload),

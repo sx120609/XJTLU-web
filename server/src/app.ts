@@ -15,10 +15,13 @@ import { startForumVideoModerationPoller } from "./services/videoModeration";
 import { uploadAssetHandler } from "./services/mediaStorage";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
+import { startPromotionExpiryPoller } from "./services/promotion";
 import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
 import { getSiteLogoUrl, getSiteName, getSiteSubtitle } from "./services/siteSettings";
+import { requestObservability } from "./middleware/requestObservability";
+import { startMarketReminderPoller } from "./services/marketMatching";
 
 export function createApp() {
   const app = express();
@@ -26,6 +29,7 @@ export function createApp() {
   // Direct deployments must not trust attacker-supplied X-Forwarded-For.
   // Set TRUST_PROXY_HOPS=1 when exactly one trusted reverse proxy fronts Node.
   app.set("trust proxy", config.trustProxyHops);
+  app.use(requestObservability);
   app.use(cors());
   app.use(compression({
     threshold: 1024,
@@ -65,6 +69,8 @@ export function createApp() {
   startForumVideoModerationPoller();
   startQqNotificationPoller();
   startSponsorOrderExpiryPoller();
+  startPromotionExpiryPoller();
+  startMarketReminderPoller();
 
   app.use("/api/*", (_req, res) => {
     res.status(404).json({ code: 4004, data: null, message: "接口不存在" });

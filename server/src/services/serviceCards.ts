@@ -16,7 +16,7 @@ export function normalizeServiceCard<T extends Record<string, any>>(card: T): T 
     category: "教务",
     owner: "教务处",
     icon: "🎓",
-    url: "/jwxt",
+    url: "/academic",
     needSso: true,
     description: "在站内查看课表、成绩和培养方案",
     materials: "学校统一认证账号",

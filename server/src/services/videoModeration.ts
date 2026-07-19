@@ -4,12 +4,14 @@ import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { prisma } from "../prisma";
+import { queryPage, querySize } from "../utils/query";
 import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig } from "./siteSettings";
+import { runTrackedJob } from "./runtimeHealth";
 
 const execFile = promisify(execFileCallback);
 
@@ -155,7 +157,12 @@ export function startForumVideoModerationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
   const tick = () => {
-    triggerForumVideoModerationDrain(getVideoReviewDispatchCapacity())
+    runTrackedJob(
+      "forum-video-moderation",
+      "论坛视频审核",
+      () => triggerForumVideoModerationDrain(getVideoReviewDispatchCapacity()),
+      VIDEO_REVIEW_POLL_INTERVAL_MS,
+    )
       .catch((error: unknown) => {
         console.warn("[video-review] moderation tick failed", error);
       });
@@ -527,8 +534,8 @@ export async function listForumVideoQueue(params?: {
   page?: number;
   size?: number;
 }) {
-  const page = Math.max(1, Number(params?.page || 1));
-  const size = Math.min(100, Math.max(1, Number(params?.size || 20)));
+  const page = queryPage(params?.page);
+  const size = querySize(params?.size, 20, 1, 100);
   const where = params?.status ? { status: params.status } : {
     status: { in: ["pending", "manual_review", "error", "rejected"] },
   };

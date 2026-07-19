@@ -28,6 +28,37 @@
           </div>
         </el-form-item>
 
+        <el-form-item label="关联市集信息（选填）">
+          <div class="relation-picker">
+            <el-radio-group v-model="relationType" @change="onRelationTypeChange">
+              <el-radio-button value="none">不关联</el-radio-button>
+              <el-radio-button value="item">关联商品</el-radio-button>
+              <el-radio-button value="wanted">关联求购</el-radio-button>
+            </el-radio-group>
+            <el-select
+              v-if="relationType === 'item'"
+              v-model="form.linkedMarketItemId"
+              filterable
+              clearable
+              :loading="linkOptionsLoading"
+              placeholder="选择公开商品"
+            >
+              <el-option v-for="item in marketItems" :key="item.id" :value="item.id" :label="`${item.title} · ¥${item.price}`" />
+            </el-select>
+            <el-select
+              v-else-if="relationType === 'wanted'"
+              v-model="form.linkedWantedPostId"
+              filterable
+              clearable
+              :loading="linkOptionsLoading"
+              placeholder="选择公开求购"
+            >
+              <el-option v-for="item in wantedPosts" :key="item.id" :value="item.id" :label="`${item.title} · ${item.budgetMin}-${item.budgetMax}元`" />
+            </el-select>
+            <p>只展示公开摘要，不会公开交易联系方式；实际交易仍需回到市集完成。</p>
+          </div>
+        </el-form-item>
+
         <el-form-item v-if="currentBoard?.anonymousEnabled" label="匿名发布">
           <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
             <el-switch v-model="form.anonymous" :disabled="!anonymousEnabledForForm || !!editingId" />
@@ -188,6 +219,7 @@
           <span>{{ form.content.length }} / {{ CONTENT_MAX }}</span>
         </div>
         <el-tag v-if="form.anonymous" type="warning" effect="plain" class="preview-anon-tag">匿名发布</el-tag>
+        <el-tag v-if="relationType !== 'none'" type="success" effect="plain" class="preview-anon-tag">{{ relationType === 'item' ? '已关联商品' : '已关联求购' }}</el-tag>
         <h3>{{ form.title || "未填写标题" }}</h3>
         <MarkdownView :content="form.content" />
       </div>
@@ -233,6 +265,7 @@ import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
+import { marketApi, type MarketItem, type WantedPost } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
 
@@ -241,6 +274,10 @@ const router = useRouter();
 const auth = useAuthStore();
 
 const boards = ref<Board[]>([]);
+const marketItems = ref<MarketItem[]>([]);
+const wantedPosts = ref<WantedPost[]>([]);
+const relationType = ref<"none" | "item" | "wanted">("none");
+const linkOptionsLoading = ref(false);
 const loading = ref(false);
 const loadError = ref("");
 const submitting = ref(false);
@@ -279,6 +316,8 @@ const form = reactive({
   title: "",
   content: "",
   anonymous: false,
+  linkedMarketItemId: null as number | null,
+  linkedWantedPostId: null as number | null,
 });
 
 function defaultPostMeta() {
@@ -353,7 +392,7 @@ watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId.value) form.anonymous = false;
 }, { immediate: true });
 
-watch(() => [form.boardSlug, form.title, form.anonymous, meta.price, meta.condition, meta.tradeMode, meta.bounty, editorMode.value], () => {
+watch(() => [form.boardSlug, form.title, form.anonymous, form.linkedMarketItemId, form.linkedWantedPostId, meta.price, meta.condition, meta.tradeMode, meta.bounty, editorMode.value], () => {
   scheduleFormDraftSave();
 }, { deep: true });
 
@@ -376,7 +415,7 @@ async function loadInitial() {
     if (seq !== loadSeq) return;
     boards.value = editingId.value
       ? boardList
-      : boardList.filter((board) => !board.readOnly && board.type !== "announce" && board.type !== "market");
+      : boardList.filter((board) => !board.readOnly && board.type !== "announce" && board.type !== "market" && board.slug !== "wanted-demand");
     normalizeSelectedBoard();
     if (editingId.value) {
       const t = await topicApi.detail(editingId.value, { suppressErrorMessage: true });
@@ -386,6 +425,9 @@ async function loadInitial() {
       form.content = t.content;
       form.anonymous = Boolean(t.isAnonymous);
       if (t.metadata) Object.assign(meta, t.metadata);
+      form.linkedMarketItemId = t.linkedMarketItemId || null;
+      form.linkedWantedPostId = t.linkedWantedPostId || null;
+      relationType.value = form.linkedMarketItemId ? "item" : form.linkedWantedPostId ? "wanted" : "none";
       editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
       normalizeSelectedBoard();
     } else {
@@ -393,6 +435,7 @@ async function loadInitial() {
       restoreContentDraft();
     }
     normalizeSelectedBoard();
+    await loadLinkOptions();
   } catch (error) {
     if (seq !== loadSeq) return;
     loadError.value = normalizePostLoadError(error);
@@ -417,6 +460,9 @@ function resetEditorStateForLoad() {
   form.title = "";
   form.content = "";
   form.anonymous = false;
+  form.linkedMarketItemId = routePositiveId(route.query.itemId);
+  form.linkedWantedPostId = routePositiveId(route.query.wantedPostId);
+  relationType.value = form.linkedMarketItemId ? "item" : form.linkedWantedPostId ? "wanted" : "none";
   Object.assign(meta, defaultPostMeta());
 }
 
@@ -424,6 +470,44 @@ function getRequestStatus(error: unknown) {
   return typeof error === "object" && error !== null
     ? (error as { response?: { status?: number } }).response?.status
     : undefined;
+}
+
+function routePositiveId(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const id = Number(raw || 0);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+async function onRelationTypeChange() {
+  if (relationType.value !== "item") form.linkedMarketItemId = null;
+  if (relationType.value !== "wanted") form.linkedWantedPostId = null;
+  await loadLinkOptions();
+}
+
+async function loadLinkOptions() {
+  if (relationType.value === "none") return;
+  linkOptionsLoading.value = true;
+  try {
+    if (relationType.value === "item") {
+      const result = await marketApi.items({ page: 1, size: 30 }, { suppressErrorMessage: true });
+      marketItems.value = result.list;
+      const selectedId = form.linkedMarketItemId;
+      if (selectedId && !marketItems.value.some((item) => item.id === selectedId)) {
+        const selected = await marketApi.item(selectedId, { suppressErrorMessage: true }).catch(() => null);
+        if (selected) marketItems.value.unshift(selected);
+      }
+    } else {
+      const result = await marketApi.wanted({ page: 1, size: 30, status: "active" }, { suppressErrorMessage: true });
+      wantedPosts.value = result.list;
+      const selectedId = form.linkedWantedPostId;
+      if (selectedId && !wantedPosts.value.some((item) => item.id === selectedId)) {
+        const selected = await marketApi.wantedPost(selectedId, { suppressErrorMessage: true }).catch(() => null);
+        if (selected) wantedPosts.value.unshift(selected);
+      }
+    }
+  } finally {
+    linkOptionsLoading.value = false;
+  }
 }
 
 function getRequestMessage(error: unknown) {
@@ -500,6 +584,13 @@ function restoreFormDraft() {
     if (typeof draft.title === "string" && !form.title) form.title = draft.title;
     if (typeof draft.boardSlug === "string" && !form.boardSlug) form.boardSlug = draft.boardSlug;
     if (typeof draft.anonymous === "boolean") form.anonymous = draft.anonymous;
+    const draftItemId = routePositiveId(draft.linkedMarketItemId);
+    const draftWantedId = routePositiveId(draft.linkedWantedPostId);
+    if (!form.linkedMarketItemId && !form.linkedWantedPostId) {
+      form.linkedMarketItemId = draftItemId;
+      form.linkedWantedPostId = draftWantedId;
+      relationType.value = draftItemId ? "item" : draftWantedId ? "wanted" : "none";
+    }
     if (draft.meta && typeof draft.meta === "object") Object.assign(meta, draft.meta);
     const savedMode = normalizeEditorMode(draft.editorMode ?? draft.meta?._editorMode);
     if (savedMode) editorMode.value = savedMode;
@@ -539,7 +630,9 @@ function scheduleFormDraftSave() {
       localStorage.setItem(formDraftKey.value, JSON.stringify({
         boardSlug: form.boardSlug,
         title: form.title,
-        anonymous: form.anonymous,
+         anonymous: form.anonymous,
+         linkedMarketItemId: form.linkedMarketItemId,
+         linkedWantedPostId: form.linkedWantedPostId,
         editorMode: editorMode.value,
         meta,
         savedAt: Date.now(),
@@ -632,6 +725,8 @@ async function submit() {
   if (auth.user?.status === "muted") { ElMessage.warning(mutedNotice.value); return; }
   if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你有内容正在人工复核，暂时不能继续提交新内容"); return; }
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
+  if (relationType.value === "item" && !form.linkedMarketItemId) { ElMessage.warning("请选择要关联的商品"); return; }
+  if (relationType.value === "wanted" && !form.linkedWantedPostId) { ElMessage.warning("请选择要关联的求购"); return; }
   if (form.anonymous && !anonymousEnabledForForm.value) { ElMessage.warning(anonymousHint.value); return; }
   if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
   if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
@@ -670,6 +765,8 @@ async function confirmSubmit() {
         title: form.title,
         content: form.content,
         metadata,
+        linkedMarketItemId: relationType.value === "item" ? form.linkedMarketItemId : null,
+        linkedWantedPostId: relationType.value === "wanted" ? form.linkedWantedPostId : null,
       });
       if (r.submissionResult?.status === "blocked_ai") {
         blockedTopicId.value = editingId.value;
@@ -691,6 +788,8 @@ async function confirmSubmit() {
         content: form.content,
         metadata,
         anonymous: form.anonymous,
+        linkedMarketItemId: relationType.value === "item" ? form.linkedMarketItemId : null,
+        linkedWantedPostId: relationType.value === "wanted" ? form.linkedWantedPostId : null,
       });
       if (form.anonymous) await auth.fetchMe();
       if (r.submissionResult?.status === "blocked_ai") {
@@ -1069,4 +1168,5 @@ function notifyVideoReviewState(summary?: {
     max-width: 100% !important;
   }
 }
+.relation-picker{display:flex;width:100%;flex-direction:column;gap:10px}.relation-picker .el-select{width:100%}.relation-picker p{margin:0;color:var(--cpu-text-secondary);font-size:12px;line-height:1.6}
 </style>

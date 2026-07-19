@@ -1,6 +1,6 @@
 # 靠浦课表 Android WebView
 
-这是一个轻量 Android WebView 壳，默认打开 `https://cpu.lizmt.cn/schedule`，用于把移动端课表页打包成 APK。
+这是一个轻量 Android WebView 壳，默认打开 `https://cpu.lizmt.cn/academic`，用于把移动端教务页打包成 APK。课表仍是教务页的默认标签。
 
 ## 构建环境
 
@@ -21,7 +21,7 @@ gradle :app:assembleDebug
 如需调试本机 Vite 开发服务器，可覆盖启动地址：
 
 ```bash
-gradle :app:assembleDebug -PappUrl=http://10.0.2.2:5173/schedule
+gradle :app:assembleDebug -PappUrl=http://10.0.2.2:5173/academic
 ```
 
 ## 发布构建
@@ -29,7 +29,7 @@ gradle :app:assembleDebug -PappUrl=http://10.0.2.2:5173/schedule
 默认发布地址已经配置为：
 
 ```text
-https://cpu.lizmt.cn/schedule
+https://cpu.lizmt.cn/academic
 ```
 
 生成 release 包：
@@ -44,12 +44,12 @@ gradle :app:assembleRelease
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `appUrl` | `https://cpu.lizmt.cn/schedule` | WebView 首屏地址 |
+| `appUrl` | `https://cpu.lizmt.cn/academic` | WebView 首屏地址 |
 | `applicationId` | `cn.lizmt.cpuweb.schedule` | Android 包名 |
 | `appName` | `靠浦` | 桌面显示名称 |
 
 示例：
 
 ```bash
-gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule -PapplicationId=cn.lizmt.cpuweb.schedule -PappName=靠浦
+gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/academic -PapplicationId=cn.lizmt.cpuweb.schedule -PappName=靠浦
 ```

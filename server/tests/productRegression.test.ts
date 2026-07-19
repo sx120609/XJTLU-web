@@ -21,17 +21,16 @@ test("product-owned forum catalog stays complete, unique, and deterministically 
   assert.equal(new Set(COMMUNITY_BOARD_DEFS.map((board) => board.order)).size, COMMUNITY_BOARD_DEFS.length);
   assert.ok(COMMUNITY_BOARD_DEFS.every((board) => board.name && board.description && board.icon && board.color));
   assert.deepEqual(
-    FORUM_BOARD_DEFS.filter((board) => board.section === "study").map((board) => ({ name: board.name, description: board.description })),
+    FORUM_BOARD_DEFS.map((board) => board.name),
     [
-      { name: "课程学习", description: "课程学习、作业思路、考试复习与学术交流" },
-      { name: "科研实习", description: "科研项目、实验室机会、实习招聘与经验交流" },
-      { name: "雅思留学", description: "雅思备考、选校申请、文书签证与海外生活交流" },
-      { name: "课程点评", description: "分享课程体验、选课建议与学习心得" },
+      "校园广场", "求购需求", "新生专区", "问答互助",
+      "课程学习", "科研实习", "雅思留学", "课程点评",
+      "校园生活", "社团活动", "树洞", "交友扩列",
     ],
   );
-  const courseReview = FORUM_BOARD_DEFS.find((board) => board.slug === "coursereview");
+  const courseReview = COMMUNITY_BOARD_DEFS.find((board) => board.slug === "coursereview");
   assert.equal(courseReview?.type, "normal");
-  assert.equal(courseReview?.order, Math.max(...FORUM_BOARD_DEFS.filter((board) => board.section === "study").map((board) => board.order)));
+  assert.equal(courseReview?.section, "study");
 });
 
 test("featured eHall catalog contains exactly the requested 15 unique apps in product order", () => {

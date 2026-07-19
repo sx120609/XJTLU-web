@@ -259,7 +259,7 @@ import { adminApi } from "@/api/admin";
 import { uploadApi } from "@/api/topic";
 import { useSiteStore } from "@/stores/site";
 
-type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor" | "promotion";
 
 const site = useSiteStore();
 const loading = ref(false);
@@ -317,8 +317,8 @@ const reputationLevels = ref([
   { level: 4, name: "资深成员", minReputation: 90 },
   { level: 5, name: "校园传说", minReputation: 120 },
 ]);
-const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
-  forum: true, market: true, coursereview: true, electric: true, sponsor: true,
+const features = reactive<Record<FKey, boolean>>({
+  forum: true, market: true, coursereview: true, electric: true, sponsor: true, promotion: true,
 });
 const enabledFeatureCount = computed(() => featureMeta.filter((item) => features[item.key]).length);
 let featureLoadSeq = 0;
@@ -330,9 +330,14 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
     paths: ["/forum", "/post", "/forum/topic/:id"],
   },
   {
-    key: "market", icon: "🛒", title: "商城",
-    desc: "校园商品交易平台，支持实体商品和电子资料。",
+    key: "market", icon: "🛒", title: "市集",
+    desc: "XJTLU 校内实体闲置与求购信息撮合，买卖双方见面验货并直接结算。",
     paths: ["/market", "boards type=market"],
+  },
+  {
+    key: "promotion", icon: "📣", title: "推广与合作商户展示",
+    desc: "独立关闭商业展示、新推广申请和商户公开主页，不影响学生实体交易、求购与免费学习资料；历史订单和人工核验记录会保留。",
+    paths: ["/market/promotions", "/market/merchants", "首页推广位"],
   },
   {
     key: "electric", icon: "💡", title: "宿舍电费查询",

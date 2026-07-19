@@ -78,11 +78,14 @@
       <el-tab-pane label="📮 逛逛" name="weiwall" v-if="auth.isAdmin"><WeiwallPane v-if="tab === 'weiwall'" /></el-tab-pane>
       <el-tab-pane label="📣 公告" name="announcements" v-if="auth.isAdmin"><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
       <el-tab-pane label="💳 支付对接" name="epay" v-if="auth.isAdmin"><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
-      <el-tab-pane label="🛍️ 商城" name="market" v-if="auth.isAdmin"><MarketPane v-if="tab === 'market'" /></el-tab-pane>
+      <el-tab-pane label="🛍️ 市集" name="market" v-if="auth.isAdmin"><MarketPane v-if="tab === 'market'" /></el-tab-pane>
+      <el-tab-pane label="📊 运营" name="operations" v-if="auth.isAdmin"><OperationsPane v-if="tab === 'operations'" /></el-tab-pane>
+      <el-tab-pane label="📈 推广" name="promotion" v-if="auth.isAdmin"><PromotionPane v-if="tab === 'promotion'" /></el-tab-pane>
       <el-tab-pane label="💛 赞助" name="sponsor" v-if="auth.isAdmin"><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
       <el-tab-pane label="🤖 QQBot" name="qqbot" v-if="auth.isAdmin"><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
       <el-tab-pane label="🧠 审核" name="ai-review" v-if="auth.isAdmin"><AiReviewPane v-if="tab === 'ai-review'" /></el-tab-pane>
       <el-tab-pane label="🗄 数据备份" name="database" v-if="auth.isAdmin"><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
+      <el-tab-pane label="🩺 运行健康" name="system-health" v-if="auth.isAdmin"><SystemHealthPane v-if="tab === 'system-health'" /></el-tab-pane>
       <el-tab-pane label="🗂 媒体存储" name="media-storage" v-if="auth.isAdmin"><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
       <el-tab-pane label="📦 文件收集" name="filestore-settings" v-if="auth.isAdmin"><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
       <el-tab-pane label="⚙ 站点设置" name="features" v-if="auth.isAdmin"><FeaturesPane v-if="tab === 'features'" /></el-tab-pane>
@@ -107,10 +110,13 @@ const WeiwallPane = defineAsyncComponent(() => import("./WeiwallPane.vue"));
 const AnnouncementsPane = defineAsyncComponent(() => import("./AnnouncementsPane.vue"));
 const EpayPane = defineAsyncComponent(() => import("./EpayPane.vue"));
 const MarketPane = defineAsyncComponent(() => import("./MarketPane.vue"));
+const OperationsPane = defineAsyncComponent(() => import("./OperationsPane.vue"));
+const PromotionPane = defineAsyncComponent(() => import("./PromotionPane.vue"));
 const SponsorPane = defineAsyncComponent(() => import("./SponsorPane.vue"));
 const QqBotPane = defineAsyncComponent(() => import("./QqBotPane.vue"));
 const AiReviewPane = defineAsyncComponent(() => import("./AiReviewPane.vue"));
 const DatabasePane = defineAsyncComponent(() => import("./DatabasePane.vue"));
+const SystemHealthPane = defineAsyncComponent(() => import("./SystemHealthPane.vue"));
 const MediaStoragePane = defineAsyncComponent(() => import("./MediaStoragePane.vue"));
 const FilestoreSettingsPane = defineAsyncComponent(() => import("./FilestoreSettingsPane.vue"));
 const FeaturesPane = defineAsyncComponent(() => import("./FeaturesPane.vue"));

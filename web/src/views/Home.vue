@@ -1,167 +1,69 @@
 <template>
   <div class="home">
-    <!-- Hero / 介绍 -->
-    <section class="hero">
-      <div class="hero-text">
-        <h1>{{ site.siteName }}</h1>
-        <p>{{ site.siteSubtitle || heroIntro }}</p>
-        <div class="hero-actions">
-          <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
-            <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
-          </el-button>
-          <el-button v-if="site.features.market && auth.canAccessForum" size="large" @click="$router.push('/market')">
-            <span>🛍️</span> 商城
-          </el-button>
-          <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
-            <el-icon><Bell /></el-icon> 看校园公告
-          </el-button>
-          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">{{ loginActionText }}</el-button>
-          <el-button v-else-if="site.features.forum && auth.canAccessForum" size="large" @click="$router.push('/post')">
-            <el-icon><Edit /></el-icon> 发布内容
-          </el-button>
-          <el-button v-else size="large" @click="$router.push('/services')">
-            <el-icon><Service /></el-icon> 校园服务
-          </el-button>
-        </div>
+    <section class="home-hero">
+      <div class="hero-copy">
+        <span class="eyebrow">{{ greeting }} · {{ site.siteName }}</span>
+        <h1>发现校内闲置，也让真实需求更快被看见</h1>
+        <p>{{ site.siteSubtitle || "给 XJTLU 同学一个更顺手、更可信的校园互助入口。" }}</p>
       </div>
+      <form class="hero-search" role="search" @submit.prevent="goSearch">
+        <el-input v-model="query" size="large" clearable placeholder="搜索商品、求购或广场帖子">
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-button native-type="submit" type="primary" size="large">搜索</el-button>
+      </form>
     </section>
 
-    <section v-if="homeError && !loading" class="block home-error">
-      <el-empty :description="homeError">
-        <el-button type="primary" @click="loadSummary">重试</el-button>
-      </el-empty>
+    <section class="quick-actions" aria-label="常用发布入口">
+      <router-link
+        v-for="action in quickActions"
+        :key="action.to"
+        :to="action.to"
+        class="quick-action cpu-card"
+        :class="`quick-action--${action.tone}`"
+      >
+        <span :class="action.tone"><el-icon><component :is="action.icon" /></el-icon></span>
+        <div><b>{{ action.title }}</b><small>{{ action.description }}</small></div>
+        <el-icon class="quick-arrow"><Right /></el-icon>
+      </router-link>
     </section>
 
-    <div v-else class="grid" :class="{ 'single-col': !showForumContent }" v-loading="loading">
-      <!-- 左：热帖 + 最新 -->
-      <div class="col-left" v-if="showForumContent">
-        <section class="block" v-if="summary?.pinnedTopics?.length">
-          <div class="block-head">
-            <h3>📌 全局置顶</h3>
-            <span class="cpu-muted">重要内容</span>
-          </div>
-          <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
-        </section>
-
-        <section class="block">
-          <div class="block-head">
-            <h3>🔥 热议</h3>
-            <router-link to="/forum/hot" class="more">查看前十 →</router-link>
-          </div>
-          <div
-            v-for="t in hotPreview"
-            :key="'hot-' + t.id"
-            class="hot-row"
-            role="button"
-            tabindex="0"
-            @click="openTopic(t.id)"
-            @keydown.enter.prevent="openTopic(t.id)"
-            @keydown.space.prevent="openTopic(t.id)"
-          >
-            <div class="hot-rank" :class="{ top3: t.rank <= 3 }">#{{ t.rank }}</div>
-            <div class="hot-main">
-              <div class="hot-title">{{ t.title }}</div>
-              <div v-if="t.tags?.length" class="hot-tags">
-                <span v-for="tag in t.tags.slice(0, 2)" :key="tag.name" class="hot-tag">{{ tag.name }}</span>
-              </div>
-              <div class="hot-meta">
-                <span>{{ t.board?.name }}</span>
-                <span>{{ t.replyCount }} 回 / {{ t.likeCount }} 赞</span>
-              </div>
-            </div>
-            <div class="hot-score">{{ Math.round(t.hotScore || 0) }}</div>
-          </div>
-          <div v-if="hotPreview.length" class="hot-foot">
-            <span class="cpu-muted">首页仅展示前三</span>
-            <router-link to="/forum/hot" class="more more-strong">进入热榜 Top 10 →</router-link>
-          </div>
-          <el-empty v-if="!hotPreview.length" description="暂无内容" />
-        </section>
-
-        <section class="block">
-          <div class="block-head">
-            <h3>🆕 最新</h3>
-            <router-link to="/forum/latest" class="more">更多 →</router-link>
-          </div>
-          <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" />
-          <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
-        </section>
+    <section class="home-section market-section">
+      <div class="section-head">
+        <div><span>RECOMMENDED GOODS</span><h2>推荐好物</h2></div>
+        <router-link to="/market?listingType=sell&sort=popular">更多商品 <el-icon><Right /></el-icon></router-link>
       </div>
-
-      <!-- 右：公告 + 服务 -->
-      <div class="col-right">
-        <section class="block">
-          <div class="block-head">
-            <h3>📢 校园公告</h3>
-            <router-link to="/announcements" class="more">更多 →</router-link>
-          </div>
-          <ul v-if="ehallNotices.length" class="announce-list">
-            <li v-for="notice in ehallNotices.slice(0, 5)" :key="`ehall-${notice.id}`">
-              <a :href="notice.url" target="_blank" rel="noopener noreferrer" class="home-notice-link">
-                <div class="ann-title">{{ notice.title }}</div>
-                <div class="ann-meta">
-                  <span class="ann-source">融合门户通知</span>
-                  <span>{{ noticeDate(notice.publishedAt) }}</span>
-                </div>
-              </a>
-            </li>
-          </ul>
-          <el-empty v-else-if="!ehallNoticesLoading" description="暂无公告，稍后再来看看" />
-        </section>
-
-        <section class="block" v-if="site.features.market && auth.canAccessForum">
-          <div class="block-head">
-            <h3>🛍️ 商城</h3>
-            <router-link to="/market" class="more">全部商品 →</router-link>
-          </div>
-          <div v-if="marketPreview.length" class="market-preview-grid">
-            <router-link v-for="item in marketPreview" :key="item.id" :to="{ name: 'market-item', params: { id: item.id } }" class="market-preview-card">
-              <div class="market-preview-cover"><img v-if="item.cover" :src="item.cover" alt="" /><span v-else class="market-placeholder-icon">{{ marketCategoryIcon(item.category) }}</span></div>
-              <div class="market-preview-copy"><strong>{{ item.title }}</strong><span>{{ item.listingType==='wanted'?'预算 ':'' }}¥{{ item.price }}</span><small>{{ item.tradeMode==='online'?'线上发货':(item.campus || '校内交易') }}</small></div>
-            </router-link>
-          </div>
-          <div v-else class="market-empty">
-            <span>校园好物与电子资料，都可以在这里发布</span>
-            <el-button size="small" type="primary" @click="$router.push('/market/publish')">发布第一件商品</el-button>
-          </div>
-        </section>
-
-        <section class="block">
-          <div class="block-head">
-            <h3>🧭 校园服务</h3>
-            <router-link to="/services" class="more">全部 →</router-link>
-          </div>
-          <div v-if="homeServiceEntries.length" class="service-grid">
-            <div
-              v-for="s in homeServiceEntries"
-              :key="s.id"
-              class="svc"
-              role="button"
-              tabindex="0"
-              @click="openUrl(s.url)"
-              @keydown.enter.prevent="openUrl(s.url)"
-              @keydown.space.prevent="openUrl(s.url)"
-            >
-              <div class="svc-icon">{{ s.icon || "🔗" }}</div>
-              <div class="svc-name">{{ s.name }}</div>
-              <div class="svc-tag" v-if="s.needSso">需登录</div>
-            </div>
-          </div>
-        </section>
+      <div v-if="marketLoading" class="market-grid"><MarketSkeleton v-for="i in 4" :key="i" /></div>
+      <div v-else-if="recommendedItems.length" class="market-grid">
+        <MarketPreviewCard v-for="item in recommendedItems" :key="item.id" :item="item" />
       </div>
-    </div>
+      <CompactEmpty v-else title="还没有在售闲置" description="真实商品发布后会优先显示在这里" action="出售第一件物品" to="/publish/listing" />
+    </section>
 
+    <section class="home-section square-section">
+      <div class="section-head">
+        <div><span>SQUARE HOT &amp; WANTED</span><h2>热议求购</h2></div>
+        <router-link to="/square">进入广场 <el-icon><Right /></el-icon></router-link>
+      </div>
+      <div v-if="summaryLoading" class="topic-loading"><el-skeleton :rows="3" animated /></div>
+      <div v-else-if="hotTopics.length" class="topic-list">
+        <TopicListItem v-for="topic in hotTopics" :key="topic.id" :topic="topic" />
+      </div>
+      <CompactEmpty v-else title="广场还没有热议内容" description="热门讨论和求购需求都会展示在这里" action="发起讨论" to="/post" />
+    </section>
+
+    <el-alert v-if="marketError || summaryError" type="warning" :closable="false" show-icon :title="marketError || summaryError" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { computed, defineComponent, h, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { ChatLineRound, Edit, Bell, Service } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
+import { ChatDotRound, Goods, Right, Search } from "@element-plus/icons-vue";
+import { ElSkeleton, ElSkeletonItem } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
+import PromotionLabel from "@/components/market/PromotionLabel.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
-import { ehallApi, type EhallNotice } from "@/api/ehall";
 import { marketApi, type MarketItem } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
@@ -170,516 +72,141 @@ import { fmtRelative } from "@/utils/format";
 const auth = useAuthStore();
 const site = useSiteStore();
 const router = useRouter();
+const query = ref("");
 const summary = ref<HomeSummary | null>(null);
-const loading = ref(false);
-const homeError = ref("");
-const ehallNotices = ref<EhallNotice[]>([]);
-const ehallNoticesLoading = ref(false);
-const marketPreview = ref<MarketItem[]>([]);
-function marketCategoryIcon(category: string) { return ({ digital: '💻', books: '📚', digital_goods: '📁', dorm: '🛏️', appliance: '🔌', fashion: '👕', sports: '🏸', tickets: '🎫', other: '📦' } as Record<string,string>)[category] || '🛍️'; }
-const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
-const visibleServices = computed(() => summary.value?.services ?? []);
-const homeServiceEntries = computed(() => {
-  const builtins = [
-    { id: "academic", name: "我的教务", icon: "🎓", url: "/academic", needSso: true },
-    { id: "tools", name: "校园工具", icon: "🧰", url: "/services/tools", needSso: false },
-    { id: "hall", name: "服务大厅", icon: "🧭", url: "/services", needSso: false },
-    { id: "ehall", name: "融合门户", icon: "🏫", url: "https://ehall.xjtlu.edu.cn/default/index.html#/hall", needSso: true },
-  ];
-  const seen = new Set(builtins.map((item) => item.url));
-  return [...builtins, ...visibleServices.value.filter((item) => !seen.has(item.url))].slice(0, 10);
-});
-let loadSeq = 0;
+const recommendedItems = ref<MarketItem[]>([]);
+const marketLoading = ref(false);
+const summaryLoading = ref(false);
+const marketError = ref("");
+const summaryError = ref("");
+let marketLoadSequence = 0;
 
-const enabledFeatureLabels = computed(() => {
-  const labels = ["公告聚合", "常用校园服务"];
-  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "校园商城");
-  if (site.features.forum && auth.canAccessForum) labels.unshift("校园讨论");
-  return labels;
-});
-const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
-const forumActionLabel = computed(() => {
-  if (!site.features.forum) return "看校园公告";
-  if (auth.canAccessForum) return "进入论坛";
-  return auth.isLoggedIn ? "开启论坛功能" : "论坛入口";
+const greeting = computed(() => auth.user?.nickname ? `${auth.user.nickname}，你好` : "你好，XJTLUer");
+const hotTopics = computed(() => (summary.value?.hotTopics ?? []).slice(0, 5));
+const canBrowseMarket = computed(() => site.features.market && auth.canAccessForum);
+const quickActions = [
+  { title: "我要出售", description: "发布校内闲置物品", to: "/publish/listing", icon: Goods, tone: "teal" },
+  { title: "我要求购", description: "发布到广场求购需求", to: "/publish/wanted", icon: Search, tone: "amber" },
+  { title: "我要发帖", description: "发起校园讨论", to: "/post", icon: ChatDotRound, tone: "violet" },
+] as const;
+
+const categoryIcons: Record<string, string> = { digital: "💻", books: "📚", dorm: "🛏️", appliance: "🔌", fashion: "👕", sports: "🏸", tickets: "🎫", other: "📦" };
+
+const MarketPreviewCard = defineComponent({
+  name: "MarketPreviewCard",
+  props: { item: { type: Object as () => MarketItem, required: true }, compact: Boolean },
+  setup(props) {
+    return () => h("a", {
+      class: ["market-card", props.compact && "market-card--compact"],
+      href: `/market/item/${props.item.id}`,
+      onClick: (event: MouseEvent) => {
+        event.preventDefault();
+        if (props.item.promotions?.pinned) void marketApi.recordPromotionEvent(props.item.promotions.pinned.orderId, "click", { suppressErrorMessage: true });
+        void router.push(`/market/item/${props.item.id}`);
+      },
+    }, [
+      h("div", { class: "market-cover" }, props.item.cover
+        ? [h("img", { src: props.item.cover, alt: props.item.title, loading: "lazy" })]
+        : [h("span", categoryIcons[props.item.category] || "📦")]),
+      h("div", { class: "market-copy" }, [
+        h("div", { class: "market-title-line" }, [
+          props.item.promotions?.pinned ? h(PromotionLabel, { label: "置顶", kind: "pin" }) : null,
+          props.item.listingType === "wanted" ? h("em", "求购") : null,
+          h("h3", props.item.title),
+        ]),
+        h("div", { class: "market-price" }, [
+          h("strong", `${props.item.listingType === "wanted" ? "预算 " : ""}¥${props.item.price}`),
+          props.item.negotiable ? h("span", "可议") : null,
+        ]),
+        h("div", { class: "market-meta" }, [
+          h("span", props.item.campus || "校内面交"),
+          h("time", fmtRelative(props.item.createdAt)),
+        ]),
+      ]),
+    ]);
+  },
 });
 
-const heroIntro = computed(() => {
-  const labels = enabledFeatureLabels.value;
-  const text = labels.length > 1 ? `${labels.slice(0, -1).join("、")}与${labels.at(-1)}` : labels[0];
-  return `${text}，给 XJTLU 同学一个更顺手的信息入口。`;
+const MarketSkeleton = defineComponent({
+  name: "MarketSkeleton",
+  props: { compact: Boolean },
+  setup(props) {
+    return () => h("div", { class: ["market-card", "market-skeleton", props.compact && "market-card--compact"] }, [
+      h(ElSkeleton, { animated: true }, { template: () => [
+        h(ElSkeletonItem, { variant: "image", class: "skeleton-cover" }),
+        h(ElSkeletonItem, { variant: "h3", style: "width:75%;margin:10px" }),
+        h(ElSkeletonItem, { variant: "text", style: "width:45%;margin:0 10px 10px" }),
+      ] }),
+    ]);
+  },
 });
 
-const loginActionText = computed(() => site.features.forum ? "登录" : "登录使用");
+const CompactEmpty = defineComponent({
+  name: "CompactEmpty",
+  props: { title: { type: String, required: true }, description: { type: String, required: true }, action: String, to: String },
+  setup(props) {
+    return () => h("div", { class: "compact-empty" }, [
+      h("span", "○"),
+      h("div", [h("b", props.title), h("small", props.description)]),
+      props.action && props.to ? h("button", { type: "button", onClick: () => void router.push(props.to!) }, props.action) : null,
+    ]);
+  },
+});
 
 onMounted(() => {
   auth.hydrate();
   void loadSummary();
-  void loadEhallNotices();
-  if (site.features.market && auth.canAccessForum) void loadMarketPreview();
+  if (canBrowseMarket.value) void loadRecommendedItems();
 });
 
-watch(() => site.features.market && auth.canAccessForum, (enabled) => {
-  if (enabled && !marketPreview.value.length) void loadMarketPreview();
+watch(canBrowseMarket, (enabled) => {
+  if (enabled) void loadRecommendedItems();
+  else recommendedItems.value = [];
 });
 
-async function loadEhallNotices() {
-  ehallNoticesLoading.value = true;
+async function loadRecommendedItems() {
+  const sequence = ++marketLoadSequence;
+  marketLoading.value = true;
+  marketError.value = "";
+  const options = { suppressErrorMessage: true, suppressAuthMessage: true, suppressAuthRedirect: true };
   try {
-    const result = await ehallApi.sharedNotices({
-      suppressErrorMessage: true,
-      suppressAuthMessage: true,
-      suppressAuthRedirect: true,
-    });
-    ehallNotices.value = result.active ? result.notices : [];
+    const result = await marketApi.items({ page: 1, size: 4, listingType: "sell", sort: "popular" }, options);
+    if (sequence !== marketLoadSequence) return;
+    recommendedItems.value = result.list.slice(0, 4);
+    for (const item of recommendedItems.value) {
+      if (item.promotions?.pinned) void marketApi.recordPromotionEvent(item.promotions.pinned.orderId, "impression", { suppressErrorMessage: true });
+    }
   } catch {
-    ehallNotices.value = [];
+    if (sequence !== marketLoadSequence) return;
+    recommendedItems.value = [];
+    marketError.value = "市集内容暂时加载失败，请稍后重试";
   } finally {
-    ehallNoticesLoading.value = false;
+    if (sequence === marketLoadSequence) marketLoading.value = false;
   }
-}
-
-async function loadMarketPreview() {
-  try {
-    const result = await marketApi.items({ page: 1, size: 4, sort: "new" }, {
-      suppressErrorMessage: true,
-      suppressAuthMessage: true,
-      suppressAuthRedirect: true,
-    });
-    marketPreview.value = result.list;
-  } catch { marketPreview.value = []; }
-}
-
-function noticeDate(value: string) {
-  const match = value.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}:\d{2}))?/);
-  if (!match) return value || "刚刚";
-  return `${Number(match[2])}月${Number(match[3])}日${match[4] ? ` · ${match[4]}` : ""}`;
 }
 
 async function loadSummary() {
-  const seq = ++loadSeq;
-  loading.value = true;
-  homeError.value = "";
+  summaryLoading.value = true;
+  summaryError.value = "";
   try {
-    // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
-    const next = await homeApi.summary({ suppressErrorMessage: true });
-    if (seq !== loadSeq) return;
-    summary.value = next;
-  } catch (e) {
-    if (seq !== loadSeq) return;
-    summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [] };
-    homeError.value = normalizeHomeError(e);
+    summary.value = await homeApi.summary({ suppressErrorMessage: true });
+  } catch {
+    summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [], promotions: [] };
+    summaryError.value = "广场内容暂时加载失败，请稍后重试";
   } finally {
-    if (seq === loadSeq) loading.value = false;
+    summaryLoading.value = false;
   }
 }
 
-function openUrl(url: string) {
-  const target = typeof url === "string" ? url.trim() : "";
-  if (!target) {
-    ElMessage.warning("该服务暂未配置链接");
-    return;
-  }
-  if (target.startsWith("/")) {
-    router.push(target);
-    return;
-  }
-  if (target.startsWith("tel:") || target.startsWith("mailto:")) {
-    window.location.href = target;
-    return;
-  }
-  if (/^https?:\/\//i.test(target)) {
-    window.open(target, "_blank", "noopener,noreferrer");
-    return;
-  }
-  ElMessage.warning("该服务链接格式暂不支持");
+function goSearch() {
+  const value = query.value.trim();
+  if (value) void router.push({ name: "search", query: { q: value } });
 }
 
-function openTopic(id: number) {
-  router.push(`/forum/topic/${id}`);
-}
-
-function normalizeHomeError(error: unknown) {
-  const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
-  if (status && status < 500) {
-    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "首页内容加载失败";
-  }
-  return "首页内容加载失败，请稍后再试";
-}
 </script>
 
 <style scoped lang="scss">
-.home {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.hero {
-  background: linear-gradient(135deg, #5747c8 0%, #6d5ce7 58%, #8b7cf6 100%);
-  color: #fff;
-  border-radius: 16px;
-  padding: 32px 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-  overflow: hidden;
-
-  &::after {
-    content: "";
-    position: absolute;
-    right: -80px;
-    top: -80px;
-    width: 280px;
-    height: 280px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 40% 40%, rgba(232, 163, 23, 0.45), transparent 60%);
-    pointer-events: none;
-  }
-}
-
-.hero-text { flex: 1; z-index: 1; }
-.hero h1 { margin: 0 0 6px; font-size: 32px; }
-.hero p { margin: 0 0 16px; opacity: 0.9; font-size: 15px; }
-.hero-actions { display: flex; gap: 10px; }
-.hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #6d5ce7; }
-.hero-actions .el-button:hover { background: #fff; }
-.hero-actions .el-button--primary { background: #fff; color: #6d5ce7; }
-
-:global(html[data-theme="dark"] .hero-actions .el-button) {
-  background: rgba(255, 255, 255, 0.10);
-  border: 1px solid rgba(238, 248, 245, 0.22);
-  color: #eef8f5;
-}
-:global(html[data-theme="dark"] .hero-actions .el-button:hover) {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(238, 248, 245, 0.34);
-  color: #ffffff;
-}
-:global(html[data-theme="dark"] .hero-actions .el-button--primary) {
-  background: rgba(45, 212, 191, 0.95);
-  border-color: rgba(45, 212, 191, 0.95);
-  color: #05201c;
-}
-:global(html[data-theme="dark"] .hero-actions .el-button--primary:hover) {
-  background: #5eead4;
-  border-color: #5eead4;
-  color: #04201c;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 16px;
-}
-/* 论坛被关掉时，左栏隐藏 → 右栏单独占满整行，避免出现 1/3 宽的"孤儿" */
-.grid.single-col {
-  grid-template-columns: 1fr;
-}
-@media (max-width: 1100px) {
-  .grid { grid-template-columns: 1fr; }
-}
-
-.col-left, .col-right { display: flex; flex-direction: column; gap: 16px; }
-
-.block {
-  background: var(--cpu-card);
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  padding: 16px 20px 12px;
-  box-shadow: var(--cpu-shadow-sm);
-}
-.home-error {
-  padding: 24px 16px;
-}
-
-.block-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 10px;
-}
-.block-head h3 { margin: 0; font-size: 16px; color: var(--cpu-text); font-weight: 600; }
-.more { font-size: 12px; color: var(--cpu-primary); text-decoration: none; }
-
-.announce-list { list-style: none; padding: 0; margin: 0; }
-.announce-list li {
-  padding: 10px 4px;
-  border-bottom: 1px dashed var(--cpu-border-soft);
-  cursor: pointer;
-  transition: background 0.15s;
-  border-radius: 6px;
-}
-.announce-list li:hover { background: var(--cpu-surface-soft); }
-.announce-list li:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.announce-list li:last-child { border-bottom: none; }
-.home-notice-link { display: block; color: inherit; text-decoration: none; }
-.ann-title {
-  font-size: 14px;
-  color: var(--cpu-text);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-.ann-meta {
-  font-size: 12px;
-  color: var(--cpu-text-muted);
-  margin-top: 2px;
-  display: flex;
-  gap: 8px;
-}
-.ann-source { color: var(--cpu-primary); }
-
-.hot-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 4px;
-  border-bottom: 1px dashed var(--cpu-border-soft);
-  cursor: pointer;
-}
-.hot-row:last-of-type { border-bottom: none; }
-.hot-row:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.hot-rank {
-  min-width: 46px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--cpu-text-muted);
-}
-.hot-rank.top3 { color: #dc2626; }
-.hot-title {
-  font-size: 14px;
-  color: var(--cpu-text);
-  line-height: 1.5;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-.hot-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--cpu-text-muted);
-}
-.hot-tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-.hot-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.34);
-  color: #9a3412;
-  font-size: 11px;
-  font-weight: 600;
-}
-.hot-score {
-  min-width: 44px;
-  text-align: right;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--cpu-primary);
-}
-.hot-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding-top: 12px;
-}
-.more-strong {
-  font-weight: 600;
-}
-
-.service-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-.market-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.market-preview-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; min-width: 0; padding: 8px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; color: inherit; text-decoration: none; background: var(--cpu-surface); transition: border-color .15s, transform .15s; }
-.market-preview-card:hover { border-color: var(--cpu-primary); transform: translateY(-1px); }
-.market-preview-cover { width: 64px; height: 64px; display: grid; place-items: center; overflow: hidden; border-radius: 9px; background: linear-gradient(135deg, rgba(22,135,118,.12), rgba(45,163,145,.22)); color: var(--cpu-primary); font-size: 12px; font-weight: 700; }
-.market-preview-cover img { width: 100%; height: 100%; object-fit: cover; }
-.market-placeholder-icon { font-size: 27px; filter: drop-shadow(0 3px 5px rgba(15,118,110,.12)); }
-.market-preview-copy { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
-.market-preview-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.market-preview-copy span { color: #e24a3b; font-size: 16px; font-weight: 800; }
-.market-preview-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cpu-text-muted); }
-.market-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(22,135,118,.08), rgba(232,163,23,.08)); color: var(--cpu-text-secondary); font-size: 13px; }
-.wall-card {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  background: var(--cpu-surface-soft);
-  cursor: pointer;
-}
-.wall-card:hover {
-  border-color: #93c5fd;
-}
-.wall-card:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.wall-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-size: 22px;
-  background: var(--cpu-surface-subtle);
-  flex-shrink: 0;
-}
-.wall-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--cpu-text);
-}
-.wall-desc {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--cpu-text-secondary);
-}
-.svc {
-  padding: 10px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
-  background: var(--cpu-surface);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  position: relative;
-}
-.svc:hover { border-color: var(--cpu-primary); background: var(--cpu-surface-soft); }
-.svc:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.svc-icon { font-size: 22px; }
-.svc-name { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 4px; line-height: 1.3; }
-.svc-tag {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: rgba(245, 158, 11, 0.16);
-  color: #b45309;
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-.svc-special {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(251, 191, 36, 0.1) 100%);
-  border-color: rgba(245, 158, 11, 0.32);
-}
-.svc-special:hover {
-  border-color: #f59e0b;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(251, 191, 36, 0.14) 100%);
-}
-.svc-tag-fresh { background: rgba(251, 191, 36, 0.85); color: #78350f; font-weight: 500; }
-.cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
-
-@media (max-width: 768px) {
-  .home {
-    gap: 14px;
-  }
-
-  .hero {
-    border-radius: 12px;
-    padding: 22px 18px;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 18px;
-  }
-
-  .hero h1 {
-    font-size: 28px;
-  }
-
-  .hero p {
-    font-size: 14px;
-    line-height: 1.6;
-  }
-
-  .hero-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .hero-actions .el-button {
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .grid {
-    gap: 14px;
-  }
-
-  .col-left,
-  .col-right {
-    gap: 14px;
-  }
-
-  .block {
-    border-radius: 10px;
-    padding: 14px 12px 10px;
-  }
-
-  .block-head {
-    align-items: center;
-  }
-
-  .service-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .market-preview-grid { grid-template-columns: 1fr; }
-
-  .svc {
-    min-height: 82px;
-    padding: 9px 7px;
-  }
-
-  .svc-icon {
-    font-size: 20px;
-  }
-
-  .hot-row {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .hot-score {
-    grid-column: 2;
-    text-align: left;
-    min-width: 0;
-    font-size: 13px;
-  }
-}
-
-@media (max-width: 420px) {
-  .service-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-:global(html[data-theme="dark"]) .market-preview-cover{background:linear-gradient(135deg,rgba(45,212,191,.10),rgba(45,163,145,.18))}
+.home{display:flex;flex-direction:column;gap:22px}.home-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);align-items:center;gap:28px;padding:24px 30px;border-radius:18px;color:#fff;background:linear-gradient(135deg,#5747c8 0%,#6d5ce7 58%,#8b7cf6 100%)}.home-hero:after{content:"";position:absolute;right:-70px;top:-130px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(232,163,23,.38),transparent 62%);pointer-events:none}.hero-copy,.hero-search{position:relative;z-index:1}.eyebrow{font-size:10px;font-weight:700;letter-spacing:.14em;opacity:.82}.home-hero h1{max-width:650px;margin:6px 0 4px;font-size:25px;line-height:1.25}.home-hero p{margin:0;font-size:12px;opacity:.82}.hero-search{display:flex;gap:8px;padding:8px;border-radius:13px;background:rgba(255,255,255,.16);backdrop-filter:blur(8px)}.hero-search .el-input{flex:1}.quick-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:112px;align-items:stretch;gap:14px}.quick-action{box-sizing:border-box;display:flex;height:112px;min-width:0;min-height:112px;max-height:112px;align-items:center;align-self:stretch;gap:15px;margin:0;padding:22px;color:#1e293b;text-decoration:none;transition:.18s}.quick-action--teal{border-color:#86cfc2;background:linear-gradient(135deg,#bcebdc 0%,#c9d7ff 100%)}.quick-action--amber{border-color:#edbd88;background:linear-gradient(135deg,#ffd79d 0%,#f5c3d2 100%)}.quick-action--violet{border-color:#b6a3ef;background:linear-gradient(135deg,#d4c1ff 0%,#bcd6ff 100%)}.quick-action:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--cpu-primary) 58%,var(--cpu-border-soft));box-shadow:0 12px 28px rgba(73,58,154,.15)}.quick-action>span{display:grid;place-items:center;flex:0 0 54px;width:54px;height:54px;border-radius:16px;font-size:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.62);background:rgba(255,255,255,.66)}.quick-action>span.teal{color:#0f766e}.quick-action>span.amber{color:#b45309}.quick-action>span.violet{color:#6d28d9}.quick-action>div{display:flex;min-width:0;flex:1;flex-direction:column;gap:5px}.quick-action b{font-size:17px}.quick-action small{overflow:hidden;color:#52647e;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.quick-arrow{color:#64748b;font-size:17px}.home-section{padding:20px;border:1px solid var(--cpu-border-soft);border-radius:16px;background:var(--cpu-card);box-shadow:0 3px 15px rgba(15,23,42,.035)}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:14px}.section-head>div>span{color:var(--cpu-primary);font-size:9px;font-weight:700;letter-spacing:.14em}.section-head h2{margin:3px 0 0;font-size:20px}.section-head>a{display:inline-flex;align-items:center;gap:3px;color:var(--cpu-primary);font-size:12px;text-decoration:none}.market-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.market-card{display:flex;min-width:0;overflow:hidden;flex-direction:column;border:1px solid var(--cpu-border-soft);border-radius:13px;color:var(--cpu-text);background:var(--cpu-card);text-decoration:none;transition:.18s}.market-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--cpu-primary) 36%,var(--cpu-border-soft));box-shadow:0 11px 24px rgba(15,23,42,.08)}.market-card--promoted{border-color:color-mix(in srgb,#7e22ce 32%,var(--cpu-border-soft))}.market-cover{display:grid;place-items:center;aspect-ratio:1.45/1;overflow:hidden;background:var(--cpu-surface-soft);font-size:38px}.market-cover img{width:100%;height:100%;object-fit:cover}.market-copy{padding:11px}.market-title-line,.promotion-title-line{display:flex;align-items:flex-start;gap:6px}.market-title-line h3,.promotion-title-line h3{display:-webkit-box;min-width:0;height:38px;margin:0;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:13px;line-height:19px}.market-title-line em{flex:0 0 auto;padding:2px 5px;border-radius:4px;color:#b45309;background:#fef3c7;font-size:9px;font-style:normal;font-weight:700}.promotion-disclosure{margin:-5px 0 13px;color:var(--cpu-text-secondary);font-size:10px}.market-price{display:flex;align-items:center;gap:6px;margin:7px 0}.market-price strong{color:#ef4444;font-size:17px}.market-price span{padding:2px 4px;border-radius:4px;color:var(--cpu-primary);background:var(--cpu-primary-soft);font-size:9px}.market-meta{display:flex;align-items:center;justify-content:space-between;gap:7px;color:var(--cpu-text-secondary);font-size:9px}.market-meta span,.market-meta time{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.market-skeleton{pointer-events:none}.skeleton-cover{width:100%;height:110px}.compact-empty{display:flex;align-items:center;gap:12px;min-height:78px;padding:14px 16px;border:1px dashed var(--cpu-border);border-radius:12px;color:var(--cpu-text-secondary);background:var(--cpu-surface-soft)}.compact-empty>span{font-size:25px;opacity:.55}.compact-empty>div{display:flex;min-width:0;flex:1;flex-direction:column;gap:3px}.compact-empty b{color:var(--cpu-text);font-size:13px}.compact-empty small{font-size:11px}.compact-empty button{border:0;color:var(--cpu-primary);background:transparent;font-size:11px;font-weight:700;cursor:pointer}.topic-list{display:flex;flex-direction:column}.topic-loading{padding:6px}:global(html[data-theme="dark"]) .home-section,:global(html[data-theme="dark"]) .quick-action{box-shadow:none}:global(html[data-theme="dark"]) .quick-action{color:var(--cpu-text)}:global(html[data-theme="dark"]) .quick-action small{color:var(--cpu-text-secondary)}:global(html[data-theme="dark"]) .quick-action--teal{border-color:rgba(45,212,191,.34);background:linear-gradient(135deg,rgba(13,148,136,.34),rgba(79,70,229,.28))}:global(html[data-theme="dark"]) .quick-action--amber{border-color:rgba(251,191,36,.34);background:linear-gradient(135deg,rgba(217,119,6,.34),rgba(190,24,93,.26))}:global(html[data-theme="dark"]) .quick-action--violet{border-color:rgba(167,139,250,.4);background:linear-gradient(135deg,rgba(124,58,237,.36),rgba(37,99,235,.28))}:global(html[data-theme="dark"]) .quick-action>span{background:rgba(15,23,42,.35)}:global(html[data-theme="dark"]) .quick-action>span.amber,:global(html[data-theme="dark"]) .market-title-line em{color:#fbbf24;background:rgba(245,158,11,.16)}
+@media(max-width:1000px){.home-hero{grid-template-columns:1fr}.market-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.home{gap:14px}.home-hero{gap:16px;padding:20px 17px;border-radius:14px}.home-hero h1{font-size:21px}.hero-search{padding:6px}.hero-search>.el-button{display:none}.quick-actions{display:flex;gap:10px;overflow-x:auto;padding-bottom:3px;scroll-snap-type:x mandatory}.quick-action{flex:0 0 min(82vw,280px);height:96px;min-height:96px;max-height:96px;scroll-snap-align:start;gap:12px;padding:16px}.quick-action>span{flex-basis:44px;width:44px;height:44px;border-radius:13px;font-size:22px}.quick-action b{font-size:15px}.quick-action small{font-size:10px}.quick-arrow{display:none}.home-section{padding:15px 12px;border-radius:13px}.section-head{align-items:center;margin-bottom:11px}.section-head h2{font-size:17px}.section-head>a{font-size:10px}.market-grid{gap:8px}.market-cover{font-size:30px}.market-copy{padding:8px}.market-title-line h3{height:36px;font-size:12px;line-height:18px}.market-price strong{font-size:15px}.compact-empty{align-items:flex-start;min-height:0;padding:12px}.compact-empty button{align-self:center}}
 </style>

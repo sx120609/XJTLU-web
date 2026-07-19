@@ -29,6 +29,8 @@
         <el-tag v-if="topic.locked" size="small" type="info" class="tag">🔒</el-tag>
         <el-tag v-if="metaSolved" size="small" type="success" class="tag">已解决</el-tag>
         <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
+        <el-tag v-if="topic.linkedMarketItem" size="small" type="success" effect="plain" class="tag">关联商品</el-tag>
+        <el-tag v-else-if="topic.linkedWantedPost" size="small" type="success" effect="plain" class="tag">关联求购</el-tag>
       </div>
       <div class="line2">
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>

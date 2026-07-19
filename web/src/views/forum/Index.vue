@@ -3,8 +3,8 @@
     <template v-if="auth.canAccessForum">
       <div class="page-heading">
         <div>
-          <h2 class="page-title">校园论坛</h2>
-          <p>按主题进入板块交流，也可以直接查看最新内容。</p>
+          <h2 class="page-title">校园广场</h2>
+          <p>围绕真实校园问题交流；交易仍在市集完成，广场只承载公开讨论。</p>
         </div>
         <el-button type="primary" @click="$router.push('/post')">发布帖子</el-button>
       </div>
@@ -26,13 +26,14 @@
         </button>
 
         <div v-loading="loading" class="boards-content">
-          <div v-for="section in forumSections" :key="section.key" class="cluster">
+          <section v-for="section in forumSections" :key="section.key" class="cluster">
             <h3 class="cluster-title"><span>{{ section.icon }}</span>{{ section.title }}</h3>
             <div class="grid">
               <div
                 v-for="b in section.boards"
                 :key="b.slug"
                 class="board-card"
+                :class="{ 'board-card--wanted': b.slug === 'wanted-demand' }"
                 role="button"
                 tabindex="0"
                 @click="openBoard(b.slug)"
@@ -43,11 +44,11 @@
                 <div class="body">
                   <div class="name">{{ b.name }}</div>
                   <div class="desc">{{ b.description }}</div>
-                  <div class="meta"><span>{{ b.topicCount }} 帖</span><span>{{ boardAction(b) }}</span></div>
+                  <div class="meta"><span>{{ b.topicCount }} 帖</span><span>进入栏目 →</span></div>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         </div>
       </template>
 
@@ -61,16 +62,16 @@
       <section class="gate-card">
         <div class="gate-head">
           <span class="gate-badge">XJTLU 校园社区</span>
-          <h2>登录后进入校园论坛</h2>
+          <h2>登录后进入校园广场</h2>
         </div>
         <p class="gate-intro">
-          使用学校账号登录后即可浏览板块、发布帖子和参与回复，不再需要额外手动开启。
+          使用学校账号登录后即可浏览 12 个校园频道、发布帖子和参与回复，不再需要额外手动开启。
         </p>
         <div class="gate-points">
-          <div>💬 综合讨论：校园广场、失物招领、新生专区与问答互助</div>
+          <div>💬 综合讨论：校园广场、求购需求、新生专区与问答互助</div>
           <div>📚 学习交流：课程学习、科研实习、雅思留学与课程点评</div>
           <div>🎈 生活社交：校园生活、社团活动、树洞与交友扩列</div>
-          <div>🕳️ 树洞支持匿名发布，所有学习板块均可自由发帖交流</div>
+          <div>🧾 求购需求使用完整需求表单发布，并可由同学提交商品响应</div>
         </div>
         <div class="gate-actions">
           <el-button type="primary" size="large" @click="goLogin">学校账号登录</el-button>
@@ -174,11 +175,6 @@ function openBoard(slug: string) {
   router.push(`/forum/b/${slug}`);
 }
 
-function boardAction(board: Board) {
-  if (board.type === "market") return "进入商城 →";
-  return "进入板块 →";
-}
-
 </script>
 
 <style scoped>
@@ -186,19 +182,14 @@ function boardAction(board: Board) {
 .page-title { margin: 0; font-size: 22px; }
 .page-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .page-heading p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 13px; }
-.cluster-title { margin: 0 0 12px; font-size: 16px; color: var(--cpu-text); font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .cpu-card {
   background: var(--cpu-card);
   border-radius: 14px;
   border: 1px solid var(--cpu-border-soft);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
-.boards-content {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  min-height: 120px;
-}
+.cluster-title { margin: 0 0 12px; font-size: 16px; color: var(--cpu-text); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.boards-content { display: flex; min-height: 120px; flex-direction: column; gap: 24px; }
 .forum-error {
   padding: 24px 16px;
 }
@@ -331,6 +322,19 @@ function boardAction(board: Board) {
 .board-card:hover {
   border-color: var(--cpu-primary);
   box-shadow: 0 4px 14px rgba(22, 135, 118, 0.08);
+}
+
+.board-card--wanted {
+  border-color: color-mix(in srgb, #ea580c 32%, var(--cpu-border-soft));
+  background: linear-gradient(135deg,
+    color-mix(in srgb, #ea580c 11%, var(--cpu-card)),
+    color-mix(in srgb, #f59e0b 6%, var(--cpu-card))
+  );
+}
+
+.board-card--wanted:hover {
+  border-color: #ea580c;
+  box-shadow: 0 6px 18px rgba(234, 88, 12, 0.14);
 }
 
 .board-card:focus-visible {

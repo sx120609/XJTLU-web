@@ -43,6 +43,7 @@ import {
   verifyFileCollectPreviewToken,
 } from "../utils/officePreview";
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
+import { querySize } from "../utils/query";
 
 const MOUNT_PATH = "/filestore";
 const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
@@ -2242,7 +2243,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       return true;
     }
     const q = String(req.query.q ?? "").trim();
-    const take = Math.min(12, Math.max(1, Number(req.query.size ?? 8)));
+    const take = querySize(req.query.size, 8, 1, 12);
     if (!q) {
       res.json([]);
       return true;

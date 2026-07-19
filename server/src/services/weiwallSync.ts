@@ -10,6 +10,7 @@ import { refreshBoardTopicCount, refreshUserPostCount, refreshUserReplyCount } f
 import { config } from "../config";
 import { Errors } from "../utils/response";
 import { getSiteOrigin } from "./siteSettings";
+import { runTrackedJob } from "./runtimeHealth";
 
 export const WEIWALL_BOARD_SLUG = "campus-wall";
 const WEIWALL_BOARD_NAME = "逛逛";
@@ -2107,20 +2108,19 @@ export function startWeiwallSyncScheduler() {
   if (schedulerStarted) return;
   schedulerStarted = true;
 
-  const tick = async () => {
+  const tick = async () => runTrackedJob("weiwall-sync", "逛逛内容同步", async () => {
     const configRow = await ensureWeiwallSyncConfigRow();
     if (!configRow.enabled) return;
     const lastRunAt = configRow.lastRunAt?.getTime() ?? 0;
     if (Date.now() - lastRunAt < Math.max(WEIWALL_MIN_INTERVAL_SECONDS, configRow.intervalSeconds) * 1000) return;
     const result = await runWeiwallSyncNow();
     if (!result.ok && result.error && result.error !== "disabled") {
-      console.warn("[weiwall-sync] run failed:", result.error);
-      return;
+      throw new Error(result.error);
     }
     if (result.ok && (result.topicsCreated || result.repliesCreated)) {
       console.log(`📮 逛逛同步完成: +${result.topicsCreated} 帖子, +${result.repliesCreated} 回复`);
     }
-  };
+  }, WEIWALL_TICK_MS);
 
   setTimeout(() => {
     tick().catch((error) => console.warn("[weiwall-sync] tick error:", error));

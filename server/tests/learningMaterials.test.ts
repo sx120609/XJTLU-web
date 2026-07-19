@@ -22,10 +22,10 @@ test("learning materials expose exactly eight single-select study stages", () =>
   assert.equal(learningMaterialProfileInputSchema.safeParse({ applicableSemester: ["Y1S1"] }).success, false);
 });
 
-test("course codes are canonical and publishing enforces the three requested fields", () => {
+test("course codes are canonical and publishing enforces identity, originality and rights fields", () => {
   assert.equal(normalizeCourseCode(" cpt 111 "), "CPT111");
-  assert.deepEqual(publishedMaterialProfileErrors({ courseCode: "CPT111", typeId: 1, applicableSemester: "Y1S1", rightsConfirmed: true }), []);
-  assert.deepEqual(publishedMaterialProfileErrors({ rightsConfirmed: true }), ["请填写课程代码", "请选择资料类型", "请选择适用学期"]);
+  assert.deepEqual(publishedMaterialProfileErrors({ courseCode: "CPT111", typeId: 1, applicableSemester: "Y1S1", originalityKind: "original", originalityStatement: "本人整理的课程复习提纲", rightsConfirmed: true }), []);
+  assert.deepEqual(publishedMaterialProfileErrors({ rightsConfirmed: true }), ["请填写课程代码", "请选择资料类型", "请选择适用学期", "请选择资料来源与原创类型", "请填写原创或授权情况说明"]);
   assert.equal(learningMaterialProfileInputSchema.safeParse({ courseCode: "课程一" }).success, false);
 });
 

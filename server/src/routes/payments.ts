@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
+import { queryPage, querySize } from "../utils/query";
 import { isFeatureOn } from "../services/siteSettings";
 import {
   amountCentsToMoney,
@@ -139,8 +140,8 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
 paymentsRouter.get("/sponsor/orders", authRequired, async (req, res, next) => {
   try {
     await closeExpiredSponsorOrders();
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
+    const page = queryPage(req.query.page);
+    const size = querySize(req.query.size, 20, 5, 50);
     const status = String(req.query.status ?? "").trim();
     const where: { userId: number; status?: string } = { userId: req.user!.userId };
     if (["pending", "paid", "closed"].includes(status)) where.status = status;

@@ -15,7 +15,7 @@
 - 应用名：靠浦
 - 包名：`com.cpu.yaodashijian`
 - 版本：`2.0.8 (17)`
-- 默认入口：`https://cpu.lizmt.cn/schedule`
+- 默认入口：`https://cpu.lizmt.cn/academic`（课表为教务页默认标签）
 
 ## 构建
 

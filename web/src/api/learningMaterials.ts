@@ -98,6 +98,7 @@ export interface LearningMaterialMeta {
   originalityOptions: LearningMaterialOption[];
   supportCategories: Array<LearningMaterialOption & { financial: boolean }>;
   types: LearningMaterialType[];
+  contentRules?: Array<{ id: number; scope: string; category: string; action: "block" | "review"; note: string }>;
   legacyIncompleteCount: number;
 }
 

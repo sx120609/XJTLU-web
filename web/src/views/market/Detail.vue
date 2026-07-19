@@ -1,55 +1,76 @@
 <template>
   <div class="detail-page" v-loading="loading">
     <template v-if="item">
-      <nav class="crumb"><router-link :to="catalogRoute">{{ isLearningMaterial ? '靠浦特色学习资料' : '商城' }}</router-link><span>/</span><span>{{ categoryLabel(item.category) }}</span><span>/</span><b>{{ item.title }}</b></nav>
+      <nav class="crumb"><router-link to="/market">校园市集</router-link><span>/</span><span>{{ categoryLabel(item.category) }}</span><span>/</span><b>{{ item.title }}</b></nav>
       <section class="product-card cpu-card">
         <div class="gallery">
-          <div class="main-image"><img v-if="activeImage" :src="activeImage" :alt="item.title" /><div v-else>{{ isLearningMaterial ? '📚' : '📦' }}</div></div>
-          <div v-if="item.images.length>1" class="thumb-list"><button v-for="image in item.images" :key="image.id" :class="{active:activeImage===image.url}" @click="activeImage=image.url"><img :src="image.url" alt="商品缩略图" /></button></div>
+          <div class="main-image"><img v-if="activeImage" :src="activeImage" :alt="item.title" /><div v-else>📦</div></div>
+          <div v-if="item.images.length > 1" class="thumb-list"><button v-for="image in item.images" :key="image.id" :class="{ active: activeImage === image.url }" @click="activeImage = image.url"><img :src="image.url" alt="商品缩略图" /></button></div>
         </div>
+
         <div class="product-info">
-          <div class="status-line"><span>{{ item.listingType==='wanted'?'求购':'出售' }}</span><em :class="`status-${item.status}`">{{ statusLabel(item.status,item.listingType) }}</em></div>
+          <div class="status-line"><span>出售</span><em :class="`status-${item.status}`">{{ statusLabel(item.status) }}</em><PromotionLabel v-if="item.promotions.pinned" label="置顶" kind="pin" /><PromotionLabel v-if="item.promotions.home" label="推广" kind="home" /><time v-if="item.expiresAt">有效期至 {{ formatDate(item.expiresAt) }}</time></div>
           <h1>{{ item.title }}</h1>
-          <div class="price-box"><span v-if="item.listingType==='wanted'">预算</span><strong><small>¥</small>{{ item.price }}</strong><del v-if="item.listingType==='sell'&&item.originalPrice">原价 ¥{{ item.originalPrice }}</del><i v-if="item.negotiable">可议价</i></div>
+          <div class="price-box"><strong><small>¥</small>{{ item.price }}</strong><del v-if="item.originalPrice">原价 ¥{{ item.originalPrice }}</del><i v-if="item.negotiable">可议价</i></div>
           <dl>
-            <div><dt>{{ item.listingType==='wanted'?'期望成色':'商品成色' }}</dt><dd>{{ conditionLabel(item.condition) }}</dd></div>
-            <div><dt>{{ item.listingType==='wanted'?'期望交付':'交付方式' }}</dt><dd>{{ tradeModeLabel(item.tradeMode) }}</dd></div>
-            <div v-if="!isLearningMaterial"><dt>所在校区</dt><dd>{{ item.campus || '与卖家协商' }}</dd></div>
-            <div v-if="!isLearningMaterial"><dt>推荐地点</dt><dd>{{ item.location || '与卖家协商' }}</dd></div>
-            <div v-if="isLearningMaterial"><dt>资料类型</dt><dd>数字学习资料</dd></div>
-            <div v-if="isLearningMaterial"><dt>交付保障</dt><dd>付款后订单内交付</dd></div>
-            <div><dt>发布时间</dt><dd>{{ fmtRelative(item.createdAt) }}</dd></div>
+            <div><dt>商品成色</dt><dd>{{ conditionLabel(item.condition) }}</dd></div>
+            <div><dt>交付方式</dt><dd>{{ tradeModeLabel(item.tradeMode) }}</dd></div>
+            <div><dt>所在校区</dt><dd>{{ item.campus || '与卖家协商' }}</dd></div>
+            <div><dt>推荐地点</dt><dd>{{ item.location || '与卖家协商' }}</dd></div>
+            <div v-if="item.brand || item.model"><dt>品牌 / 型号</dt><dd>{{ [item.brand, item.model].filter(Boolean).join(' · ') }}</dd></div>
+            <div v-if="item.usageDuration"><dt>使用时间</dt><dd>{{ item.usageDuration }}</dd></div>
+            <div v-if="item.accessories"><dt>配件情况</dt><dd>{{ item.accessories }}</dd></div>
+            <div v-if="item.availableTime"><dt>可交易时间</dt><dd>{{ item.availableTime }}</dd></div>
+            <div><dt>当面测试</dt><dd>{{ item.testAllowed ? '支持' : '请与卖家确认' }}</dd></div>
             <div><dt>浏览 / 收藏</dt><dd>{{ item.viewCount }} / {{ item.favoriteCount }}</dd></div>
           </dl>
+
           <div v-if="!item.mine" class="buy-actions">
-            <el-button v-if="item.listingType==='sell'" :disabled="!auth.isLoggedIn" @click="startConversation">联系卖家</el-button>
-            <el-button v-if="item.listingType==='sell'" type="primary" :disabled="!auth.isLoggedIn || item.status!=='active'" @click="offerOpen=true">{{ item.negotiable?'出价购买':'立即购买' }}</el-button>
-            <el-button v-else type="primary" :disabled="!auth.isLoggedIn || item.status!=='active'" @click="startConversation">我有这个，联系求购者</el-button>
-            <el-button circle :icon="item.favorited?StarFilled:Star" @click="favorite" />
+            <el-button :disabled="!auth.isLoggedIn || item.status !== 'active'" @click="openIntent">{{ item.negotiable ? '提交出价' : '提交购买意向' }}</el-button>
+            <el-button type="primary" :disabled="!auth.isLoggedIn || item.status !== 'active'" @click="openIntent">我想要</el-button>
+            <el-button circle :icon="item.favorited ? StarFilled : Star" @click="favorite" />
           </div>
-          <div v-else class="buy-actions"><el-button type="primary" @click="$router.push({name:isLearningMaterial?'market-learning-materials-edit':'market-edit',params:{id:item.id}})">编辑{{ item.listingType==='wanted'?'求购':(isLearningMaterial?'资料':'商品') }}</el-button><el-button @click="$router.push({name:'market-mine',query:{tab:'selling'}})">管理{{ item.listingType==='wanted'?'响应':'购买意向' }}</el-button><el-button type="danger" plain @click="withdraw">{{ item.listingType==='wanted'?'结束求购':'下架' }}</el-button></div>
-          <p v-if="!auth.isLoggedIn" class="login-tip">登录 XJTLU 账号后即可联系、收藏和参与交易。</p>
-          <div class="payment-note"><b>{{ item.listingType==='wanted'?'求购说明':(isLearningMaterial?'安全交付':'平台交易') }}</b><span>{{ item.listingType==='wanted'?'如果你有符合要求的内容，请先联系发布者沟通版本、价格与交付方式。':(isLearningMaterial?'卖家接受购买意向后完成付款，交付链接只在已付款订单内向买家展示。':'卖家接受购买意向后，通过本站配置的易支付完成付款；订单、退款与结算全程留痕。') }}</span></div>
+          <div v-else class="owner-actions">
+            <el-button v-if="['active', 'draft', 'expired', 'withdrawn'].includes(item.status)" type="primary" @click="$router.push({ name: 'market-edit', params: { id: item.id } })">编辑商品</el-button>
+            <el-button v-if="item.status === 'active'" @click="$router.push('/market/promotions')">申请置顶 / 首页推广</el-button>
+            <el-button @click="$router.push({ name: 'market-mine', query: { tab: 'intents' } })">管理意向</el-button>
+            <el-button v-if="['active', 'expired', 'withdrawn'].includes(item.status)" @click="renew">续期上架</el-button>
+            <el-button v-if="['active', 'expired', 'withdrawn'].includes(item.status)" type="success" plain @click="markSold">标记已售</el-button>
+            <el-button v-if="['active', 'negotiating', 'expired'].includes(item.status)" type="danger" plain @click="withdraw">下架</el-button>
+          </div>
+          <p v-if="!auth.isLoggedIn" class="login-tip">登录 XJTLU 账号后即可收藏和提交购买意向。</p>
+          <div class="trade-note"><b>线下交易安全</b><span>卖家接受意向后，双方才进入站内交易会话并约定校内公共区域见面。当面验货后，买家直接向卖家付款；靠浦不代收商品款、不提供钱包或担保。</span></div>
         </div>
       </section>
 
       <section class="content-grid">
-        <article class="description-card cpu-card"><h2>{{ item.listingType==='wanted'?'求购详情':'商品详情' }}</h2><div class="description">{{ item.description }}</div><div class="public-actions"><el-button v-if="item.topicId" plain @click="$router.push(`/forum/topic/${item.topicId}`)">公开问答 {{ item.topic?.replyCount||0 }}</el-button><el-button plain @click="share">分享{{ item.listingType==='wanted'?'求购':'商品' }}</el-button><el-button v-if="!item.mine&&auth.isLoggedIn" text type="danger" @click="reportOpen=true">举报信息</el-button></div></article>
-        <aside class="seller-card cpu-card"><div class="seller-head"><UserAvatar :size="52" :src="item.seller.avatar" :name="item.seller.nickname" /><div><strong>{{ item.seller.nickname||item.seller.username }}</strong><span>✓ XJTLU 校园认证</span></div></div><div class="seller-stats"><div><b>{{ Number(item.sellerRating||0).toFixed(1) }}</b><span>交易评分</span></div><div><b>{{ item.sellerReviewCount||0 }}</b><span>收到评价</span></div><div><b>{{ item.listingType==='wanted'?item.favoriteCount:item.offerCount }}</b><span>{{ item.listingType==='wanted'?'收藏关注':'购买意向' }}</span></div></div><p>{{ item.listingType==='wanted'?'沟通时请描述商品实际状况，确认价格与交付方式后再交易。':'建议在校园公共区域见面，确认商品状况后再完成交付确认。' }}</p></aside>
+        <article class="description-card cpu-card">
+          <h2>商品详情</h2><div class="description">{{ item.description }}</div>
+          <div v-if="item.flaws" class="flaw-note"><b>瑕疵说明</b><span>{{ item.flaws }}</span></div>
+          <div class="public-actions"><el-button v-if="item.topicId" plain @click="$router.push(`/forum/topic/${item.topicId}`)">公开问答 {{ item.topic?.replyCount || 0 }}</el-button><el-button plain @click="$router.push({ path: '/post', query: { board: 'trade-talk', itemId: item.id } })">发起关联讨论</el-button><el-button plain @click="shareOpen = true">分享商品</el-button><el-button v-if="!item.mine && auth.isLoggedIn" text type="danger" @click="reportOpen = true">举报信息</el-button></div>
+        </article>
+        <aside class="seller-card cpu-card" role="button" tabindex="0" @click="$router.push(`/market/seller/${item.sellerId}`)" @keydown.enter="$router.push(`/market/seller/${item.sellerId}`)">
+          <div class="seller-head"><UserAvatar :size="52" :src="item.seller.avatar" :name="item.seller.nickname" /><div><strong>{{ item.seller.nickname || '靠浦用户' }}</strong><span>{{ sellerTrust?.identity.label || (item.seller.studentSso ? '✓ XJTLU 校园认证' : '校园平台用户') }}</span></div></div>
+          <div class="seller-stats"><div><b>{{ sellerTrust?.score ?? '—' }}</b><span>信用分</span></div><div><b>{{ Number(sellerProfile?.stats.rating ?? item.sellerRating ?? 0).toFixed(1) }}</b><span>交易评分</span></div><div><b>{{ sellerProfile?.stats.completedTrades ?? 0 }}</b><span>完成交易</span></div><div><b>{{ sellerProfile?.stats.positiveRate ?? 0 }}%</b><span>好评率</span></div></div>
+          <p>查看卖家的在售物品和交易记录。建议在校园公共区域见面，当面验货；商品款由买家直接支付给卖家。</p>
+        </aside>
       </section>
 
-      <section v-if="related.length" class="related"><header><h2>{{ item.listingType==='wanted'?'同类求购':(isLearningMaterial?'相关学习资料':'同类商品') }}</h2><router-link :to="catalogRoute">查看更多</router-link></header><div class="related-grid"><article v-for="row in related" :key="row.id" @click="$router.push({name:'market-item',params:{id:row.id}})"><div><img v-if="row.cover" :src="row.cover" :alt="row.title" /><span v-else>{{ isLearningMaterial ? '📚' : '📦' }}</span></div><h3>{{ row.title }}</h3><strong>{{ row.listingType==='wanted'?'预算 ':'' }}¥{{ row.price }}</strong></article></div></section>
+      <section v-if="matchingWanted.length" class="match-section cpu-card">
+        <header><div><span>智能撮合</span><h2>这些同学正在求购类似物品</h2></div><router-link to="/market/wanted">查看全部求购</router-link></header>
+        <div class="match-grid"><article v-for="match in matchingWanted" :key="match.wantedPost.id" @click="$router.push(`/market/wanted/${match.wantedPost.id}`)"><div class="match-score"><b>{{ match.score }}</b><small>匹配度</small></div><div class="match-copy"><strong>{{ match.wantedPost.title }}</strong><p>预算 ¥{{ match.wantedPost.budgetMin }}–{{ match.wantedPost.budgetMax }} · {{ match.wantedPost.campus }}</p><div><span v-for="reason in match.reasons" :key="reason.key">{{ reason.label }}</span></div></div></article></div>
+      </section>
+      <section v-if="related.length" class="related"><header><h2>同类商品</h2><router-link to="/market">查看更多</router-link></header><div class="related-grid"><article v-for="row in related" :key="row.id" @click="$router.push({ name: 'market-item', params: { id: row.id } })"><div><img v-if="row.cover" :src="row.cover" :alt="row.title" /><span v-else>📦</span></div><h3>{{ row.title }}</h3><strong>¥{{ row.price }}</strong></article></div></section>
     </template>
-    <el-empty v-else-if="!loading" description="商品不存在或已被下架"><el-button @click="$router.push('/market')">返回商城</el-button></el-empty>
+    <el-empty v-else-if="!loading" description="商品不存在或已被下架"><el-button @click="$router.push('/market')">返回市集</el-button></el-empty>
 
-    <el-dialog v-model="offerOpen" :title="item?.negotiable?'提交购买出价':'确认购买意向'" width="460px">
-      <el-form label-position="top"><el-form-item label="购买价格"><el-input-number v-model="offer.price" :disabled="!item?.negotiable" :min="0.01" :max="999999" :precision="2" /></el-form-item><el-form-item label="给卖家留言"><el-input v-model="offer.message" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="可说明希望的交付时间和地点" /></el-form-item></el-form>
-      <el-alert type="info" :closable="false" title="卖家接受后将生成待支付订单，请在 15 分钟内通过易支付完成付款。" />
-      <template #footer><el-button @click="offerOpen=false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitOffer">提交意向</el-button></template>
+    <el-dialog v-model="intentOpen" :title="item?.negotiable ? '提交购买出价' : '确认购买意向'" width="460px">
+      <el-form label-position="top"><el-form-item label="购买价格"><el-input-number v-model="intent.price" :disabled="!item?.negotiable" :min="0.01" :max="999999" :precision="2" /></el-form-item><el-form-item label="方便交易的时间" required><el-input v-model="intent.availableTime" maxlength="300" placeholder="例如：工作日 18:00 后" /></el-form-item><el-form-item label="给卖家留言"><el-input v-model="intent.message" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="补充验货需求和希望的校内地点，请勿填写联系方式" /></el-form-item></el-form>
+      <el-alert type="info" :closable="false" title="卖家接受后商品将进入已预订。请通过站内消息约定时间地点，当面验货并直接向卖家付款。" />
+      <template #footer><el-button @click="intentOpen = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitIntent">提交意向</el-button></template>
     </el-dialog>
-
-    <el-dialog v-model="messageOpen" :title="item?.listingType==='wanted'?'联系求购者':'联系卖家'" width="460px"><el-input v-model="firstMessage" type="textarea" :rows="5" maxlength="1000" show-word-limit :placeholder="item?.listingType==='wanted'?'说明你能提供的商品、成色和价格':'询问商品细节或交付方式'" /><template #footer><el-button @click="messageOpen=false">取消</el-button><el-button type="primary" :loading="submitting" @click="sendFirstMessage">发送</el-button></template></el-dialog>
-    <el-dialog v-model="reportOpen" title="举报商品" width="460px"><el-select v-model="report.reason" placeholder="选择原因" style="width:100%"><el-option v-for="reason in reportReasons" :key="reason" :label="reason" :value="reason" /></el-select><el-input v-model="report.detail" type="textarea" :rows="4" maxlength="1000" show-word-limit placeholder="补充说明" style="margin-top:12px" /><template #footer><el-button @click="reportOpen=false">取消</el-button><el-button type="danger" :loading="submitting" @click="submitReport">提交举报</el-button></template></el-dialog>
+    <el-dialog v-model="reportOpen" title="举报商品" width="460px"><el-select v-model="report.reason" placeholder="选择原因" style="width:100%"><el-option v-for="reason in reportReasons" :key="reason" :label="reason" :value="reason" /></el-select><el-input v-model="report.detail" type="textarea" :rows="4" maxlength="1000" show-word-limit placeholder="补充说明" style="margin-top:12px" /><template #footer><el-button @click="reportOpen = false">取消</el-button><el-button type="danger" :loading="submitting" @click="submitReport">提交举报</el-button></template></el-dialog>
+    <MarketShareDialog v-model="shareOpen" :title="item?.title || '校园市集商品'" :summary="item ? `¥${item.price}，${item.campus || '校内'}面交` : ''" />
   </div>
 </template>
 
@@ -58,34 +79,128 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, type MarketItem } from "@/api/market";
+import { marketApi, type MarketItem, type MarketTrustProfile, type MarketWantedMatch } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
-import { fmtRelative } from "@/utils/format";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import MarketShareDialog from "@/components/market/MarketShareDialog.vue";
+import PromotionLabel from "@/components/market/PromotionLabel.vue";
 
-const route=useRoute(),router=useRouter(),auth=useAuthStore();
-const item=ref<MarketItem|null>(null),related=ref<MarketItem[]>([]),loading=ref(false),submitting=ref(false),activeImage=ref('');
-const offerOpen=ref(false),messageOpen=ref(false),reportOpen=ref(false),firstMessage=ref('');
-const offer=reactive({price:0,message:''}),report=reactive({reason:'',detail:''});
-const reportReasons=['疑似诈骗','禁售或违规物品','商品信息虚假','盗用图片','恶意引流','其他'];
-const categories=ref<Record<string,string>>({});
-const isLearningMaterial=computed(()=>item.value?.category==='digital_goods');
-const catalogRoute=computed(()=>isLearningMaterial.value?'/market/learning-materials':'/market');
-onMounted(load);watch(()=>route.params.id,load);
-async function load(){const id=Number(route.params.id);if(!id)return;loading.value=true;try{const nextItem=await marketApi.item(id,{suppressErrorMessage:true});if(nextItem.category==='digital_goods'){await router.replace({name:'market-learning-material-item',params:{id}});return}item.value=nextItem;activeImage.value=nextItem.cover;offer.price=Number(nextItem.price);const [meta,result]=await Promise.all([marketApi.meta({suppressErrorMessage:true}),marketApi.items({category:nextItem.category,listingType:nextItem.listingType,size:5},{suppressErrorMessage:true})]);categories.value=Object.fromEntries(meta.categories.map(category=>[category.slug,category.name]));related.value=result.list.filter(row=>row.id!==id).slice(0,4);}catch{item.value=null;related.value=[];}finally{loading.value=false;}}
-async function favorite(){if(!item.value)return;if(!auth.isLoggedIn)return router.push({name:'login',query:{redirect:route.fullPath}});const result=await marketApi.favorite(item.value.id);item.value.favorited=result.favorited;item.value.favoriteCount=result.favoriteCount;}
-function startConversation(){if(!auth.isLoggedIn)return router.push({name:'login',query:{redirect:route.fullPath}});messageOpen.value=true;}
-async function sendFirstMessage(){if(!item.value||!firstMessage.value.trim())return ElMessage.warning('请输入消息');submitting.value=true;try{const conversation=await marketApi.createConversation(item.value.id,firstMessage.value.trim());messageOpen.value=false;router.push({name:'market-messages',query:{conversation:conversation.id}});}finally{submitting.value=false;}}
-async function submitOffer(){if(!item.value)return;submitting.value=true;try{await marketApi.createOffer(item.value.id,offer);offerOpen.value=false;ElMessage.success('购买意向已发送，等待卖家确认');router.push({name:'market-mine',query:{tab:'orders'}});}finally{submitting.value=false;}}
-async function withdraw(){if(!item.value)return;const wanted=item.value.listingType==='wanted';await ElMessageBox.confirm(wanted?'结束后该求购将不再出现在商城列表，确定继续？':'下架后商品将不再出现在商城列表，确定继续？',wanted?'结束求购':'下架商品',{type:'warning'});await marketApi.removeItem(item.value.id);ElMessage.success(wanted?'求购已结束':'商品已下架');router.replace('/market/mine?tab=selling');}
-async function submitReport(){if(!item.value||!report.reason)return ElMessage.warning('请选择举报原因');submitting.value=true;try{await marketApi.report(item.value.id,report);reportOpen.value=false;ElMessage.success('举报已提交');}finally{submitting.value=false;}}
-async function share(){await navigator.clipboard.writeText(location.href).catch(()=>null);ElMessage.success('商品链接已复制');}
-function categoryLabel(v:string){return categories.value[v]||v}function conditionLabel(v:string){return({new:'全新',like_new:'近全新',good:'使用良好',fair:'有使用痕迹',wanted:'求购'} as Record<string,string>)[v]||v}function tradeModeLabel(v:string){return({meetup:'校园面交',shipping:'邮寄',both:'面交或邮寄',online:'线上发货'} as Record<string,string>)[v]||v}function statusLabel(v:string,listingType:string){if(listingType==='wanted')return({draft:'草稿',reviewing:'审核中',active:'求购中',reserved:'洽谈中',sold:'已求到',withdrawn:'已结束',hidden:'已隐藏'} as Record<string,string>)[v]||v;return({draft:'草稿',reviewing:'审核中',active:'在售',reserved:'已预订',sold:'已售出',withdrawn:'已下架',hidden:'已隐藏'} as Record<string,string>)[v]||v}
+const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+const item = ref<MarketItem | null>(null);
+const related = ref<MarketItem[]>([]);
+const matchingWanted = ref<MarketWantedMatch[]>([]);
+const sellerProfile = ref<Awaited<ReturnType<typeof marketApi.userMarketProfile>> | null>(null);
+const sellerTrust = ref<MarketTrustProfile | null>(null);
+const loading = ref(false);
+const submitting = ref(false);
+const activeImage = ref("");
+const intentOpen = ref(false);
+const reportOpen = ref(false);
+const shareOpen = ref(route.query.published === "1");
+const intent = reactive({ price: 0, message: "", availableTime: "" });
+const report = reactive({ reason: "", detail: "" });
+const reportReasons = ["疑似诈骗", "禁售或违规物品", "商品信息虚假", "盗用图片", "恶意引流", "其他"];
+const categories = ref<Record<string, string>>({});
+
+onMounted(load);
+watch(() => route.params.id, load);
+
+async function load() {
+  const id = Number(route.params.id);
+  if (!id) return;
+  loading.value = true;
+  try {
+    const nextItem = await marketApi.item(id, { suppressErrorMessage: true });
+    if (nextItem.category === "digital_goods") {
+      await router.replace({ name: "market-learning-material-item", params: { id } });
+      return;
+    }
+    item.value = nextItem;
+    for (const badge of [nextItem.promotions.pinned, nextItem.promotions.home]) if (badge?.orderId) void marketApi.recordPromotionEvent(badge.orderId, "impression", { suppressErrorMessage: true });
+    activeImage.value = nextItem.cover;
+    intent.price = Number(nextItem.price);
+    const [meta, result, profile, trust, matches] = await Promise.all([
+      marketApi.meta({ suppressErrorMessage: true }),
+      marketApi.items({ category: nextItem.category, listingType: "sell", size: 8 }, { suppressErrorMessage: true }),
+      marketApi.userMarketProfile(nextItem.sellerId, { suppressErrorMessage: true }).catch(() => null),
+      marketApi.userTrust(nextItem.sellerId, { suppressErrorMessage: true }).catch(() => null),
+      marketApi.itemMatches(id, { suppressErrorMessage: true }).catch(() => []),
+    ]);
+    categories.value = Object.fromEntries(meta.categories.map((category) => [category.slug, category.name]));
+    related.value = result.list.filter((row) => row.id !== id).slice(0, 4);
+    sellerProfile.value = profile;
+    sellerTrust.value = trust;
+    matchingWanted.value = matches;
+  } catch {
+    item.value = null;
+    related.value = [];
+    sellerProfile.value = null;
+    sellerTrust.value = null;
+    matchingWanted.value = [];
+  } finally { loading.value = false; }
+}
+
+async function favorite() {
+  if (!item.value) return;
+  if (!auth.isLoggedIn) return router.push({ name: "login", query: { redirect: route.fullPath } });
+  const result = await marketApi.favorite(item.value.id);
+  item.value.favorited = result.favorited;
+  item.value.favoriteCount = result.favoriteCount;
+}
+
+function openIntent() {
+  if (!auth.isLoggedIn) return router.push({ name: "login", query: { redirect: route.fullPath } });
+  intentOpen.value = true;
+}
+
+async function submitIntent() {
+  if (!item.value) return;
+  if (!intent.availableTime.trim()) return void ElMessage.warning("请填写方便交易的时间");
+  submitting.value = true;
+  try {
+    await marketApi.createTradeIntent(item.value.id, intent);
+    intentOpen.value = false;
+    ElMessage.success("购买意向已发送，等待卖家确认");
+    await router.push({ name: "market-mine", query: { tab: "intents" } });
+  } finally { submitting.value = false; }
+}
+
+async function withdraw() {
+  if (!item.value) return;
+  await ElMessageBox.confirm("下架后商品将不再出现在市集列表，待处理意向会失效，确定继续？", "下架商品", { type: "warning" });
+  item.value = await marketApi.updateItemLifecycle(item.value.id, "withdraw");
+  ElMessage.success("商品已下架");
+}
+
+async function renew() {
+  if (!item.value) return;
+  item.value = await marketApi.updateItemLifecycle(item.value.id, item.value.status === "active" ? "renew" : "relist");
+  ElMessage.success("商品已续期并上架");
+}
+
+async function markSold() {
+  if (!item.value) return;
+  await ElMessageBox.confirm("确认商品已经通过其他方式售出？标记后待处理意向会失效。", "标记已售", { type: "warning" });
+  item.value = await marketApi.updateItemLifecycle(item.value.id, "mark_sold");
+  ElMessage.success("商品已标记为售出");
+}
+
+async function submitReport() {
+  if (!item.value || !report.reason) return void ElMessage.warning("请选择举报原因");
+  submitting.value = true;
+  try { await marketApi.report(item.value.id, report); reportOpen.value = false; ElMessage.success("举报已提交"); }
+  finally { submitting.value = false; }
+}
+
+function categoryLabel(value: string) { return categories.value[value] || value; }
+function conditionLabel(value: string) { return ({ new: "全新", like_new: "近全新", good: "使用良好", fair: "有使用痕迹" } as Record<string, string>)[value] || value; }
+function tradeModeLabel(value: string) { return ({ meetup: "校园面交", shipping: "邮寄", both: "面交或邮寄", online: "线上发货" } as Record<string, string>)[value] || value; }
+function statusLabel(value: string) { return ({ draft: "草稿", reviewing: "审核中", active: "在售", negotiating: "洽谈中", reserved: "已预订", sold: "已售出", expired: "已过期", withdrawn: "已下架", hidden: "已隐藏" } as Record<string, string>)[value] || value; }
+function formatDate(value: string) { return new Date(value).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }); }
 </script>
 
 <style scoped>
-.detail-page{display:flex;flex-direction:column;gap:17px}.crumb{display:flex;gap:8px;align-items:center;color:var(--cpu-text-secondary);font-size:12px}.crumb a{color:var(--cpu-primary);text-decoration:none}.crumb b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.product-card{display:grid;grid-template-columns:minmax(360px,1fr) minmax(370px,.9fr);gap:34px;padding:26px}.main-image{aspect-ratio:1.12/1;display:grid;place-items:center;overflow:hidden;border-radius:14px;background:var(--cpu-surface-soft);font-size:70px}.main-image img{width:100%;height:100%;object-fit:contain}.thumb-list{display:flex;gap:8px;margin-top:10px;overflow-x:auto}.thumb-list button{width:66px;height:58px;padding:0;overflow:hidden;border:2px solid transparent;border-radius:8px;background:none}.thumb-list button.active{border-color:var(--cpu-primary)}.thumb-list img{width:100%;height:100%;object-fit:cover}.status-line{display:flex;gap:7px}.status-line span,.status-line em{padding:4px 7px;border-radius:5px;color:#0f766e;background:#ecfdf5;font-size:10px;font-style:normal}.status-line em{color:#475569;background:#e2e8f0}.status-line .status-active{color:#047857;background:#d1fae5}.status-line .status-reserved{color:#b45309;background:#fef3c7}.product-info h1{margin:13px 0;font-size:25px;line-height:1.4}.price-box{display:flex;align-items:baseline;gap:10px;padding:15px;border-radius:11px;background:linear-gradient(90deg,#fff1f2,#fff)}.price-box strong{color:#ef4444;font-size:32px}.price-box small{font-size:14px}.price-box del{color:#94a3b8;font-size:12px}.price-box i{padding:3px 7px;border-radius:5px;color:#b45309;background:#fef3c7;font-size:10px;font-style:normal}.product-info dl{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:16px 0}.product-info dl div{display:flex;gap:12px;padding:9px 3px;border-bottom:1px dashed var(--cpu-border-soft);font-size:12px}.product-info dt{color:var(--cpu-text-secondary)}.product-info dd{margin:0;font-weight:600}.buy-actions{display:flex;gap:9px}.buy-actions .el-button:nth-child(2){flex:1}.login-tip{color:#b45309;font-size:11px}.payment-note{display:flex;gap:9px;margin-top:14px;padding:10px;border-radius:9px;color:#0f766e;background:#ecfdf5;font-size:10px}.payment-note span{color:#3f6f67;line-height:1.5}.content-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:17px}.description-card,.seller-card{padding:22px}.description-card h2{margin:0 0 16px;font-size:18px}.description{min-height:160px;white-space:pre-wrap;line-height:1.8;font-size:14px}.public-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--cpu-border-soft)}.seller-head{display:flex;align-items:center;gap:12px}.seller-head div{display:flex;flex-direction:column;gap:5px}.seller-head span{color:#0f766e;font-size:10px}.seller-stats{display:grid;grid-template-columns:repeat(3,1fr);margin:18px 0}.seller-stats div{display:flex;align-items:center;flex-direction:column;border-right:1px solid var(--cpu-border-soft)}.seller-stats div:last-child{border:0}.seller-stats b{font-size:18px}.seller-stats span{color:var(--cpu-text-secondary);font-size:9px}.seller-card p{margin:0;padding:10px;border-radius:8px;color:var(--cpu-text-secondary);background:var(--cpu-surface-soft);font-size:10px;line-height:1.6}.related header{display:flex;align-items:center;justify-content:space-between}.related header a{color:var(--cpu-primary);font-size:12px}.related-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.related-grid article{padding:10px;border:1px solid var(--cpu-border-soft);border-radius:12px;background:var(--cpu-card);cursor:pointer}.related-grid article>div{height:130px;display:grid;place-items:center;overflow:hidden;border-radius:8px;background:var(--cpu-surface-soft);font-size:40px}.related-grid img{width:100%;height:100%;object-fit:cover}.related-grid h3{height:36px;margin:8px 0 3px;overflow:hidden;font-size:12px}.related-grid strong{color:#ef4444}@media(max-width:850px){.product-card{grid-template-columns:1fr;padding:16px}.content-grid{grid-template-columns:1fr}.related-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.main-image{aspect-ratio:1}.product-info dl{grid-template-columns:1fr}.buy-actions{position:sticky;bottom:8px;z-index:5;padding:8px;border-radius:10px;background:var(--cpu-card);box-shadow:0 6px 24px rgba(0,0,0,.16)}.product-info h1{font-size:21px}.price-box strong{font-size:28px}}
-.status-line span{color:var(--cpu-primary);background:var(--cpu-primary-soft)}.status-line em{color:var(--cpu-text-secondary);background:var(--cpu-surface-soft)}.status-line .status-active{color:var(--cpu-primary);background:var(--cpu-primary-soft)}.price-box{background:linear-gradient(90deg,var(--cpu-primary-soft),var(--cpu-card))}.payment-note{color:var(--cpu-primary);background:var(--cpu-primary-soft)}.payment-note span{color:var(--cpu-text-secondary)}
-:global(html[data-theme="dark"]) .price-box{box-shadow:inset 0 0 0 1px var(--cpu-border-soft)}
-:global(html[data-theme="dark"]) .status-line .status-reserved,:global(html[data-theme="dark"]) .price-box i{color:#fbbf24;background:rgba(245,158,11,.16)}
+.detail-page{display:flex;flex-direction:column;gap:17px}.crumb{display:flex;align-items:center;gap:8px;color:var(--cpu-text-secondary);font-size:11px}.crumb a{color:var(--cpu-primary);text-decoration:none}.crumb b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.product-card{display:grid;grid-template-columns:minmax(340px,1fr) minmax(370px,.9fr);gap:34px;padding:26px}.main-image{display:grid;place-items:center;aspect-ratio:1.12/1;overflow:hidden;border-radius:14px;background:var(--cpu-surface-soft);font-size:70px}.main-image img{width:100%;height:100%;object-fit:contain}.thumb-list{display:flex;gap:8px;margin-top:10px;overflow-x:auto}.thumb-list button{width:66px;height:58px;padding:0;overflow:hidden;border:2px solid transparent;border-radius:8px;background:none}.thumb-list button.active{border-color:var(--cpu-primary)}.thumb-list img{width:100%;height:100%;object-fit:cover}.status-line{display:flex;align-items:center;gap:7px}.status-line span,.status-line em{padding:4px 7px;border-radius:5px;color:var(--cpu-primary);background:var(--cpu-primary-soft);font-size:10px;font-style:normal}.status-line em{color:var(--cpu-text-secondary);background:var(--cpu-surface-soft)}.status-line time{margin-left:auto;color:var(--cpu-text-muted);font-size:9px}.product-info h1{margin:13px 0;font-size:25px;line-height:1.4}.price-box{display:flex;align-items:baseline;gap:10px;padding:15px;border-radius:11px;background:linear-gradient(90deg,var(--cpu-primary-soft),var(--cpu-card))}.price-box strong{color:#ef4444;font-size:32px}.price-box small{font-size:14px}.price-box del{color:var(--cpu-text-muted);font-size:12px}.price-box i{padding:3px 7px;border-radius:5px;color:#b45309;background:#fef3c7;font-size:10px;font-style:normal}.product-info dl{display:grid;grid-template-columns:1fr 1fr;margin:16px 0}.product-info dl div{display:flex;gap:10px;padding:9px 3px;border-bottom:1px dashed var(--cpu-border-soft);font-size:11px}.product-info dt{flex:0 0 auto;color:var(--cpu-text-secondary)}.product-info dd{margin:0;font-weight:600}.buy-actions,.owner-actions{display:flex;flex-wrap:wrap;gap:8px}.buy-actions .el-button:nth-child(2){flex:1}.login-tip{color:#b45309;font-size:11px}.trade-note{display:flex;gap:9px;margin-top:14px;padding:10px;border-radius:9px;color:var(--cpu-primary);background:var(--cpu-primary-soft);font-size:10px}.trade-note b{flex:0 0 auto}.trade-note span{color:var(--cpu-text-secondary);line-height:1.5}.content-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:17px}.description-card,.seller-card{padding:22px}.description-card h2{margin:0 0 16px;font-size:18px}.description{min-height:150px;white-space:pre-wrap;font-size:13px;line-height:1.85}.flaw-note{display:flex;gap:10px;margin-top:16px;padding:12px;border-radius:9px;color:var(--cpu-text-secondary);background:var(--cpu-surface-soft);font-size:11px}.flaw-note b{flex:0 0 auto;color:var(--cpu-text)}.public-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--cpu-border-soft)}.seller-card{cursor:pointer}.seller-head{display:flex;align-items:center;gap:12px}.seller-head div{display:flex;flex-direction:column;gap:5px}.seller-head span{color:var(--cpu-primary);font-size:10px}.seller-stats{display:grid;grid-template-columns:repeat(4,1fr);margin:18px 0}.seller-stats div{display:flex;align-items:center;flex-direction:column;border-right:1px solid var(--cpu-border-soft)}.seller-stats div:last-child{border:0}.seller-stats b{font-size:18px}.seller-stats span{color:var(--cpu-text-secondary);font-size:9px}.seller-card p{margin:0;padding:10px;border-radius:8px;color:var(--cpu-text-secondary);background:var(--cpu-surface-soft);font-size:10px;line-height:1.6}.match-section{padding:20px}.match-section header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}.match-section header span{color:var(--cpu-primary);font-size:10px;letter-spacing:.12em}.match-section h2{margin:4px 0 0;font-size:18px}.match-section header a{color:var(--cpu-primary);font-size:11px}.match-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}.match-grid article{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--cpu-border-soft);border-radius:11px;cursor:pointer}.match-grid article:hover{border-color:var(--cpu-primary)}.match-score{display:flex;align-items:center;justify-content:center;width:54px;height:54px;flex:0 0 auto;flex-direction:column;border-radius:50%;color:var(--cpu-primary);background:var(--cpu-primary-soft)}.match-score b{font-size:17px}.match-score small{font-size:8px}.match-copy{min-width:0}.match-copy>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.match-copy p{margin:4px 0;color:var(--cpu-text-secondary);font-size:10px}.match-copy>div{display:flex;gap:4px;flex-wrap:wrap}.match-copy span{padding:2px 6px;border-radius:9px;color:var(--cpu-primary);background:var(--cpu-primary-soft);font-size:9px}.related header{display:flex;align-items:center;justify-content:space-between}.related header a{color:var(--cpu-primary);font-size:12px}.related-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.related-grid article{padding:10px;border:1px solid var(--cpu-border-soft);border-radius:12px;background:var(--cpu-card);cursor:pointer}.related-grid article>div{display:grid;place-items:center;height:130px;overflow:hidden;border-radius:8px;background:var(--cpu-surface-soft);font-size:40px}.related-grid img{width:100%;height:100%;object-fit:cover}.related-grid h3{height:36px;margin:8px 0 3px;overflow:hidden;font-size:12px}.related-grid strong{color:#ef4444}@media(max-width:850px){.product-card{grid-template-columns:1fr;padding:16px}.content-grid{grid-template-columns:1fr}.related-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.main-image{aspect-ratio:1}.product-info dl{grid-template-columns:1fr}.buy-actions{position:sticky;bottom:8px;z-index:5;padding:8px;border-radius:10px;background:var(--cpu-card);box-shadow:0 6px 24px rgba(0,0,0,.16)}.product-info h1{font-size:21px}.price-box strong{font-size:28px}.match-section{padding:15px}.match-section header{align-items:flex-start;flex-direction:column}.match-grid{grid-template-columns:1fr}.match-grid article{padding:11px}}
 </style>
