@@ -89,9 +89,35 @@ test("stage 5 real routes complete four manual promotion flows with configurable
     return result.body.data;
   }
 
+  async function submitPayment(order: any) {
+    assert.match(order.paymentCode, /^\d{4}$/);
+    return api(`/market/promotions/orders/${order.id}/payment-claim`, sellerToken, "POST", { paymentCode: order.paymentCode });
+  }
+
+  async function confirmPromotion(order: any, reference = `P5-${order.id}`) {
+    await submitPayment(order);
+    return api(`/market/admin/promotions/orders/${order.id}`, adminToken, "PATCH", {
+      action: "confirm",
+      verificationMethod: "wechat",
+      verificationReference: reference,
+      verifiedAmount: Number(order.amount),
+      paymentCode: order.paymentCode,
+      note: "已核对实收金额、流水和付款备注秘钥",
+    });
+  }
+
   const plans = await api("/market/promotions/plans");
   assert.deepEqual(plans.map((plan: any) => plan.code), ["listing_pin_7d", "wanted_urgent_7d", "home_featured_7d", "merchant_homepage_30d"]);
   assert.ok(plans.every((plan: any) => typeof plan.priceCents === "number" && plan.paymentMode === undefined));
+  const contentPlans = await api("/market/promotions/plans?scope=content");
+  assert.deepEqual(contentPlans.map((plan: any) => plan.code), ["listing_pin_7d", "wanted_urgent_7d", "home_featured_7d"]);
+  assert.equal(contentPlans.find((plan: any) => plan.code === "wanted_urgent_7d").maxActive, 8);
+  const homePlan = contentPlans.find((plan: any) => plan.code === "home_featured_7d");
+  assert.equal(homePlan.maxActive, 8);
+  const illegalCapacity = await call(`/market/admin/promotions/plans/${homePlan.id}`, adminToken, "PATCH", { maxActive: 7 });
+  assert.equal(illegalCapacity.response.status, 400);
+  const merchantPlans = await api("/market/promotions/plans?scope=merchant");
+  assert.deepEqual(merchantPlans.map((plan: any) => plan.code), ["merchant_homepage_30d"]);
 
   const listingPayload = (title: string) => ({
     listingType: "sell",
@@ -112,7 +138,6 @@ test("stage 5 real routes complete four manual promotion flows with configurable
     testAllowed: true,
     availableTime: "工作日 18:00 后",
     contactVisibility: "after_accept",
-    expiryDays: 30,
     images: ["/uploads/phase5-test.jpg"],
   });
   const listing = await api("/market/items", sellerToken, "POST", listingPayload(`阶段五置顶商品 ${suffix}`));
@@ -120,7 +145,11 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   assert.equal(pinOrder.status, "pending");
   assert.equal(pinOrder.paymentMode, "manual");
   assert.equal(pinOrder.epay, undefined);
-  const pinConfirmed = await api(`/market/admin/promotions/orders/${pinOrder.id}`, adminToken, "PATCH", { action: "confirm", note: "线下凭证已核验" });
+  const beforePayment = await call(`/market/admin/promotions/orders/${pinOrder.id}`, adminToken, "PATCH", { action: "confirm", verificationMethod: "wechat", verificationReference: "P5-BEFORE", verifiedAmount: Number(pinOrder.amount), paymentCode: pinOrder.paymentCode, note: "付款前不得启用" });
+  assert.equal(beforePayment.response.status, 400);
+  const wrongClaim = await call(`/market/promotions/orders/${pinOrder.id}/payment-claim`, sellerToken, "POST", { paymentCode: pinOrder.paymentCode === "9999" ? "0000" : "9999" });
+  assert.equal(wrongClaim.response.status, 400);
+  const pinConfirmed = await confirmPromotion(pinOrder, `P5-PIN-${suffix}`);
   assert.equal(pinConfirmed.status, "confirmed");
   assert.equal(pinConfirmed.badgeLabel, "置顶");
 
@@ -147,9 +176,11 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   ]);
   assert.deepEqual(duplicateApplications.map((result) => result.response.status).sort(), [200, 409]);
   const duplicateWinner = duplicateApplications.find((result) => result.response.status === 200)!.body.data;
+  await submitPayment(duplicateWinner);
+  const duplicateConfirmationPayload = { action: "confirm", verificationMethod: "wechat", verificationReference: `P5-DUP-${suffix}`, verifiedAmount: Number(duplicateWinner.amount), paymentCode: duplicateWinner.paymentCode, note: "并发确认只能成功一次" };
   const duplicateConfirmations = await Promise.all([
-    call(`/market/admin/promotions/orders/${duplicateWinner.id}`, adminToken, "PATCH", { action: "confirm" }),
-    call(`/market/admin/promotions/orders/${duplicateWinner.id}`, adminToken, "PATCH", { action: "confirm" }),
+    call(`/market/admin/promotions/orders/${duplicateWinner.id}`, adminToken, "PATCH", duplicateConfirmationPayload),
+    call(`/market/admin/promotions/orders/${duplicateWinner.id}`, adminToken, "PATCH", duplicateConfirmationPayload),
   ]);
   assert.deepEqual(duplicateConfirmations.map((result) => result.response.status).sort(), [200, 400]);
 
@@ -169,7 +200,7 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   });
   const wanted = await api("/market/wanted", sellerToken, "POST", wantedPayload(`阶段五加急求购 ${suffix}`));
   const urgentOrder = await api("/market/promotions/orders", sellerToken, "POST", { planCode: "wanted_urgent_7d", targetId: wanted.id });
-  await api(`/market/admin/promotions/orders/${urgentOrder.id}`, adminToken, "PATCH", { action: "confirm" });
+  await confirmPromotion(urgentOrder, `P5-WANTED-${suffix}`);
   const normalWanted = await api("/market/wanted", sellerToken, "POST", wantedPayload(`阶段五普通求购 ${suffix}`));
   const wantedRows = await api("/market/wanted?size=50");
   const urgentIndex = wantedRows.list.findIndex((item: any) => item.id === wanted.id);
@@ -178,10 +209,13 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   assert.equal(wantedRows.list[urgentIndex].promotion.urgent.label, "加急");
 
   const homeOrder = await api("/market/promotions/orders", sellerToken, "POST", { planCode: "home_featured_7d", targetId: listing.id });
-  await api(`/market/admin/promotions/orders/${homeOrder.id}`, adminToken, "PATCH", { action: "confirm" });
+  await confirmPromotion(homeOrder, `P5-HOME-${suffix}`);
   const home = await api("/home/summary", sellerToken);
   const homePromotion = home.promotions.find((item: any) => item.id === listing.id);
   assert.equal(homePromotion.promotion.label, "推广");
+  assert.ok(home.promotions.length <= 8);
+  assert.ok(home.hotTopics.length <= 8);
+  assert.equal(home.hotTopics.find((topic: any) => topic.linkedWantedPost?.id === wanted.id)?.promotion?.label, "加急");
 
   const contactValue = `phase5_wechat_${suffix}`;
   const merchant = await api("/market/merchant/me", sellerToken, "PUT", {
@@ -202,7 +236,13 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   const inactiveMerchant = await call(`/market/merchants/${merchant.slug}`);
   assert.equal(inactiveMerchant.response.status, 404);
   const merchantOrder = await api("/market/promotions/orders", sellerToken, "POST", { planCode: "merchant_homepage_30d", targetId: merchant.id });
-  await api(`/market/admin/promotions/orders/${merchantOrder.id}`, adminToken, "PATCH", { action: "confirm" });
+  await confirmPromotion(merchantOrder, `P5-MERCHANT-${suffix}`);
+  const contentOrders = await api("/market/promotions/orders?scope=content&size=50", sellerToken);
+  assert.ok(contentOrders.list.length >= 3);
+  assert.ok(contentOrders.list.every((order: any) => order.targetType !== "merchant_profile"));
+  const merchantOrders = await api("/market/promotions/orders?scope=merchant&size=50", sellerToken);
+  assert.ok(merchantOrders.list.some((order: any) => order.id === merchantOrder.id));
+  assert.ok(merchantOrders.list.every((order: any) => order.targetType === "merchant_profile"));
   const publicMerchant = await api(`/market/merchants/${merchant.slug}`);
   assert.equal(publicMerchant.promotion.homepage.label, "合作商户");
   assert.equal(JSON.stringify(publicMerchant).includes(contactValue), false);
@@ -253,7 +293,12 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   const pricedOrder = await api("/market/promotions/orders", sellerToken, "POST", { planCode: "listing_pin_7d", targetId: listing.id });
   assert.equal(pricedOrder.amountCents, 673);
   assert.equal(pricedOrder.paymentMode, "manual");
-  await api(`/market/promotions/orders/${pricedOrder.id}/cancel`, sellerToken, "POST", {});
+  await submitPayment(pricedOrder);
+  const paidRejection = await api(`/market/admin/promotions/orders/${pricedOrder.id}`, adminToken, "PATCH", { action: "reject", note: "推广对象信息需补充，已通过站内沟通联系退款" });
+  assert.equal(paidRejection.status, "rejected");
+  assert.ok(paidRejection.paymentSubmittedAt);
+  const refundNotice = await prisma.notification.findFirstOrThrow({ where: { userId: seller.id, title: "推广未通过，请联系退款" }, orderBy: { createdAt: "desc" } });
+  assert.match(refundNotice.content, /不会自动退款/);
   await api(`/market/admin/promotions/plans/${listingPlan.id}`, adminToken, "PATCH", { price: originalListingPrice / 100 });
 
   const overview = await api("/market/admin/promotions/overview", adminToken);

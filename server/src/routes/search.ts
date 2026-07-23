@@ -21,8 +21,7 @@ searchRouter.get("/", async (req, res, next) => {
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const features = getFeatures();
     const searchableBoardTypes = ["announce"];
-    if (forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question");
-    if (forumAccessEnabled && features.market) searchableBoardTypes.push("market");
+    if (forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question", "coursereview");
     await refreshExpiredPromotions();
     const promotionNow = new Date();
 
@@ -88,7 +87,12 @@ searchRouter.get("/", async (req, res, next) => {
         prisma.topic.findMany({
           where: {
             hidden: false,
-            board: { type: { in: searchableBoardTypes } },
+            // 商品和求购分别由结构化结果返回；帖子搜索只收公告与广场公开频道，
+            // 避免同一出售商品再以内部市集 Topic 重复出现或被误认成求购讨论。
+            board: {
+              type: { in: searchableBoardTypes },
+              OR: [{ type: "announce" }, { section: { not: null } }],
+            },
             OR: [{ title: { contains: q } }, { content: { contains: q } }],
           },
           orderBy: { lastReplyAt: "desc" },

@@ -62,7 +62,7 @@ test("stage 2 real routes complete listing and wanted reservation flows without 
   }
 
   const listing = await api("/items", sellerToken, "POST", {
-    listingType: "sell", title: `阶段二闭环商品 ${suffix}`, description: "真实接口闭环测试商品", category: "other", price: 88, negotiable: true, condition: "good", tradeMode: "meetup", campus: "SIP", location: "中心楼大厅", brand: "测试品牌", model: "T2", usageDuration: "半年", flaws: "轻微使用痕迹", accessories: "原包装", testAllowed: true, availableTime: "工作日 18:00 后", contactVisibility: "after_accept", expiryDays: 30, images: ["/uploads/phase2-test.jpg"],
+    listingType: "sell", title: `阶段二闭环商品 ${suffix}`, description: "真实接口闭环测试商品", category: "other", price: 88, negotiable: true, condition: "good", tradeMode: "meetup", campus: "SIP", location: "中心楼大厅", brand: "测试品牌", model: "T2", usageDuration: "半年", flaws: "轻微使用痕迹", accessories: "原包装", testAllowed: true, availableTime: "工作日 18:00 后", contactVisibility: "after_accept", images: ["/uploads/phase2-test.jpg"],
   });
   assert.equal(listing.status, "active");
   assert.equal(listing.seller.username, undefined);
@@ -86,6 +86,18 @@ test("stage 2 real routes complete listing and wanted reservation flows without 
   assert.ok(completed.completedAt);
   const review = await api(`/orders/${reservation.id}/reviews`, buyerToken, "POST", { rating: 5, content: "按约见面，描述准确" });
   assert.equal(review.rating, 5);
+  const soldListing = await prisma.marketItem.findUniqueOrThrow({ where: { id: listing.id } });
+  assert.equal(soldListing.status, "sold");
+  assert.ok(soldListing.soldAt);
+  const relisted = await api(`/items/${listing.id}/lifecycle`, sellerToken, "POST", { action: "relist" });
+  assert.equal(relisted.status, "active");
+  assert.equal(relisted.soldAt, null);
+  const completedOrderAfterRelist = await prisma.marketOrder.findUniqueOrThrow({ where: { id: reservation.id } });
+  assert.equal(completedOrderAfterRelist.status, "completed");
+  await api(`/items/${listing.id}/lifecycle`, sellerToken, "POST", { action: "mark_sold" });
+  const republishedFromEdit = await api(`/items/${listing.id}`, sellerToken, "PATCH", { status: "active" });
+  assert.equal(republishedFromEdit.status, "active");
+  assert.equal(republishedFromEdit.soldAt, null);
 
   const wanted = await api("/wanted", buyerToken, "POST", { title: `阶段二求购 ${suffix}`, category: "other", budgetMin: 40, budgetMax: 120, brandModel: "不限", condition: "使用良好", expectedTradeTime: "本周内", campus: "SIP", location: "中心楼大厅", description: "希望现场测试功能", allowSellerOffers: true, expiryDays: 21 });
   assert.equal(wanted.status, "active");

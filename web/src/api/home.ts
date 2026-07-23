@@ -10,6 +10,9 @@ export interface HomePromotion {
   priceCents: number;
   campus: string;
   cover: string;
+  listingType: "sell";
+  negotiable: boolean;
+  createdAt: string;
   seller: any;
   promotion: {
     orderId: number;

@@ -99,7 +99,7 @@ test("stage 3 real routes enforce post-accept privacy, trust restrictions, repor
   const encryptedContact = await prisma.marketContactCard.findUniqueOrThrow({ where: { userId: seller.id } });
   assert.notEqual(encryptedContact.valueEncrypted, sellerContact);
 
-  const listingPayload = (title: string) => ({ listingType: "sell", title, description: "阶段三真实接口安全交易测试", category: "other", price: 88, negotiable: true, condition: "good", tradeMode: "meetup", campus: "SIP", location: "中心楼大厅", brand: "测试品牌", model: "T3", usageDuration: "半年", flaws: "轻微使用痕迹", accessories: "原包装", testAllowed: true, availableTime: "工作日 18:00 后", contactVisibility: "after_accept", expiryDays: 30, images: ["/uploads/phase3-test.jpg"] });
+  const listingPayload = (title: string) => ({ listingType: "sell", title, description: "阶段三真实接口安全交易测试", category: "other", price: 88, negotiable: true, condition: "good", tradeMode: "meetup", campus: "SIP", location: "中心楼大厅", brand: "测试品牌", model: "T3", usageDuration: "半年", flaws: "轻微使用痕迹", accessories: "原包装", testAllowed: true, availableTime: "工作日 18:00 后", contactVisibility: "after_accept", images: ["/uploads/phase3-test.jpg"] });
   const listing = await api("/items", sellerToken, "POST", listingPayload(`阶段三隐私商品 ${suffix}`));
   assert.equal(listing.status, "active");
   assert.equal(listing.seller.username, undefined);

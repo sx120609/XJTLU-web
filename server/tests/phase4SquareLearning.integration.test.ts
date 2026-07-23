@@ -87,18 +87,82 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
   assert.equal(boards.find((board: any) => board.slug === "wanted-demand")?.color, "#ea580c");
   const marketMeta = await api("/market/meta", "GET", undefined, false);
   assert.deepEqual(marketMeta.campuses, ["SIP", "TC"]);
+  assert.deepEqual(marketMeta.conditions, ["new", "like_new", "good", "fair"]);
+  assert.deepEqual(marketMeta.tradeModes, ["meetup", "shipping", "online", "any"]);
+  const missingCondition = await call("/market/items", "POST", {
+    listingType: "sell",
+    title: `缺少成色 ${suffix}`,
+    description: "商品成色必须由发布者明确选择，不能由后端静默补默认值。",
+    category: "other",
+    price: 10,
+    draft: true,
+  });
+  assert.equal(missingCondition.response.status, 400);
+  const missingCategory = await call("/market/items", "POST", {
+    listingType: "sell",
+    title: `missing category ${suffix}`,
+    description: "A physical sale listing must have an explicit category.",
+    price: 10,
+    condition: "good",
+    draft: true,
+  });
+  assert.equal(missingCategory.response.status, 400);
+  const missingTradeMode = await call("/market/items", "POST", {
+    listingType: "sell",
+    title: `missing delivery mode ${suffix}`,
+    description: "A starred delivery mode must be submitted explicitly.",
+    category: "other",
+    price: 10,
+    condition: "good",
+    draft: true,
+  });
+  assert.equal(missingTradeMode.response.status, 400);
+  const forumPostCountBeforeProducts = (await prisma.user.findUnique({ where: { id: user.id }, select: { postCount: true } }))!.postCount;
+  const marketBoardBeforeProducts = await prisma.board.findUnique({ where: { slug: "market" }, select: { topicCount: true } });
 
+  const draftTitle = `阶段四私有出售草稿 ${suffix}`;
+  const draftListing = await api("/market/items", "POST", {
+    listingType: "sell",
+    title: draftTitle,
+    description: "保存后只能由卖家在市集草稿中查看，不能进入任何公开帖子流。",
+    category: "other",
+    price: 35,
+    negotiable: false,
+    condition: "good",
+    tradeMode: "meetup",
+    campus: "SIP",
+    location: "",
+    flaws: "",
+    availableTime: "",
+    contactVisibility: "after_accept",
+    images: [],
+    draft: true,
+  });
+  assert.equal(draftListing.listingType, "sell");
+  assert.equal(draftListing.status, "draft");
+  const persistedDraft = await prisma.marketItem.findUnique({ where: { id: draftListing.id }, select: { topicId: true } });
+  assert.equal(persistedDraft?.topicId, null);
+  const ownerDraftDetail = await api(`/market/items/${draftListing.id}`);
+  assert.equal(ownerDraftDetail.id, draftListing.id);
+  const publicDraftDetail = await call(`/market/items/${draftListing.id}`, "GET", undefined, false);
+  assert.equal(publicDraftDetail.response.status, 404);
+  const publicDraftList = await call("/market/items?status=draft", "GET", undefined, false);
+  assert.equal(publicDraftList.response.status, 400);
+  assert.match(publicDraftList.body.message, /草稿.*“我的”页面/);
+
+  const listingTitle = `阶段四关联商品 ${suffix}`;
   const listing = await api("/market/items", "POST", {
     listingType: "sell",
-    title: `阶段四关联商品 ${suffix}`,
+    title: listingTitle,
     description: "用于验证帖子与公开商品的独立关联",
     category: "other",
     price: 66,
+    originalPrice: 999,
     negotiable: true,
     condition: "good",
-    tradeMode: "meetup",
+    tradeMode: "any",
     campus: "苏州校区",
-    location: "中心楼大厅",
+    location: "",
     brand: "测试品牌",
     model: "P4",
     usageDuration: "半年",
@@ -107,10 +171,57 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     testAllowed: true,
     availableTime: "工作日 18:00 后",
     contactVisibility: "after_accept",
-    expiryDays: 30,
     images: ["/uploads/phase4-test.jpg"],
   });
   assert.equal(listing.campus, "SIP");
+  assert.equal(listing.tradeMode, "any");
+  assert.equal(listing.expiresAt, null);
+  assert.equal(listing.topicId, null);
+  assert.equal((await prisma.user.findUnique({ where: { id: user.id }, select: { postCount: true } }))!.postCount, forumPostCountBeforeProducts);
+  assert.equal((await prisma.board.findUnique({ where: { slug: "market" }, select: { topicCount: true } }))?.topicCount, marketBoardBeforeProducts?.topicCount);
+
+  const campusOptionalListing = await api("/market/items", "POST", {
+    listingType: "sell",
+    title: `optional campus item ${suffix}`,
+    description: "An active physical listing can be published without selecting a campus.",
+    category: "other",
+    price: 45,
+    condition: "like_new",
+    tradeMode: "shipping",
+    images: ["/uploads/phase4-optional-campus.jpg"],
+  });
+  assert.equal(campusOptionalListing.status, "active");
+  assert.equal(campusOptionalListing.campus, "");
+  assert.equal(campusOptionalListing.location, "");
+  assert.equal(campusOptionalListing.availableTime, "");
+
+  const expensiveListing = await api("/market/items", "POST", {
+    listingType: "sell",
+    title: `filter regression item ${suffix}`,
+    description: "Used to verify that sale price, condition, campus and delivery filters all read saved listing fields.",
+    category: "other",
+    price: 666,
+    originalPrice: 1,
+    condition: "fair",
+    tradeMode: "online",
+    campus: "TC",
+    images: ["/uploads/phase4-filter-test.jpg"],
+  });
+  assert.equal(expensiveListing.expiresAt, null);
+
+  const priceFiltered = await api("/market/items?minPrice=60&maxPrice=100&page=1&size=60", "GET", undefined, false);
+  assert.equal(priceFiltered.list.some((item: any) => item.id === listing.id), true);
+  assert.equal(priceFiltered.list.some((item: any) => item.id === expensiveListing.id), false);
+  const anyDelivery = await api("/market/items?tradeMode=any&page=1&size=60", "GET", undefined, false);
+  assert.equal(anyDelivery.list.some((item: any) => item.id === listing.id), true);
+  assert.equal(anyDelivery.list.some((item: any) => item.id === expensiveListing.id), true);
+  const onlineDelivery = await api("/market/items?tradeMode=online&page=1&size=60", "GET", undefined, false);
+  assert.equal(onlineDelivery.list.some((item: any) => item.id === listing.id), false);
+  assert.equal(onlineDelivery.list.some((item: any) => item.id === expensiveListing.id), true);
+  const fieldFiltered = await api("/market/items?condition=fair&campus=TC&category=other&page=1&size=60", "GET", undefined, false);
+  assert.equal(fieldFiltered.list.some((item: any) => item.id === expensiveListing.id), true);
+  assert.equal(fieldFiltered.list.some((item: any) => item.id === campusOptionalListing.id), false);
+
   const itemTopic = await api("/topics", "POST", {
     boardSlug: "trade-talk",
     title: `请帮忙估价 ${suffix}`,
@@ -172,6 +283,89 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
   });
   const wantedTopicDetail = await api(`/topics/${wantedTopic.id}`);
   assert.equal(wantedTopicDetail.linkedWantedPost.id, wanted.id);
+
+  // 商品本身没有 Topic；首页和“全部帖子”只读取广场公开频道，求购需求仍是帖子。
+  await prisma.topic.update({ where: { id: wanted.topicId }, data: { likeCount: 1_000_000, lastReplyAt: new Date() } });
+  const home = await api("/home/summary");
+  assert.equal(home.hotTopics.some((topic: any) => topic.title === draftTitle), false);
+  assert.equal(home.latestTopics.some((topic: any) => topic.title === draftTitle), false);
+  assert.equal(home.hotTopics.some((topic: any) => topic.title === listingTitle), false);
+  assert.equal(home.latestTopics.some((topic: any) => topic.title === listingTitle), false);
+  assert.equal(home.hotTopics.some((topic: any) => topic.id === wanted.topicId), true);
+
+  const allSquareTopics = await api("/topics?board=all&page=1&size=50&sort=hot");
+  assert.equal(allSquareTopics.list.some((topic: any) => topic.title === draftTitle), false);
+  assert.equal(allSquareTopics.list.some((topic: any) => topic.title === listingTitle), false);
+  assert.equal(allSquareTopics.list.some((topic: any) => topic.id === wanted.topicId), true);
+
+  const search = await api(`/search?q=${encodeURIComponent(listingTitle)}`);
+  assert.equal(search.marketItems.some((item: any) => item.id === listing.id), true);
+  assert.equal(search.marketItems.some((item: any) => item.id === draftListing.id), false);
+  assert.equal(search.topics.some((topic: any) => topic.title === listingTitle), false);
+
+  // 同一条出售内容从草稿正式上架、再退回草稿时，只改变商品状态，不生成或同步论坛 Topic。
+  const publishedDraft = await api(`/market/items/${draftListing.id}`, "PATCH", {
+    listingType: "sell",
+    title: draftTitle,
+    description: "完成信息后正式上架，再验证退回草稿仍不会公开。",
+    category: "other",
+    price: 35,
+    negotiable: false,
+    condition: "good",
+    tradeMode: "meetup",
+    campus: "SIP",
+    location: "",
+    flaws: "无明显瑕疵",
+    availableTime: "工作日 18:00 后",
+    contactVisibility: "after_accept",
+    images: ["/uploads/phase4-draft-publish.jpg"],
+    draft: false,
+    status: "active",
+  });
+  assert.equal(publishedDraft.status, "active");
+  assert.equal(publishedDraft.topicId, null);
+  assert.equal(publishedDraft.campus, "SIP");
+  assert.equal(publishedDraft.location, "");
+  assert.equal(publishedDraft.expiresAt, null);
+  assert.equal((await call(`/market/items/${draftListing.id}`, "GET", undefined, false)).response.status, 200);
+  const resavedDraft = await api(`/market/items/${draftListing.id}`, "PATCH", {
+    ...publishedDraft,
+    images: publishedDraft.images.map((image: any) => image.url),
+    draft: true,
+    status: "draft",
+  });
+  assert.equal(resavedDraft.status, "draft");
+  assert.equal(resavedDraft.topicId, null);
+  assert.equal((await call(`/market/items/${draftListing.id}`, "GET", undefined, false)).response.status, 404);
+
+  const materialMeta = await api("/market/materials/meta");
+  const forumPostCountBeforeMaterial = (await prisma.user.findUnique({ where: { id: user.id }, select: { postCount: true } }))!.postCount;
+  const draftMaterial = await api("/market/materials/items", "POST", {
+    title: `阶段四独立学习资料草稿 ${suffix}`,
+    description: "用于验证学习资料属于独立商品域，不会自动生成广场帖子。",
+    price: 0,
+    images: [],
+    draft: true,
+    profile: {
+      courseCode: "P4TEST101",
+      applicableSemester: "Y1S1",
+      typeId: materialMeta.types[0].id,
+      fileFormats: ["PDF"],
+      pageCount: 1,
+      versionLabel: "测试草稿",
+      language: "zh-CN",
+      originalityKind: "original",
+      originalityStatement: "集成测试原创声明",
+      rightsConfirmed: true,
+    },
+  });
+  assert.equal(draftMaterial.status, "draft");
+  assert.equal(draftMaterial.topicId, null);
+  assert.equal((await prisma.user.findUnique({ where: { id: user.id }, select: { postCount: true } }))!.postCount, forumPostCountBeforeMaterial);
+  assert.equal((await call(`/market/materials/items/${draftMaterial.id}`, "GET", undefined, false)).response.status, 404);
+  const publicDraftMaterials = await call("/market/materials/items?status=draft", "GET", undefined, false);
+  assert.equal(publicDraftMaterials.response.status, 400);
+  assert.match(publicDraftMaterials.body.message, /草稿.*“我的交易”/);
 
   const blockedForum = await call("/topics", "POST", {
     boardSlug: "question",

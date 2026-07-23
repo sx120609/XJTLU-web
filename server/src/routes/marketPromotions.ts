@@ -26,6 +26,7 @@ import {
   serializeMerchantPromotion,
   serializePromotionOrder,
   serializePromotionPlan,
+  submitPromotionPaymentClaim,
 } from "../services/promotion";
 import { getMarketOperationsDashboard } from "../services/marketOperations";
 import { isFeatureOn } from "../services/siteSettings";
@@ -55,6 +56,7 @@ const promotionOrderSchema = z.object({
   note: z.string().trim().max(500).optional().default(""),
 });
 const promotionEventSchema = z.object({ type: z.enum(["impression", "click"]) });
+const promotionPaymentClaimSchema = z.object({ paymentCode: z.string().trim().regex(/^\d{4}$/, "请输入订单显示的四位付款秘钥") });
 const promotionPlanPatchSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(),
   description: z.string().trim().max(500).optional(),
@@ -85,6 +87,17 @@ const promotionOrderActionSchema = z.object({
   verificationMethod: z.enum(["alipay", "wechat", "bank", "cash", "other"]).optional(),
   verificationReference: z.string().trim().max(120).optional(),
   verifiedAmount: z.union([z.string(), z.number()]).optional(),
+  paymentCode: z.string().trim().regex(/^\d{4}$/).optional(),
+}).superRefine((value, context) => {
+  if (value.action === "confirm") {
+    if (!value.verificationMethod) context.addIssue({ code: z.ZodIssueCode.custom, path: ["verificationMethod"], message: "请选择实际收款方式" });
+    if (!value.verificationReference || value.verificationReference.length < 2) context.addIssue({ code: z.ZodIssueCode.custom, path: ["verificationReference"], message: "请填写收款流水号" });
+    if (value.verifiedAmount === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["verifiedAmount"], message: "请填写实际收款金额" });
+    if (!value.paymentCode) context.addIssue({ code: z.ZodIssueCode.custom, path: ["paymentCode"], message: "请核对并填写四位付款秘钥" });
+    if (value.note.length < 2) context.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "请填写至少 2 个字的核验备注" });
+  } else if (value.note.length < 2) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "驳回时必须填写原因" });
+  }
 });
 const merchantReviewSchema = z.object({
   status: z.enum(["approved", "rejected", "suspended"]),
@@ -109,6 +122,12 @@ function promotionPriceCents(value: string | number) {
 
 function isStaff(role?: string | null) {
   return role === "admin" || role === "mod";
+}
+
+function promotionScope(value: unknown) {
+  const scope = String(value || "").trim();
+  if (scope && !["content", "merchant"].includes(scope)) throw Errors.badRequest("推广服务范围不正确");
+  return scope as "" | "content" | "merchant";
 }
 
 function ensureAdmin(req: any) {
@@ -161,11 +180,16 @@ function audienceKey(req: any) {
 function handlePromotionServiceError(error: any) {
   if (error?.message === "PROMOTION_ORDER_NOT_FOUND") return Errors.notFound("推广订单不存在");
   if (error?.message === "PROMOTION_ORDER_NOT_PENDING") return Errors.badRequest("该推广订单已处理，不能重复操作");
-  if (error?.message === "PROMOTION_PENDING_EXISTS") return Errors.conflict("相同推广方案已有待确认订单");
+  if (error?.message === "PROMOTION_PENDING_EXISTS") return Errors.conflict("相同推广方案已有待付款或候补订单");
+  if (error?.message === "PROMOTION_PLAN_UNAVAILABLE") return Errors.badRequest("推广方案当前不可用");
   if (error?.message === "PROMOTION_TARGET_UNAVAILABLE") return Errors.badRequest("推广对象当前不可用，请先恢复为公开有效状态");
   if (error?.message === "PROMOTION_TYPE_UNSUPPORTED") return Errors.badRequest("暂不支持该推广类型");
   if (error?.message === "PROMOTION_VERIFIED_AMOUNT_MISMATCH") return Errors.badRequest("人工核验金额与订单快照金额不一致");
-  if (error?.message === "PROMOTION_CAPACITY_REACHED") return Errors.conflict("该推广位当前库存已满，请先调整排期或等待已有推广到期");
+  if (error?.message === "PROMOTION_PAYMENT_NOT_SUBMITTED") return Errors.badRequest("用户尚未在订单页确认付款秘钥，不能启用推广");
+  if (error?.message === "PROMOTION_PAYMENT_CODE_MISMATCH") return Errors.badRequest("四位付款秘钥不一致，请对照订单与收款备注重新核验");
+  if (error?.message === "PROMOTION_PAYMENT_EXPIRED") return Errors.badRequest("付款位置保留时间已结束，请重新申请或等待候补通知");
+  if (error?.message === "PROMOTION_VERIFICATION_REQUIRED") return Errors.badRequest("启用推广前必须完整核验收款方式、流水号、实收金额和四位秘钥");
+  if (error?.message === "PROMOTION_CAPACITY_REACHED") return Errors.conflict("目前推广服务已满，请等待系统释放位置并通知候补用户");
   if (error?.message === "PROMOTION_ADJUSTMENT_NOT_ALLOWED") return Errors.badRequest("当前订单状态不允许登记售后调整");
   if (error?.message === "PROMOTION_ADJUSTMENT_AMOUNT_TOO_LARGE") return Errors.badRequest("调整金额不能超过订单核验金额");
   if (error?.message === "PROMOTION_EXTENSION_NOT_ALLOWED") return Errors.badRequest("只能延长当前仍在生效且未被续期替换的推广");
@@ -178,10 +202,13 @@ async function notifyPromotion(userId: number, title: string, content: string, l
   }).catch(() => null);
 }
 
-marketPromotionsRouter.get("/promotions/plans", async (_req, res, next) => {
+marketPromotionsRouter.get("/promotions/plans", async (req, res, next) => {
   try {
     if (!isFeatureOn("promotion")) return ok(res, []);
-    const list = await prisma.promotionPlan.findMany({ where: { enabled: true }, orderBy: [{ sort: "asc" }, { id: "asc" }] });
+    const scope = promotionScope(req.query.scope);
+    const where: any = { enabled: true };
+    if (scope) where.targetType = scope === "merchant" ? "merchant_profile" : { not: "merchant_profile" };
+    const list = await prisma.promotionPlan.findMany({ where, orderBy: [{ sort: "asc" }, { id: "asc" }] });
     ok(res, list.map(serializePromotionPlan));
   } catch (error) { next(error); }
 });
@@ -192,13 +219,15 @@ marketPromotionsRouter.get("/promotions/orders", authRequired, async (req, res, 
     const page = queryPage(req.query.page);
     const size = querySize(req.query.size, 20, 5, 50);
     const status = String(req.query.status || "").trim();
+    const scope = promotionScope(req.query.scope);
     const where: any = { userId: req.user!.userId };
     if (status) where.status = status;
+    if (scope) where.targetType = scope === "merchant" ? "merchant_profile" : { not: "merchant_profile" };
     const [list, total] = await Promise.all([
       prisma.promotionOrder.findMany({ where, include: promotionOrderInclude, orderBy: { createdAt: "desc" }, skip: (page - 1) * size, take: size }),
       prisma.promotionOrder.count({ where }),
     ]);
-    ok(res, { page, size, total, list: list.map((order) => serializePromotionOrder(order)) });
+    ok(res, { page, size, total, list: list.map((order) => serializePromotionOrder(order, false, true)) });
   } catch (error) { next(error); }
 });
 
@@ -246,14 +275,21 @@ marketPromotionsRouter.post("/promotions/orders", authRequired, validate(promoti
       throw Errors.badRequest("推广对象类型不受支持");
     }
     const order = await createPendingPromotionOrder(prisma, user.id, pendingWhere, data);
-    ok(res, serializePromotionOrder(order));
+    ok(res, serializePromotionOrder(order, false, true));
+  } catch (error) { next(handlePromotionServiceError(error)); }
+});
+
+marketPromotionsRouter.post("/promotions/orders/:id/payment-claim", authRequired, validate(promotionPaymentClaimSchema), async (req, res, next) => {
+  try {
+    const row = await submitPromotionPaymentClaim(prisma, Number(req.params.id), req.user!.userId, req.body.paymentCode);
+    ok(res, serializePromotionOrder(row, false, true));
   } catch (error) { next(handlePromotionServiceError(error)); }
 });
 
 marketPromotionsRouter.post("/promotions/orders/:id/cancel", authRequired, async (req, res, next) => {
   try {
     const row = await cancelPromotionOrder(prisma, Number(req.params.id), req.user!.userId);
-    ok(res, serializePromotionOrder(row));
+    ok(res, serializePromotionOrder(row, false, true));
   } catch (error) { next(handlePromotionServiceError(error)); }
 });
 
@@ -389,9 +425,10 @@ marketPromotionsRouter.get("/admin/promotions/overview", authRequired, async (re
   try {
     ensureAdmin(req);
     await refreshExpiredPromotions();
-    const [plans, pendingOrders, confirmedOrders, merchantReviewing, revenue, manualCosts, adjustmentTotals, impressions, clicks] = await Promise.all([
+    const [plans, pendingOrders, waitlistedOrders, confirmedOrders, merchantReviewing, revenue, manualCosts, adjustmentTotals, impressions, clicks] = await Promise.all([
       prisma.promotionPlan.findMany({ orderBy: [{ sort: "asc" }, { id: "asc" }] }),
       prisma.promotionOrder.count({ where: { status: "pending" } }),
+      prisma.promotionOrder.count({ where: { status: "waitlisted" } }),
       prisma.promotionOrder.count({ where: { status: "confirmed" } }),
       prisma.merchantProfile.count({ where: { status: "reviewing" } }),
       prisma.promotionOrder.aggregate({ where: { status: { in: ["confirmed", "expired"] } }, _sum: { amountCents: true } }),
@@ -407,7 +444,7 @@ marketPromotionsRouter.get("/admin/promotions/overview", authRequired, async (re
     const revenueCents = revenue._sum.amountCents || 0;
     ok(res, {
       plans: plans.map(serializePromotionPlan),
-      counts: { pendingOrders, confirmedOrders, merchantReviewing },
+      counts: { pendingOrders, waitlistedOrders, confirmedOrders, merchantReviewing },
       revenueCents,
       revenue: (revenueCents / 100).toFixed(2),
       refundCents,
@@ -488,6 +525,7 @@ marketPromotionsRouter.patch("/admin/promotions/orders/:id", authRequired, valid
         adminNote: req.body.note,
         method: req.body.verificationMethod,
         reference: req.body.verificationReference,
+        paymentCode: req.body.paymentCode,
         verifiedAmountCents: req.body.verifiedAmount === undefined ? null : promotionPriceCents(req.body.verifiedAmount),
       })
       : await rejectPromotionOrder(prisma, id, req.user!.userId, req.body.note);
@@ -497,9 +535,12 @@ marketPromotionsRouter.patch("/admin/promotions/orders/:id", authRequired, valid
       targetType: "promotion_order",
       targetId: id,
       summary: `${req.body.action === "confirm" ? "确认" : "驳回"}推广订单 ${row.outTradeNo}`,
-      detail: { type: row.type, amountCents: row.amountCents, verificationMethod: row.verificationMethod, verificationReferenceSuffix: String(row.verificationReference || "").slice(-4), note: req.body.note },
+      detail: { type: row.type, amountCents: row.amountCents, verificationMethod: row.verificationMethod, verificationReferenceSuffix: String(row.verificationReference || "").slice(-4), paymentCodeMatched: req.body.action === "confirm", note: req.body.note },
     });
-    await notifyPromotion(row.userId, req.body.action === "confirm" ? "推广已确认" : "推广申请未通过", req.body.action === "confirm" ? `${row.planName} 已开始生效，所有展示都会明确标注推广属性。` : (req.body.note || "请检查推广对象或资料后重新申请。"), "/market/promotions", { promotionOrderId: row.id, status: row.status });
+    const rejectionContent = row.paymentSubmittedAt
+      ? `${req.body.note || "推广申请未通过"}。该订单已提交付款确认，系统不会自动退款；请私下联系管理员确认退款安排。`
+      : (req.body.note || "请检查推广对象或资料后重新申请。");
+    await notifyPromotion(row.userId, req.body.action === "confirm" ? "推广已确认" : (row.paymentSubmittedAt ? "推广未通过，请联系退款" : "推广申请未通过"), req.body.action === "confirm" ? `${row.planName} 已开始生效，所有展示都会明确标注推广属性。` : rejectionContent, "/market/promotions", { promotionOrderId: row.id, status: row.status, refundContactRequired: req.body.action === "reject" && Boolean(row.paymentSubmittedAt) });
     const result = await prisma.promotionOrder.findUnique({ where: { id }, include: promotionOrderInclude });
     ok(res, serializePromotionOrder(result, true));
   } catch (error) { next(handlePromotionServiceError(error)); }
@@ -510,6 +551,9 @@ marketPromotionsRouter.patch("/admin/promotions/plans/:id", authRequired, valida
     ensureAdmin(req);
     const current = await prisma.promotionPlan.findUnique({ where: { id: Number(req.params.id) } });
     if (!current) throw Errors.notFound("推广方案不存在");
+    if (["home_featured", "wanted_urgent"].includes(current.type) && req.body.maxActive !== undefined && req.body.maxActive !== 8) {
+      throw Errors.badRequest("首页商品推广和热议求购推广容量固定为 8 个");
+    }
     const data: any = { ...req.body };
     delete data.price;
     delete data.manualCost;
@@ -567,7 +611,7 @@ marketPromotionsRouter.patch("/admin/merchants/:id", authRequired, validate(merc
       include: merchantInclude(),
     });
     await logMarketAdminAction(prisma, { actorId: req.user!.userId, action: "merchant_review", targetType: "merchant_profile", targetId: id, summary: `商户资料更新为 ${req.body.status}`, detail: { note: req.body.note } });
-    await notifyPromotion(current.userId, req.body.status === "approved" ? "商户资料审核通过" : "商户资料状态已更新", req.body.status === "approved" ? "你现在可以在推广中心申请“合作商户主页”方案。" : (req.body.note || "请查看商户资料状态。"), "/market/merchant/apply", { merchantProfileId: id, status: req.body.status });
+    await notifyPromotion(current.userId, req.body.status === "approved" ? "商户资料审核通过" : "商户资料状态已更新", req.body.status === "approved" ? "你现在可以在“成为商户”页面申请合作商户主页方案。" : (req.body.note || "请查看商户资料状态。"), "/market/merchant/apply", { merchantProfileId: id, status: req.body.status });
     ok(res, serializeMerchant(row, undefined, true));
   } catch (error) { next(error); }
 });

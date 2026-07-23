@@ -69,6 +69,7 @@ declare module 'vue' {
     PrivacyPolicyNotice: typeof import('./src/components/common/PrivacyPolicyNotice.vue')['default']
     ProgressPane: typeof import('./src/components/jwxt/ProgressPane.vue')['default']
     PromotionLabel: typeof import('./src/components/market/PromotionLabel.vue')['default']
+    PromotionPaymentDialog: typeof import('./src/components/market/PromotionPaymentDialog.vue')['default']
     PublishActionSheet: typeof import('./src/components/navigation/PublishActionSheet.vue')['default']
     PyfaPane: typeof import('./src/components/jwxt/PyfaPane.vue')['default']
     RichTextEditor: typeof import('./src/components/forum/RichTextEditor.vue')['default']

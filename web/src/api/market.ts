@@ -3,10 +3,32 @@ import type { EpaySubmit, PayType } from "./payments";
 
 export type MarketCategory = string;
 export type MarketCondition = "new" | "like_new" | "good" | "fair" | "wanted";
-export type MarketTradeMode = "meetup" | "shipping" | "both" | "online";
+export type MarketTradeMode = "meetup" | "shipping" | "online" | "any";
 export type MarketListingType = "sell" | "wanted";
 export const MARKET_CAMPUSES = ["SIP", "TC"] as const;
 export type MarketCampus = typeof MARKET_CAMPUSES[number];
+
+export const MARKET_CONDITION_LABELS: Record<Exclude<MarketCondition, "wanted">, string> = {
+  new: "全新",
+  like_new: "近全新",
+  good: "使用良好",
+  fair: "有使用痕迹",
+};
+
+export const MARKET_TRADE_MODE_LABELS: Record<MarketTradeMode, string> = {
+  meetup: "校园面交",
+  shipping: "邮寄",
+  online: "线上交付",
+  any: "任意交付方式",
+};
+
+export function marketConditionLabel(value: string) {
+  return value === "wanted" ? "求购" : MARKET_CONDITION_LABELS[value as Exclude<MarketCondition, "wanted">] || value;
+}
+
+export function marketTradeModeLabel(value: string) {
+  return value === "both" ? MARKET_TRADE_MODE_LABELS.any : MARKET_TRADE_MODE_LABELS[value as MarketTradeMode] || value;
+}
 
 export function normalizeMarketCampus(value: unknown): MarketCampus | "" {
   const input = String(value ?? "").trim();
@@ -76,6 +98,8 @@ export interface PromotionPlan {
   badgeLabel: string;
 }
 
+export type PromotionScope = "content" | "merchant";
+
 export interface PromotionAdjustment {
   id: number;
   orderId: number;
@@ -109,7 +133,14 @@ export interface PromotionOrder {
   manualCostCents: number;
   durationDays: number;
   paymentMode: "manual";
-  status: "pending" | "confirmed" | "rejected" | "cancelled" | "expired";
+  status: "waitlisted" | "pending" | "confirmed" | "rejected" | "cancelled" | "expired";
+  paymentCode?: string;
+  paymentQrUrl?: string;
+  paymentSubmittedAt?: string | null;
+  paymentExpiresAt?: string | null;
+  reservesSlot: boolean;
+  waitlistedAt?: string | null;
+  slotNotifiedAt?: string | null;
   applicantNote: string;
   adminNote: string;
   verificationMethod: string;
@@ -333,7 +364,6 @@ export interface MarketItemInput {
   testAllowed?: boolean;
   availableTime?: string;
   contactVisibility?: "after_accept";
-  expiryDays?: number;
   images?: string[];
   digitalDelivery?: string;
   draft?: boolean;
@@ -533,7 +563,7 @@ export interface MarketSafetyRule {
 }
 
 export const marketApi = {
-  meta: (options?: RequestOptions) => request.get<{ categories: MarketCategoryOption[]; campuses: MarketCampus[]; featuredLearningMaterials: MarketCategoryOption | null; conditions: string[]; tradeModes: string[]; listingTypes: string[]; payTypes: PayType[]; paymentEnabled: boolean; commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number }>("/market/meta", undefined, options),
+  meta: (options?: RequestOptions) => request.get<{ categories: MarketCategoryOption[]; campuses: MarketCampus[]; featuredLearningMaterials: MarketCategoryOption | null; conditions: Array<Exclude<MarketCondition, "wanted">>; tradeModes: MarketTradeMode[]; listingTypes: string[]; payTypes: PayType[]; paymentEnabled: boolean; commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number }>("/market/meta", undefined, options),
   items: (params?: MarketListParams, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: MarketItem[] }>("/market/items", params, options),
   item: (id: number, options?: RequestOptions) => request.get<MarketItem>(`/market/items/${id}`, undefined, options),
   itemMatches: (id: number, options?: RequestOptions) => request.get<MarketWantedMatch[]>(`/market/items/${id}/matches`, undefined, options),
@@ -597,9 +627,10 @@ export const marketApi = {
   adminHandleRefund: (id: number, payload: { status: "approved" | "completed" | "rejected" | "failed"; providerRefundNo?: string; note?: string }) => request.patch<any>(`/market/admin/refunds/${id}`, payload),
   adminHandleSettlement: (id: number, payload: { status: "available" | "held" | "settled"; reference?: string; note?: string }) => request.patch<any>(`/market/admin/settlements/${id}`, payload),
   adminPayoutProfile: (id: number) => request.get<any>(`/market/admin/settlements/${id}/payout-profile`),
-  promotionPlans: (options?: RequestOptions) => request.get<PromotionPlan[]>("/market/promotions/plans", undefined, options),
-  promotionOrders: (params?: { page?: number; size?: number; status?: PromotionOrder["status"] }, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: PromotionOrder[] }>("/market/promotions/orders", params, options),
-  createPromotionOrder: (payload: { planCode: string; targetId: number; note?: string }) => request.post<PromotionOrder>("/market/promotions/orders", payload),
+  promotionPlans: (params?: { scope?: PromotionScope }, options?: RequestOptions) => request.get<PromotionPlan[]>("/market/promotions/plans", params, options),
+  promotionOrders: (params?: { page?: number; size?: number; status?: PromotionOrder["status"]; scope?: PromotionScope }, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: PromotionOrder[] }>("/market/promotions/orders", params, options),
+  createPromotionOrder: (payload: { planCode: string; targetId: number; note?: string }, options?: RequestOptions) => request.post<PromotionOrder>("/market/promotions/orders", payload, options),
+  submitPromotionPaymentClaim: (id: number, paymentCode: string) => request.post<PromotionOrder>(`/market/promotions/orders/${id}/payment-claim`, { paymentCode }),
   cancelPromotionOrder: (id: number) => request.post<PromotionOrder>(`/market/promotions/orders/${id}/cancel`, {}),
   recordPromotionEvent: (orderId: number, type: "impression" | "click", options?: RequestOptions) => request.post<{ id?: number; impressionCount?: number; clickCount?: number; ignored?: boolean }>(`/market/promotions/orders/${orderId}/events`, { type }, options),
   myMerchantProfile: (options?: RequestOptions) => request.get<MerchantProfile | null>("/market/merchant/me", undefined, options),
@@ -608,10 +639,10 @@ export const marketApi = {
   merchant: (slug: string, options?: RequestOptions) => request.get<MerchantProfile>(`/market/merchants/${slug}`, undefined, options),
   favoriteMerchant: (slug: string) => request.post<{ favorited: boolean; favoriteCount: number }>(`/market/merchants/${slug}/favorite`, {}),
   inquireMerchant: (slug: string) => request.post<{ method: string; value: string; counted: boolean; inquiryCount: number }>(`/market/merchants/${slug}/inquiry`, {}),
-  adminPromotionOverview: (options?: RequestOptions) => request.get<{ plans: PromotionPlan[]; counts: { pendingOrders: number; confirmedOrders: number; merchantReviewing: number }; revenue: string; revenueCents: number; refundCents: number; compensationCents: number; manualCostCents: number; netContributionCents: number; netContribution: string; complaintCount: number; impressions: number; clicks: number }>("/market/admin/promotions/overview", undefined, options),
+  adminPromotionOverview: (options?: RequestOptions) => request.get<{ plans: PromotionPlan[]; counts: { pendingOrders: number; waitlistedOrders: number; confirmedOrders: number; merchantReviewing: number }; revenue: string; revenueCents: number; refundCents: number; compensationCents: number; manualCostCents: number; netContributionCents: number; netContribution: string; complaintCount: number; impressions: number; clicks: number }>("/market/admin/promotions/overview", undefined, options),
   adminOperations: (days = 30, options?: RequestOptions) => request.get<MarketOperationsDashboard>("/market/admin/operations", { days }, options),
   adminPromotionOrders: (params?: { page?: number; size?: number; q?: string; status?: string; type?: string }, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: PromotionOrder[] }>("/market/admin/promotions/orders", params, options),
-  adminUpdatePromotionOrder: (id: number, payload: { action: "confirm" | "reject"; note?: string; verificationMethod?: "alipay" | "wechat" | "bank" | "cash" | "other"; verificationReference?: string; verifiedAmount?: string | number }) => request.patch<PromotionOrder>(`/market/admin/promotions/orders/${id}`, payload),
+  adminUpdatePromotionOrder: (id: number, payload: { action: "confirm" | "reject"; note?: string; verificationMethod?: "alipay" | "wechat" | "bank" | "cash" | "other"; verificationReference?: string; verifiedAmount?: string | number; paymentCode?: string }) => request.patch<PromotionOrder>(`/market/admin/promotions/orders/${id}`, payload),
   adminCreatePromotionAdjustment: (id: number, payload: { type: PromotionAdjustment["type"]; amount?: string | number; extensionDays?: number; reference?: string; note: string }) => request.post<PromotionOrder>(`/market/admin/promotions/orders/${id}/adjustments`, payload),
   adminUpdatePromotionPlan: (id: number, payload: { name?: string; description?: string; price?: string | number; manualCost?: string | number; durationDays?: number; maxActive?: number; enabled?: boolean; sort?: number }) => request.patch<PromotionPlan>(`/market/admin/promotions/plans/${id}`, payload),
   adminMerchants: (params?: { status?: string }, options?: RequestOptions) => request.get<MerchantProfile[]>("/market/admin/merchants", params, options),

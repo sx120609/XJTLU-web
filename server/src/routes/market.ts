@@ -46,7 +46,6 @@ import {
 import {
   addDays,
   nextIntentExpiry,
-  nextListingExpiry,
   nextReservationExpiry,
   nextWantedExpiry,
   sweepMarketLifecycle,
@@ -89,10 +88,11 @@ marketRouter.use((_req, res, next) => {
   next();
 });
 
-const CONDITIONS = ["new", "like_new", "good", "fair", "wanted"] as const;
-const TRADE_MODES = ["meetup", "shipping", "both", "online"] as const;
+const ITEM_CONDITIONS = ["new", "like_new", "good", "fair"] as const;
+const TRADE_MODES = ["meetup", "shipping", "online", "any"] as const;
 const LISTING_TYPES = ["sell", "wanted"] as const;
 const ITEM_STATUSES = ["draft", "reviewing", "active", "negotiating", "reserved", "sold", "withdrawn", "expired", "hidden", "targeted"] as const;
+const PRIVATE_ITEM_STATUSES = new Set(["draft", "reviewing", "hidden"]);
 const PAY_TYPES = ["alipay", "wxpay", "qqpay", "bank", "jdpay"] as const;
 const MARKET_CONFIG_ID = 1;
 const DEFAULT_COMMISSION_BPS = 0;
@@ -133,6 +133,13 @@ const requiredMarketCampusSchema = z.preprocess(
   z.enum(MARKET_CAMPUSES, { errorMap: () => ({ message: "校区仅支持 SIP 或 TC" }) }),
 );
 
+function normalizeMarketTradeMode(value: unknown) {
+  const input = String(value ?? "").trim();
+  return input === "both" ? "any" : input;
+}
+
+const marketTradeModeSchema = z.preprocess(normalizeMarketTradeMode, z.enum(TRADE_MODES));
+
 function queryMarketCampus(value: unknown) {
   const campus = normalizeMarketCampus(value);
   if (!campus) return "";
@@ -145,12 +152,12 @@ const itemInputSchema = z.object({
   listingType: z.enum(LISTING_TYPES).default("sell"),
   title: z.string().trim().min(2).max(120),
   description: z.string().trim().min(1).max(20000),
-  category: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{1,39}$/).default("other"),
+  category: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{1,39}$/),
   price: z.union([z.string(), z.number()]),
   originalPrice: z.union([z.string(), z.number()]).optional().nullable(),
   negotiable: z.boolean().optional().default(false),
-  condition: z.enum(CONDITIONS).default("good"),
-  tradeMode: z.enum(TRADE_MODES).default("meetup"),
+  condition: z.enum(ITEM_CONDITIONS),
+  tradeMode: marketTradeModeSchema,
   campus: optionalMarketCampusSchema.optional().default(""),
   location: z.string().trim().max(100).optional().default(""),
   brand: z.string().trim().max(80).optional().default(""),
@@ -161,7 +168,6 @@ const itemInputSchema = z.object({
   testAllowed: z.boolean().optional().default(true),
   availableTime: z.string().trim().max(500).optional().default(""),
   contactVisibility: z.literal("after_accept").optional().default("after_accept"),
-  expiryDays: z.number().int().min(7).max(60).optional().default(30),
   images: z.array(imageUrlSchema).max(9).optional().default([]),
   digitalDelivery: z.string().trim().max(10000).optional().default(""),
   draft: z.boolean().optional().default(false),
@@ -182,10 +188,6 @@ function cents(value: string | number | null | undefined, allowZero = true) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount < 0 || (!allowZero && amount <= 0)) throw Errors.badRequest("价格格式不正确");
   return Math.round(amount * 100);
-}
-
-function parseJson(value: string | null | undefined) {
-  try { return JSON.parse(value || "{}"); } catch { return {}; }
 }
 
 function extractImagesFromContent(content: string) {
@@ -220,7 +222,7 @@ function serializeItem(item: any, viewerId?: number) {
     originalPriceCents: item.originalPriceCents,
     negotiable: item.negotiable,
     condition: item.condition,
-    tradeMode: item.tradeMode,
+    tradeMode: normalizeMarketTradeMode(item.tradeMode) || "meetup",
     campus: item.campus,
     location: item.location,
     brand: item.brand || "",
@@ -403,7 +405,7 @@ marketRouter.get("/meta", async (_req, res, next) => {
       categories,
       campuses: MARKET_CAMPUSES,
       featuredLearningMaterials: null,
-      conditions: CONDITIONS,
+      conditions: ITEM_CONDITIONS,
       tradeModes: TRADE_MODES,
       listingTypes: LISTING_TYPES,
       payTypes: [],
@@ -444,7 +446,7 @@ marketRouter.patch("/preferences", authRequired, validate(marketPreferenceSchema
 
 const wantedInputSchema = z.object({
   title: z.string().trim().min(2).max(120),
-  category: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{1,39}$/).default("other"),
+  category: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{1,39}$/),
   budgetMin: z.union([z.string(), z.number()]),
   budgetMax: z.union([z.string(), z.number()]),
   brandModel: z.string().trim().max(160).optional().default(""),
@@ -469,6 +471,9 @@ marketRouter.get("/wanted", async (req, res, next) => {
     const category = String(req.query.category || "").trim();
     const campus = queryMarketCampus(req.query.campus);
     const status = String(req.query.status || "").trim();
+    if (status && !["active", "responded"].includes(status)) {
+      throw Errors.badRequest("公开求购列表只能查询进行中的需求");
+    }
     const where: any = status ? { status } : { status: { in: ["active", "responded"] } };
     if (category) where.category = category;
     if (campus) where.campus = { in: marketCampusStorageAliases(campus), mode: "insensitive" };
@@ -513,7 +518,7 @@ marketRouter.get("/wanted/:id", async (req, res, next) => {
     if (!post) throw Errors.notFound("求购不存在");
     const isOwner = post.authorId === req.user?.userId;
     const isStaff = ["admin", "mod"].includes(req.user?.role || "");
-    if (post.status === "removed" && !isOwner && !isStaff) throw Errors.notFound("求购不存在");
+    if (["reviewing", "removed"].includes(post.status) && !isOwner && !isStaff) throw Errors.notFound("求购不存在");
     const visibleResponses = isOwner || isStaff
       ? post.responses
       : post.responses.filter((response) => response.sellerId === req.user?.userId);
@@ -842,13 +847,14 @@ async function listMarketItems(req: any, res: any, next: any, scope: MarketCatal
     const category = String(req.query.category || "").trim();
     const listingType = String(req.query.listingType || "").trim();
     const condition = String(req.query.condition || "").trim();
-    const tradeMode = String(req.query.tradeMode || "").trim();
+    const tradeMode = normalizeMarketTradeMode(req.query.tradeMode);
     const campus = queryMarketCampus(req.query.campus);
     const minPrice = req.query.minPrice === undefined ? null : cents(String(req.query.minPrice));
     const maxPrice = req.query.maxPrice === undefined ? null : cents(String(req.query.maxPrice));
     const status = String(req.query.status || "active").trim();
+    if (status !== "active") throw Errors.badRequest("公开市集只能查询在售商品；草稿和审核中内容请在“我的”页面查看");
     const where: any = {
-      status: ITEM_STATUSES.includes(status as any) ? status : "active",
+      status: "active",
       visibility: "public",
       listingType: "sell",
     };
@@ -865,8 +871,9 @@ async function listMarketItems(req: any, res: any, next: any, scope: MarketCatal
       { model: { contains: q, mode: "insensitive" } },
     ];
     if (listingType && listingType !== "sell") where.id = -1;
-    if (CONDITIONS.includes(condition as any)) where.condition = condition;
-    if (TRADE_MODES.includes(tradeMode as any)) where.tradeMode = tradeMode;
+    if (ITEM_CONDITIONS.includes(condition as any)) where.condition = condition;
+    if (tradeMode && !TRADE_MODES.includes(tradeMode as any)) throw Errors.badRequest("交付方式筛选值无效");
+    if (tradeMode && tradeMode !== "any") where.tradeMode = tradeMode;
     if (campus) where.campus = { in: marketCampusStorageAliases(campus), mode: "insensitive" };
     if (minPrice !== null || maxPrice !== null) where.priceCents = {
       ...(minPrice !== null ? { gte: minPrice } : {}),
@@ -909,7 +916,8 @@ marketRouter.get("/items/:id", async (req, res, next) => {
         favorites: req.user ? { where: { userId: req.user.userId }, select: { userId: true } } : false,
       },
     });
-    if (!item || (item.status === "hidden" && req.user?.role !== "admin" && req.user?.role !== "mod" && req.user?.userId !== item.sellerId)) {
+    const isOwnerOrStaff = Boolean(item && (req.user?.userId === item.sellerId || ["admin", "mod"].includes(req.user?.role || "")));
+    if (!item || (PRIVATE_ITEM_STATUSES.has(item.status) && !isOwnerOrStaff)) {
       throw Errors.notFound("商品不存在");
     }
     if (item.visibility === "targeted" && req.user?.userId !== item.sellerId && !["admin", "mod"].includes(req.user?.role || "")) {
@@ -952,7 +960,6 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
     const userId = req.user!.userId;
     await requireVerifiedMarketUser(userId, req.user!.role, "publish");
     await ensureUserCanSpeak(userId);
-    await ensureUserCanSubmitTopic(userId);
     const input = req.body as z.infer<typeof itemInputSchema>;
     if (input.listingType !== "sell") throw Errors.badRequest("求购请使用独立求购发布入口");
     if (input.catalog === "learning_materials" || isLearningMaterialCategory(input.category)) {
@@ -967,15 +974,10 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
     if (category.imageRequired && input.listingType === "sell" && !input.draft && !input.images.length) {
       throw Errors.badRequest("该品类出售商品时必须上传至少一张图片");
     }
-    if (!input.draft && !input.flaws) throw Errors.badRequest("请如实填写瑕疵说明；无明显瑕疵也请注明");
-    if (!input.draft && (!input.campus || !input.location)) throw Errors.badRequest("请填写校区和建议面交地点");
-    if (!input.draft && !input.availableTime) throw Errors.badRequest("请填写可交易时间");
     const priceCents = cents(input.price) ?? 0;
     const originalPriceCents = cents(input.originalPrice);
     const safety = await evaluateMarketContent(prisma, [input.title, input.description, input.brand, input.model, input.flaws, input.location]);
     if (safety.action === "block") throw Errors.badRequest("商品内容包含市集禁售或高风险信息，请修改后再发布");
-    const board = await prisma.board.findUnique({ where: { slug: "market" } });
-    if (!board) throw Errors.notFound("市集板块不存在");
     const metadata = {
       marketItem: true,
       price: Number(amountCentsToMoney(priceCents)),
@@ -997,66 +999,42 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
     };
     const bypass = await shouldBypassAiReviewForUser(userId, req.user!.role);
     const review = shouldRunAiReview() && !bypass
-      ? await reviewTopicContent({ title: input.title, content: input.description, boardName: board.name, boardType: "market", metadata })
+      ? await reviewTopicContent({ title: input.title, content: input.description, boardName: "校园市集", boardType: "market", metadata })
       : null;
     const hiddenByReview = safety.action === "review" || review?.status === "blocked_ai";
-    const item = await prisma.$transaction(async (tx) => {
-      const topic = await tx.topic.create({
-        data: {
-          boardId: board.id,
-          authorId: userId,
-          title: input.title,
-          content: input.description,
-          metadata: JSON.stringify(metadata),
-          aiReviewStatus: review?.status || (safety.action === "review" ? "pending_manual" : "auto_passed"),
-          aiRiskLevel: review?.riskLevel || "low",
-          aiRiskScore: review?.riskScore || 0,
-          aiReviewReason: review?.reason || (safety.action === "review" ? "市集规则命中人工复核" : ""),
-          aiReviewDetail: review?.detail || "",
-          aiModel: review?.model || null,
-          aiReviewedAt: review ? new Date() : null,
-          hidden: hiddenByReview,
-          lastReplyAt: new Date(),
-          lastReplyById: userId,
-        },
-      });
-      const created = await tx.marketItem.create({
-        data: {
-          topicId: topic.id,
-          sellerId: userId,
-          listingType: input.listingType,
-          title: input.title,
-          description: input.description,
-          category: input.category,
-          deliveryType,
-          digitalDeliveryEncrypted: null,
-          priceCents,
-          originalPriceCents,
-          negotiable: input.negotiable,
-          condition: input.condition,
-          tradeMode: input.tradeMode,
-          campus: input.campus,
-          location: input.location,
-          brand: input.brand,
-          model: input.model,
-          usageDuration: input.usageDuration,
-          flaws: input.flaws,
-          accessories: input.accessories,
-          testAllowed: input.testAllowed,
-          availableTime: input.availableTime,
-          contactVisibility: input.contactVisibility,
-          expiresAt: input.draft ? null : addDays(new Date(), input.expiryDays),
-          visibility: "public",
-          status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",
-          images: { create: input.images.map((url, sort) => ({ url, sort })) },
-        },
-        include: itemInclude,
-      });
-      if (!hiddenByReview && !input.draft) {
-        await tx.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
-        await tx.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
-      }
-      return created;
+    const item = await prisma.marketItem.create({
+      data: {
+        sellerId: userId,
+        listingType: input.listingType,
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        deliveryType,
+        digitalDeliveryEncrypted: null,
+        priceCents,
+        originalPriceCents,
+        negotiable: input.negotiable,
+        condition: input.condition,
+        tradeMode: input.tradeMode,
+        campus: input.campus,
+        location: input.location,
+        brand: input.brand,
+        model: input.model,
+        usageDuration: input.usageDuration,
+        flaws: input.flaws,
+        accessories: input.accessories,
+        testAllowed: input.testAllowed,
+        availableTime: input.availableTime,
+        contactVisibility: input.contactVisibility,
+        expiresAt: null,
+        visibility: "public",
+        status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",
+        moderationNote: safety.action === "review"
+          ? (safety.matches[0]?.note || "市集规则命中人工复核")
+          : review?.status === "blocked_ai" ? review.reason : "",
+        images: { create: input.images.map((url, sort) => ({ url, sort })) },
+      },
+      include: itemInclude,
     });
     if (item.status === "active") await notifyMatchesForItem(item.id).catch((error) => console.warn("[market] item matching notification failed", error));
     ok(res, {
@@ -1070,7 +1048,7 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
 marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const current = await prisma.marketItem.findUnique({ where: { id }, include: { images: true, topic: true } });
+    const current = await prisma.marketItem.findUnique({ where: { id }, include: { images: true } });
     if (!current) throw Errors.notFound("商品不存在");
     const canManage = current.sellerId === req.user!.userId || ["admin", "mod"].includes(req.user!.role);
     if (!canManage) throw Errors.forbidden("无权修改该商品");
@@ -1086,7 +1064,6 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
     delete data.originalPrice;
     delete data.draft;
     delete data.digitalDelivery;
-    delete data.expiryDays;
     const finalCategory = input.category ?? current.category;
     if (isLearningMaterialCategory(current.category) || isLearningMaterialCategory(finalCategory)) {
       throw Errors.badRequest("学习资料必须通过靠浦特色学习资料专属编辑接口修改");
@@ -1105,9 +1082,6 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
     if (category.imageRequired && finalListingType === "sell" && finalStatus === "active" && finalImageCount === 0) {
       throw Errors.badRequest("该品类出售商品时必须上传至少一张图片");
     }
-    if (finalStatus === "active" && !(input.flaws ?? current.flaws).trim()) throw Errors.badRequest("请填写瑕疵说明");
-    if (finalStatus === "active" && (!(input.campus ?? current.campus).trim() || !(input.location ?? current.location).trim())) throw Errors.badRequest("请填写校区和建议面交地点");
-    if (finalStatus === "active" && !(input.availableTime ?? current.availableTime).trim()) throw Errors.badRequest("请填写可交易时间");
     const safety = await evaluateMarketContent(prisma, [
       input.title ?? current.title,
       input.description ?? current.description,
@@ -1123,34 +1097,12 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
     if (input.originalPrice !== undefined) data.originalPriceCents = cents(input.originalPrice);
     if (input.draft !== undefined && !input.status) data.status = input.draft ? "draft" : "active";
     if (safety.action === "review" && finalStatus === "active") data.status = "reviewing";
-    if (input.draft === false && !current.expiresAt) data.expiresAt = addDays(new Date(), input.expiryDays ?? 30);
-    if (input.status === "sold") data.soldAt = new Date();
+    data.expiresAt = null;
+    if (input.status !== undefined) data.soldAt = input.status === "sold" ? new Date() : null;
     const updated = await prisma.$transaction(async (tx) => {
       if (input.images) {
         await tx.marketImage.deleteMany({ where: { itemId: id } });
         if (input.images.length) await tx.marketImage.createMany({ data: input.images.map((url, sort) => ({ itemId: id, url, sort })) });
-      }
-      if (current.topicId) {
-        await tx.topic.update({
-          where: { id: current.topicId },
-          data: {
-            title: input.title,
-            content: input.description,
-            locked: input.status === "sold" || input.status === "withdrawn" ? true : undefined,
-            hidden: input.status === "hidden" || (safety.action === "review" && finalStatus === "active") ? true : undefined,
-            aiReviewStatus: safety.action === "review" && finalStatus === "active" ? "pending_manual" : undefined,
-            aiReviewReason: safety.action === "review" && finalStatus === "active" ? "市集规则命中人工复核" : undefined,
-            metadata: JSON.stringify({
-              ...parseJson(current.topic?.metadata),
-              price: input.price === undefined ? Number(amountCentsToMoney(current.priceCents)) : Number(input.price),
-              condition: input.condition ?? current.condition,
-              tradeMode: input.tradeMode ?? current.tradeMode,
-              listingType: input.listingType ?? current.listingType,
-              category: input.category ?? current.category,
-              images: input.images ?? current.images.map((image) => image.url),
-            }),
-          },
-        });
       }
       return tx.marketItem.update({ where: { id }, data, include: itemInclude });
     });
@@ -1171,10 +1123,10 @@ marketRouter.post("/items/:id/lifecycle", authRequired, validate(itemLifecycleSc
     let data: any;
     if (action === "renew" || action === "relist") {
       if (!["admin", "mod"].includes(req.user!.role)) await requireVerifiedMarketUser(req.user!.userId, req.user!.role, "publish");
-      if (!["active", "expired", "withdrawn"].includes(item.status)) throw Errors.badRequest("当前状态不能续期或重新上架");
+      if (!["active", "expired", "withdrawn", "sold"].includes(item.status)) throw Errors.badRequest("当前状态不能续期或重新上架");
       const safety = await evaluateMarketContent(prisma, [item.title, item.description, item.brand, item.model, item.flaws, item.location]);
       if (safety.action === "block") throw Errors.badRequest("商品内容包含市集禁售或高风险信息，请编辑后再上架");
-      data = { status: safety.action === "review" ? "reviewing" : "active", expiresAt: nextListingExpiry(), renewedAt: new Date(), soldAt: null };
+      data = { status: safety.action === "review" ? "reviewing" : "active", expiresAt: null, renewedAt: new Date(), soldAt: null };
     } else if (action === "withdraw") {
       if (!["active", "negotiating", "expired"].includes(item.status)) throw Errors.badRequest("当前状态不能下架");
       data = { status: "withdrawn" };
@@ -1184,12 +1136,6 @@ marketRouter.post("/items/:id/lifecycle", authRequired, validate(itemLifecycleSc
     }
     const updated = await prisma.$transaction(async (tx) => {
       const next = await tx.marketItem.update({ where: { id }, data, include: itemInclude });
-      if (item.topicId) {
-        await tx.topic.update({
-          where: { id: item.topicId },
-          data: { locked: action === "withdraw" || action === "mark_sold" ? true : false, hidden: data.status === "reviewing" ? true : action === "renew" || action === "relist" ? false : undefined },
-        }).catch(() => null);
-      }
       if (action === "withdraw" || action === "mark_sold") {
         await tx.tradeIntent.updateMany({ where: { itemId: id, status: "pending" }, data: { status: "expired" } });
       }
@@ -1206,7 +1152,6 @@ marketRouter.delete("/items/:id", authRequired, async (req, res, next) => {
     if (!item) throw Errors.notFound("商品不存在");
     if (item.sellerId !== req.user!.userId && !["admin", "mod"].includes(req.user!.role)) throw Errors.forbidden();
     await prisma.marketItem.update({ where: { id }, data: { status: "withdrawn" } });
-    if (item.topicId) await prisma.topic.update({ where: { id: item.topicId }, data: { locked: true } }).catch(() => null);
     ok(res, { ok: true });
   } catch (error) { next(error); }
 });
@@ -1699,7 +1644,7 @@ marketRouter.post("/items/:id/conversations", authRequired, validate(conversatio
     const buyerId = req.user!.userId;
     const item = await prisma.marketItem.findUnique({ where: { id: itemId } });
     if (!item || ["hidden", "withdrawn"].includes(item.status)) throw Errors.notFound("商品不存在");
-    if (isLearningMaterialCategory(item.category)) throw Errors.badRequest("学习资料购买前不开放私聊，请使用公开问答；购买后请使用订单售后");
+    if (isLearningMaterialCategory(item.category)) throw Errors.badRequest("学习资料领取前不开放私聊；如需交流请在广场主动发起关联讨论，领取后请使用订单售后");
     if (item.sellerId === buyerId) throw Errors.badRequest("不能与自己发起会话");
     const order = await prisma.marketOrder.findFirst({
       where: { itemId, buyerId, sellerId: item.sellerId, status: { in: PRIVATE_TRADE_STATUSES } },
@@ -2513,11 +2458,10 @@ marketRouter.patch("/admin/items/:id", authRequired, validate(adminItemSchema), 
         soldAt: req.body.status === "sold" ? new Date() : undefined,
         moderationNote: req.body.note,
         moderatedAt: new Date(),
-        expiresAt: req.body.status === "active" ? nextListingExpiry() : undefined,
+        expiresAt: req.body.status === "active" ? null : undefined,
       },
       include: itemInclude,
     });
-    if (item.topicId) await prisma.topic.update({ where: { id: item.topicId }, data: { hidden: req.body.status === "hidden", locked: ["hidden", "sold", "withdrawn"].includes(req.body.status), manualReviewNote: req.body.note || undefined } }).catch(() => null);
     await logMarketAdminAction(prisma, { actorId: req.user!.userId, action: "market.item.moderate", targetType: "market_item", targetId: id, summary: `调整商品状态：${item.title}`, detail: { status: req.body.status, note: req.body.note }, ip: requestIp(req) });
     await notify(item.sellerId, "商品状态已更新", `「${item.title}」已被管理员调整为 ${req.body.status}${req.body.note ? `：${req.body.note}` : ""}`, `/market/item/${id}`, { type: "market-admin-item", itemId: id, status: req.body.status });
     ok(res, serializeItem(item));

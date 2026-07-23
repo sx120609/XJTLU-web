@@ -124,7 +124,11 @@ topicRouter.get("/", async (req, res, next) => {
 
     const where: any = { hidden: false };
     if (boardId) where.boardId = boardId;
-    else where.board = { type: { in: enabledBoardTypes() }, slug: { not: WEIWALL_BOARD_SLUG } };
+    else where.board = {
+      type: { in: enabledBoardTypes() },
+      section: { not: null },
+      slug: { not: WEIWALL_BOARD_SLUG },
+    };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
 

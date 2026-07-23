@@ -33,6 +33,19 @@ test("phase 1 keeps direct publishing routes while retiring the unified publish 
   assert.match(wantedPublishForm, /marketApi\.createWantedPost/);
 });
 
+test("market hero exposes the four requested destinations in product order", () => {
+  const market = source("../../web/src/views/market/Index.vue");
+  const markers = ["成为商户", "我的交易", "推广服务", "发布商品"];
+  let cursor = -1;
+  for (const marker of markers) {
+    const next = market.indexOf(marker);
+    assert.ok(next > cursor, `${marker} should appear after the previous market action`);
+    cursor = next;
+  }
+  assert.match(market, /成为商户<\/el-button>/);
+  assert.doesNotMatch(market, />合作商户<\/el-button>/);
+});
+
 test("homepage contains exactly the two focused content sections and no campus resources", () => {
   const home = source("../../web/src/views/Home.vue");
   const orderedMarkers = [
@@ -45,9 +58,10 @@ test("homepage contains exactly the two focused content sections and no campus r
     assert.ok(next > cursor, `${marker} should appear in the planned homepage order`);
     cursor = next;
   }
-  assert.match(home, /marketApi\.items\(\{ page: 1, size: 4, listingType: "sell", sort: "popular"/);
+  assert.match(home, /marketApi\.items\(\{ page: 1, size: 24, listingType: "sell", sort: "popular"/);
+  assert.match(home, /slice\(0, 8\)/);
   assert.match(home, /<h2>推荐好物<\/h2>/);
-  assert.match(home, /<h2>热议求购<\/h2>/);
+  assert.match(home, /<h2>热议与求购<\/h2>/);
   assert.match(home, /summary\.value\?\.hotTopics/);
   assert.match(home, /title: "我要出售"/);
   assert.match(home, /title: "我要求购"/);
@@ -65,6 +79,16 @@ test("homepage publish actions are three equal-sized, enlarged and visibly tinte
   assert.match(home, /\.quick-action--teal\{[^}]*background:linear-gradient/);
   assert.match(home, /\.quick-action--amber\{[^}]*background:linear-gradient/);
   assert.match(home, /\.quick-action--violet\{[^}]*background:linear-gradient/);
+});
+
+test("homepage product previews keep a stable landscape ratio for extreme source images", () => {
+  const home = source("../../web/src/views/Home.vue");
+  assert.doesNotMatch(home, /const MarketPreviewCard = defineComponent/);
+  assert.match(home, /<router-link[\s\S]*?v-for="item in recommendedItems"[\s\S]*?<div class="market-cover">/);
+  assert.match(home, /\.market-grid\{[^}]*align-items:start/);
+  assert.match(home, /\.market-cover\{[^}]*position:relative[^}]*width:100%[^}]*height:0[^}]*padding-top:68\.9655%[^}]*overflow:hidden/);
+  assert.match(home, /\.market-cover img\{[^}]*position:absolute[^}]*inset:0[^}]*width:100%[^}]*height:100%[^}]*object-fit:cover/);
+  assert.match(home, /\.market-cover>span\{[^}]*position:absolute[^}]*inset:0[^}]*place-items:center/);
 });
 
 test("shared cards do not apply sibling margins inside grids", () => {

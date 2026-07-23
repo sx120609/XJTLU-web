@@ -53,13 +53,23 @@ test("stage 4 content rules query the requested scope plus global rules", async 
 });
 
 test("stage 4 routes and pages expose linked discussions and the four-part learning hub", () => {
+  const homeRoute = readFileSync(new URL("../src/routes/home.ts", import.meta.url), "utf8");
   const topicRoute = readFileSync(new URL("../src/routes/topic.ts", import.meta.url), "utf8");
+  const marketRoute = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
+  const learningMaterialsRoute = readFileSync(new URL("../src/routes/learningMaterials.ts", import.meta.url), "utf8");
+  const searchRoute = readFileSync(new URL("../src/routes/search.ts", import.meta.url), "utf8");
   const post = readFileSync(new URL("../../web/src/views/forum/Post.vue", import.meta.url), "utf8");
   const topic = readFileSync(new URL("../../web/src/views/forum/Topic.vue", import.meta.url), "utf8");
   const hub = readFileSync(new URL("../../web/src/views/learning/Hub.vue", import.meta.url), "utf8");
   const router = readFileSync(new URL("../../web/src/router/index.ts", import.meta.url), "utf8");
   assert.match(topicRoute, /linkedMarketItemId/);
   assert.match(topicRoute, /linkedWantedPostId/);
+  assert.match(homeRoute, /section:\s*\{ not: null \}/);
+  assert.match(topicRoute, /section:\s*\{ not: null \}/);
+  assert.match(searchRoute, /section:\s*\{ not: null \}/);
+  assert.match(marketRoute, /condition:\s*z\.enum\(ITEM_CONDITIONS\)/);
+  assert.doesNotMatch(marketRoute, /tx\.topic\.create/);
+  assert.doesNotMatch(learningMaterialsRoute, /tx\.topic\.create/);
   assert.match(post, /关联市集信息/);
   assert.match(topic, /关联商品/);
   for (const title of ["学习好物", "学习交流", "免费原创", "官方学习资源"]) assert.match(hub, new RegExp(title));
@@ -90,4 +100,61 @@ test("stage 4 migration preserves legacy boards while adding scoped rules and of
   assert.match(migration, /"scope" TEXT NOT NULL DEFAULT 'market'/);
   assert.match(migration, /XJTLU_LIBRARY/);
   assert.match(migration, /XJTLU_LM_CORE/);
+});
+
+test("market item decoupling migration archives historical auto-topics without deleting content", () => {
+  const migration = readFileSync(new URL("../prisma/migrations/20260720030000_decouple_market_items_from_topics/migration.sql", import.meta.url), "utf8");
+  assert.match(migration, /"linkedMarketItemId" = COALESCE/);
+  assert.match(migration, /SET "topicId" = NULL/);
+  assert.match(migration, /"hidden" = TRUE/);
+  assert.match(migration, /"locked" = TRUE/);
+  assert.doesNotMatch(migration, /DELETE\s+FROM\s+"Topic"/i);
+});
+
+test("physical sale form and filters share required category, condition, delivery and sale-price semantics", () => {
+  const marketRoute = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
+  const itemSchemaStart = marketRoute.indexOf("const itemInputSchema");
+  const itemSchema = marketRoute.slice(itemSchemaStart, marketRoute.indexOf("const itemPatchSchema", itemSchemaStart));
+  const publish = readFileSync(new URL("../../web/src/views/market/Publish.vue", import.meta.url), "utf8");
+  const publishTemplate = publish.slice(0, publish.indexOf("<script setup"));
+  const index = readFileSync(new URL("../../web/src/views/market/Index.vue", import.meta.url), "utf8");
+  const marketApi = readFileSync(new URL("../../web/src/api/market.ts", import.meta.url), "utf8");
+  const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+  const migration = readFileSync(new URL("../prisma/migrations/20260721010000_align_market_listing_filters/migration.sql", import.meta.url), "utf8");
+
+  assert.match(itemSchema, /category: z\.string\(\)\.trim\(\)\.regex\(/);
+  assert.doesNotMatch(itemSchema, /category:[^\n]+default\("other"\)/);
+  for (const requiredField of ["title", "description", "price", "condition"]) {
+    assert.match(itemSchema, new RegExp(`${requiredField}:[^\\n]+`));
+    assert.doesNotMatch(itemSchema, new RegExp(`${requiredField}:[^\\n]+optional\\(\\)`));
+  }
+  assert.match(itemSchema, /tradeMode: marketTradeModeSchema,/);
+  assert.doesNotMatch(itemSchema, /tradeMode:[^\n]+optional\(\)|tradeMode:[^\n]+default\(/);
+  for (const optionalField of ["originalPrice", "negotiable", "campus", "location", "brand", "model", "usageDuration", "flaws", "accessories", "testAllowed", "availableTime"]) {
+    assert.match(itemSchema, new RegExp(`${optionalField}:[^\\n]+optional\\(\\)`));
+  }
+  assert.doesNotMatch(itemSchema, /expiryDays/);
+  assert.match(marketRoute, /const TRADE_MODES = \["meetup", "shipping", "online", "any"\]/);
+  assert.match(marketRoute, /where\.priceCents =/);
+  assert.doesNotMatch(marketRoute, /where\.originalPriceCents/);
+  assert.match(marketRoute, /tradeMode && tradeMode !== "any"/);
+  assert.match(marketRoute, /expiresAt: null/);
+
+  assert.match(publish, /label="商品品类" required/);
+  assert.doesNotMatch(publishTemplate, /expiryDays|自动过期/);
+  assert.ok(publish.indexOf("v-model=\"form.availableTime\"") > publish.indexOf("<h2>交付信息<\/h2>"));
+  assert.match(publish, /label="校区（选填）"/);
+  assert.match(publish, /v-model="form\.campus" clearable/);
+  assert.doesNotMatch(publish, /isMarketCampus\(form\.campus\)|请选择 SIP 或 TC 校区/);
+  assert.doesNotMatch(marketRoute, /!input\.draft && !input\.campus|finalStatus === "active" && !\(input\.campus/);
+  assert.match(index, /placeholder="任意交付方式"/);
+  assert.match(index, /tradeMode: "any"/);
+  assert.match(marketApi, /any: "任意交付方式"/);
+  assert.match(marketApi, /"meetup" \| "shipping" \| "online" \| "any"/);
+
+  for (const indexedFields of ["status, priceCents", "condition, status, createdAt", "tradeMode, status, createdAt", "campus, status, createdAt"]) {
+    assert.match(schema, new RegExp(`@@index\\(\\[${indexedFields}\\]\\)`));
+  }
+  assert.match(migration, /SET "tradeMode" = 'any'/);
+  assert.match(migration, /SET "expiresAt" = NULL/);
 });

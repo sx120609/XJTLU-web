@@ -13,7 +13,6 @@ import { positiveRouteInteger, queryPage, querySize } from "../utils/query";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import {
-  ensureUserCanSubmitTopic,
   reviewTopicContent,
   shouldBypassAiReviewForUser,
   shouldRunAiReview,
@@ -412,7 +411,8 @@ learningMaterialsRouter.get("/items", async (req, res, next) => {
     await ensureLearningMaterialCategory();
     const page = queryPage(req.query.page);
     const size = querySize(req.query.size, 24, 1, 60);
-    const status = String(req.query.status || "active");
+    const requestedStatus = String(req.query.status || "active");
+    if (requestedStatus !== "active") throw Errors.badRequest("公开资料专区只能查询已发布内容；草稿和审核中内容请在“我的交易”查看");
     const q = String(req.query.q || "").trim();
     const courseCode = normalizeCourseCode(String(req.query.courseCode || ""));
     const semester = String(req.query.semester || "").trim();
@@ -422,7 +422,7 @@ learningMaterialsRouter.get("/items", async (req, res, next) => {
     const typeId = Number(req.query.typeId || 0);
     const where: any = {
       category: CATEGORY,
-      status: ITEM_STATUSES.includes(status as any) ? status : "active",
+      status: "active",
     };
     const profileWhere: any = {};
     if (courseCode) profileWhere.courseCode = { contains: courseCode, mode: "insensitive" };
@@ -468,7 +468,8 @@ learningMaterialsRouter.get("/items/:id", async (req, res, next) => {
     const id = positiveRouteInteger(req.params.id);
     if (!id) throw Errors.badRequest("学习资料 ID 不合法");
     const item = await prisma.marketItem.findUnique({ where: { id }, include: materialItemInclude(req.user?.userId) });
-    if (!item || item.category !== CATEGORY || (item.status === "hidden" && !["admin", "mod"].includes(req.user?.role || "") && req.user?.userId !== item.sellerId)) {
+    const isOwnerOrStaff = Boolean(item && (req.user?.userId === item.sellerId || ["admin", "mod"].includes(req.user?.role || "")));
+    if (!item || item.category !== CATEGORY || (["draft", "reviewing", "hidden"].includes(item.status) && !isOwnerOrStaff)) {
       throw Errors.notFound("学习资料不存在");
     }
     if (item.status !== "draft") prisma.marketItem.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => null);
@@ -562,7 +563,6 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
     const userId = req.user!.userId;
     await requireVerifiedMaterialUser(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
-    await ensureUserCanSubmitTopic(userId);
     await Promise.all([ensureDefaultTypes(), ensureLearningMaterialCategory()]);
     const input = req.body as z.infer<typeof materialItemInputSchema>;
     await getUsableType(input.profile.typeId, userId, input.draft);
@@ -570,8 +570,6 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
     if (!input.draft) throw Errors.badRequest("请先保存草稿并上传资料文件，再正式发布");
     const category = await prisma.marketCategory.findUnique({ where: { slug: CATEGORY } });
     if (!category?.enabled) throw Errors.badRequest("特色学习资料专区当前不可发布");
-    const board = await prisma.board.findUnique({ where: { slug: "market" } });
-    if (!board) throw Errors.notFound("商城板块不存在");
     const amount = priceCents(input.price) ?? 0;
     if (!PAID_LEARNING_MATERIALS_ENABLED && !isAllowedLearningMaterialPrice(amount)) {
       throw Errors.badRequest(PAID_MATERIAL_DISABLED_MESSAGE);
@@ -597,61 +595,35 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
       courseCode: normalizeCourseCode(input.profile.courseCode),
       applicableSemester: input.profile.applicableSemester || "",
       materialTypeId: input.profile.typeId || null,
-      materialPublished: false,
     };
     const bypass = await shouldBypassAiReviewForUser(userId, req.user!.role);
     const review = shouldRunAiReview() && !bypass
-      ? await reviewTopicContent({ title: input.title, content: input.description, boardName: board.name, boardType: "market", metadata })
+      ? await reviewTopicContent({ title: input.title, content: input.description, boardName: "靠浦特色学习资料", boardType: "market", metadata })
       : null;
     const hiddenByReview = review?.status === "blocked_ai";
-    const item = await prisma.$transaction(async (tx) => {
-      const topic = await tx.topic.create({
-        data: {
-          boardId: board.id,
-          authorId: userId,
-          title: input.title,
-          content: input.description,
-          metadata: JSON.stringify(metadata),
-          aiReviewStatus: review?.status || "auto_passed",
-          aiRiskLevel: review?.riskLevel || "low",
-          aiRiskScore: review?.riskScore || 0,
-          aiReviewReason: review?.reason || "",
-          aiReviewDetail: review?.detail || "",
-          aiModel: review?.model || null,
-          aiReviewedAt: review ? new Date() : null,
-          hidden: input.draft || hiddenByReview,
-          lastReplyAt: new Date(),
-          lastReplyById: userId,
-        },
-      });
-      const created = await tx.marketItem.create({
-        data: {
-          topicId: topic.id,
-          sellerId: userId,
-          listingType: "sell",
-          title: input.title,
-          description: input.description,
-          category: CATEGORY,
-          deliveryType: "digital",
-          priceCents: amount,
-          originalPriceCents: originalAmount,
-          negotiable: false,
-          condition: "good",
-          tradeMode: "online",
-          campus: "",
-          location: "",
-          status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",
-          moderationNote: contentSafety.action === "review" ? (contentSafety.matches[0]?.note || "内容需要人工复核") : "",
-          images: { create: input.images.map((url, sort) => ({ url, sort })) },
-          learningMaterial: { create: profileData(input.profile) },
-        },
-        include: materialItemInclude(userId),
-      });
-      if (!input.draft && !hiddenByReview) {
-        await tx.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
-        await tx.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
-      }
-      return created;
+    const item = await prisma.marketItem.create({
+      data: {
+        sellerId: userId,
+        listingType: "sell",
+        title: input.title,
+        description: input.description,
+        category: CATEGORY,
+        deliveryType: "digital",
+        priceCents: amount,
+        originalPriceCents: originalAmount,
+        negotiable: false,
+        condition: "good",
+        tradeMode: "online",
+        campus: "",
+        location: "",
+        status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",
+        moderationNote: contentSafety.action === "review"
+          ? (contentSafety.matches[0]?.note || "内容需要人工复核")
+          : hiddenByReview ? review?.reason || "AI 内容复核未通过" : "",
+        images: { create: input.images.map((url, sort) => ({ url, sort })) },
+        learningMaterial: { create: profileData(input.profile) },
+      },
+      include: materialItemInclude(userId),
     });
     ok(res, { ...serializeLearningMaterialItem(item, userId), review: review ? { status: review.status, reason: review.reason } : null });
   } catch (error) { next(error); }
@@ -663,7 +635,7 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
     const userId = req.user!.userId;
     const current = await prisma.marketItem.findUnique({
       where: { id },
-      include: { images: true, topic: true, learningMaterial: { include: { activeVersion: true } } },
+      include: { images: true, learningMaterial: { include: { activeVersion: true } } },
     });
     if (!current || current.category !== CATEGORY) throw Errors.notFound("学习资料不存在");
     if (current.sellerId !== userId && !["admin", "mod"].includes(req.user!.role)) throw Errors.forbidden("无权修改该资料");
@@ -676,8 +648,6 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
       throw Errors.forbidden("不能切换到该资料状态");
     }
     const isPublishing = input.status === "active" || input.draft === false;
-    const previousTopicMeta = (() => { try { return JSON.parse(current.topic?.metadata || "{}"); } catch { return {}; } })();
-    const wasPublished = previousTopicMeta.materialPublished === true || current.status === "active";
     const nextProfile: LearningMaterialProfileInput = input.profile || {
       courseCode: current.learningMaterial?.courseCode || "",
       college: current.learningMaterial?.college || "",
@@ -713,28 +683,6 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
         await tx.marketImage.deleteMany({ where: { itemId: id } });
         if (input.images.length) await tx.marketImage.createMany({ data: input.images.map((url, sort) => ({ itemId: id, url, sort })) });
       }
-      if (current.topicId) {
-        await tx.topic.update({
-          where: { id: current.topicId },
-          data: {
-            title: input.title,
-            content: input.description,
-             locked: input.status === "withdrawn" ? true : input.status === "active" ? false : undefined,
-             hidden: requiresRuleReview ? true : input.status === "active" ? false : input.status === "draft" ? true : undefined,
-             aiReviewStatus: requiresRuleReview ? "manual_requested" : undefined,
-             aiReviewReason: requiresRuleReview ? (contentSafety.matches[0]?.note || "内容需要人工复核") : undefined,
-            metadata: JSON.stringify({
-              ...previousTopicMeta,
-              price: input.price === undefined ? Number(amountCentsToMoney(current.priceCents)) : Number(input.price),
-              images: input.images ?? current.images.map((image) => image.url),
-              courseCode: normalizeCourseCode(nextProfile.courseCode),
-              applicableSemester: nextProfile.applicableSemester || "",
-              materialTypeId: nextProfile.typeId || null,
-              materialPublished: wasPublished || isPublishing,
-            }),
-          },
-        });
-      }
       const itemData: any = {
         title: input.title,
         description: input.description,
@@ -749,10 +697,6 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
           update: profileData(nextProfile, current.learningMaterial?.rightsConfirmedAt),
           create: { itemId: id, ...profileData(nextProfile) },
         });
-      }
-      if (isPublishing && !requiresRuleReview && !wasPublished && current.topic) {
-        await tx.user.update({ where: { id: current.sellerId }, data: { postCount: { increment: 1 } } });
-        await tx.board.update({ where: { id: current.topic.boardId }, data: { topicCount: { increment: 1 } } });
       }
       return tx.marketItem.update({ where: { id }, data: itemData, include: materialItemInclude(userId) });
     });

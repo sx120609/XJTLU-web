@@ -7,7 +7,7 @@ import { isFeatureOn } from "./siteSettings";
 
 export const PROMOTION_TYPES = ["listing_pin", "wanted_urgent", "home_featured", "merchant_homepage"] as const;
 export const PROMOTION_TARGET_TYPES = ["market_item", "wanted_post", "merchant_profile"] as const;
-export const PROMOTION_ORDER_STATUSES = ["pending", "confirmed", "rejected", "cancelled", "expired"] as const;
+export const PROMOTION_ORDER_STATUSES = ["waitlisted", "pending", "confirmed", "rejected", "cancelled", "expired"] as const;
 export const PROMOTION_ADJUSTMENT_TYPES = ["service_extension", "refund_record", "compensation_record", "invoice_record", "complaint_record"] as const;
 export type PromotionType = typeof PROMOTION_TYPES[number];
 export type PromotionOrderStatus = typeof PROMOTION_ORDER_STATUSES[number];
@@ -17,6 +17,10 @@ const PROMOTION_EXPIRY_SWEEP_MS = 5 * 60 * 1000;
 const PROMOTION_APPLICATION_LOCK_SCOPE = 1_205_003;
 const PROMOTION_ORDER_LOCK_SCOPE = 1_205_004;
 const PROMOTION_CAPACITY_LOCK_SCOPE = 1_205_005;
+export const PROMOTION_PAYMENT_WINDOW_MS = 30 * 60 * 1000;
+export const PROMOTION_PAYMENT_QR_URL = "/promotion-payment-placeholder.svg";
+export const FIXED_HOME_PROMOTION_CAPACITY = 8;
+const FIXED_CAPACITY_TYPES = new Set<PromotionType>(["home_featured", "wanted_urgent"]);
 let promotionExpiryPollerStarted = false;
 
 async function acquirePromotionLock(tx: any, scope: number, id: number) {
@@ -79,14 +83,16 @@ export function serializePromotionAdjustment(adjustment: any, privateView = fals
   };
 }
 
-export function serializePromotionOrder(order: any, privateView = false) {
-  const { verificationReference, adjustments, ...safeOrder } = order;
+export function serializePromotionOrder(order: any, privateView = false, paymentView = privateView) {
+  const { verificationReference, paymentCode, adjustments, ...safeOrder } = order;
   const inquiryEnd = order.inquiryEndCount ?? order.merchantProfile?.inquiryCount ?? order.inquiryStartCount ?? 0;
   return {
     ...safeOrder,
     adjustments: Array.isArray(adjustments) ? adjustments.map((row) => serializePromotionAdjustment(row, privateView)) : [],
     verificationReference: privateView ? verificationReference : undefined,
     verificationReferenceMasked: maskVerificationReference(verificationReference),
+    paymentCode: paymentView ? paymentCode : undefined,
+    paymentQrUrl: paymentView && order.status === "pending" ? PROMOTION_PAYMENT_QR_URL : undefined,
     amount: amountCentsToMoney(order.amountCents),
     manualCost: amountCentsToMoney(order.manualCostCents || 0),
     verifiedAmount: order.verifiedAmountCents === null || order.verifiedAmountCents === undefined ? null : amountCentsToMoney(order.verifiedAmountCents),
@@ -127,6 +133,14 @@ export function nextPromotionTradeNo(userId: number) {
   return `PR${Date.now()}U${userId}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
+export function nextPromotionPaymentCode() {
+  return crypto.randomInt(0, 10_000).toString().padStart(4, "0");
+}
+
+function promotionPaymentExpiresAt(now = new Date()) {
+  return new Date(now.getTime() + PROMOTION_PAYMENT_WINDOW_MS);
+}
+
 export function addPromotionDays(base: Date, durationDays: number) {
   return new Date(base.getTime() + Math.max(1, Math.trunc(durationDays)) * 24 * 60 * 60 * 1000);
 }
@@ -138,15 +152,80 @@ export function nextPromotionWindow(currentUntil: Date | null | undefined, durat
 }
 
 export function ensurePromotionTransition(current: string, next: "confirmed" | "rejected" | "cancelled") {
-  if (current !== "pending") throw new Error("PROMOTION_ORDER_NOT_PENDING");
+  const allowed = next === "confirmed" ? ["pending"] : ["pending", "waitlisted"];
+  if (!allowed.includes(current)) throw new Error("PROMOTION_ORDER_NOT_PENDING");
   return next;
 }
 
-export async function createPendingPromotionOrder(db: any, userId: number, pendingWhere: any, data: any) {
+async function promotionTargetState(tx: any, order: any, now: Date) {
+  if (order.type === "listing_pin" || order.type === "home_featured") {
+    const item = order.marketItem || await tx.marketItem.findUnique({ where: { id: order.marketItemId } });
+    if (!item || item.sellerId !== order.userId || item.status !== "active" || item.visibility !== "public" || item.deliveryType !== "physical") {
+      throw new Error("PROMOTION_TARGET_UNAVAILABLE");
+    }
+    const currentUntil = order.type === "listing_pin" ? item.pinnedUntil : item.homeFeaturedUntil;
+    const currentPromotionOrderId = order.type === "listing_pin" ? item.pinnedPromotionOrderId : item.homePromotionOrderId;
+    return { target: item, currentUntil, currentPromotionOrderId, renewing: Boolean(currentUntil && new Date(currentUntil).getTime() > now.getTime()) };
+  }
+  if (order.type === "wanted_urgent") {
+    const wanted = order.wantedPost || await tx.wantedPost.findUnique({ where: { id: order.wantedPostId } });
+    if (!wanted || wanted.authorId !== order.userId || !["active", "responded"].includes(wanted.status)) throw new Error("PROMOTION_TARGET_UNAVAILABLE");
+    return { target: wanted, currentUntil: wanted.urgentUntil, currentPromotionOrderId: wanted.urgentPromotionOrderId, renewing: Boolean(wanted.urgentUntil && new Date(wanted.urgentUntil).getTime() > now.getTime()) };
+  }
+  if (order.type === "merchant_homepage") {
+    const merchant = order.merchantProfile || await tx.merchantProfile.findUnique({ where: { id: order.merchantProfileId } });
+    if (!merchant || merchant.userId !== order.userId || merchant.status !== "approved") throw new Error("PROMOTION_TARGET_UNAVAILABLE");
+    return { target: merchant, currentUntil: merchant.activeUntil, currentPromotionOrderId: merchant.activePromotionOrderId, renewing: Boolean(merchant.activeUntil && new Date(merchant.activeUntil).getTime() > now.getTime()) };
+  }
+  throw new Error("PROMOTION_TYPE_UNSUPPORTED");
+}
+
+function capacityForPlan(plan: any) {
+  if (FIXED_CAPACITY_TYPES.has(plan.type as PromotionType)) return FIXED_HOME_PROMOTION_CAPACITY;
+  return Math.max(0, Number(plan.maxActive || 0));
+}
+
+async function reservedCapacity(tx: any, type: string, now: Date) {
+  const [active, pending] = await Promise.all([
+    tx.promotionOrder.count({ where: { type, status: "confirmed", startsAt: { lte: now }, expiresAt: { gt: now } } }),
+    tx.promotionOrder.count({
+      where: {
+        type,
+        status: "pending",
+        reservesSlot: true,
+        OR: [{ paymentSubmittedAt: { not: null } }, { paymentExpiresAt: null }, { paymentExpiresAt: { gt: now } }],
+      },
+    }),
+  ]);
+  return active + pending;
+}
+
+export async function createPendingPromotionOrder(db: any, userId: number, pendingWhere: any, data: any, now = new Date()) {
   return db.$transaction(async (tx: any) => {
     await acquirePromotionLock(tx, PROMOTION_APPLICATION_LOCK_SCOPE, userId);
-    if (await tx.promotionOrder.count({ where: pendingWhere })) throw new Error("PROMOTION_PENDING_EXISTS");
-    return tx.promotionOrder.create({ data, include: promotionOrderInclude });
+    const duplicateWhere = { ...pendingWhere, status: { in: ["pending", "waitlisted"] } };
+    if (await tx.promotionOrder.count({ where: duplicateWhere })) throw new Error("PROMOTION_PENDING_EXISTS");
+    const plan = await tx.promotionPlan.findUnique({ where: { id: data.planId } });
+    if (!plan || !plan.enabled) throw new Error("PROMOTION_PLAN_UNAVAILABLE");
+    const target = await promotionTargetState(tx, data, now);
+    const reservesSlot = !target.renewing;
+    const capacity = capacityForPlan(plan);
+    let status = "pending";
+    if (reservesSlot && capacity > 0) {
+      await acquirePromotionLock(tx, PROMOTION_CAPACITY_LOCK_SCOPE, Math.max(1, PROMOTION_TYPES.indexOf(data.type as PromotionType) + 1));
+      if (await reservedCapacity(tx, data.type, now) >= capacity) status = "waitlisted";
+    }
+    return tx.promotionOrder.create({
+      data: {
+        ...data,
+        status,
+        reservesSlot,
+        paymentCode: status === "pending" ? nextPromotionPaymentCode() : "",
+        paymentExpiresAt: status === "pending" ? promotionPaymentExpiresAt(now) : null,
+        waitlistedAt: status === "waitlisted" ? now : null,
+      },
+      include: promotionOrderInclude,
+    });
   });
 }
 
@@ -156,14 +235,105 @@ export function isPromotionOrderActive(order: { status: string; startsAt?: Date 
   return order.status === "confirmed" && startsAt <= now.getTime() && expiresAt > now.getTime();
 }
 
+export async function promoteWaitlistedOrders(db: any = prisma, now = new Date()) {
+  const plans = await db.promotionPlan.findMany({
+    where: { enabled: true, OR: [{ maxActive: { gt: 0 } }, { type: { in: ["home_featured", "wanted_urgent"] } }] },
+    orderBy: [{ sort: "asc" }, { id: "asc" }],
+  });
+  const planByType = new Map<string, any>();
+  for (const plan of plans) if (!planByType.has(plan.type)) planByType.set(plan.type, plan);
+  const result = { promoted: 0, rejected: 0 };
+
+  for (const [type, plan] of planByType) {
+    const capacity = capacityForPlan(plan);
+    if (capacity < 1) continue;
+    const counts = await db.$transaction(async (tx: any) => {
+      await acquirePromotionLock(tx, PROMOTION_CAPACITY_LOCK_SCOPE, Math.max(1, PROMOTION_TYPES.indexOf(type as PromotionType) + 1));
+      let available = capacity - await reservedCapacity(tx, type, now);
+      let promoted = 0;
+      let rejected = 0;
+      while (available > 0) {
+        const candidate = await tx.promotionOrder.findFirst({
+          where: { type, status: "waitlisted" },
+          orderBy: [{ waitlistedAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+          include: { plan: true, marketItem: true, wantedPost: true, merchantProfile: true },
+        });
+        if (!candidate) break;
+        try {
+          await promotionTargetState(tx, candidate, now);
+        } catch (error: any) {
+          if (!String(error?.message || "").startsWith("PROMOTION_")) throw error;
+          const invalidated = await tx.promotionOrder.updateMany({
+            where: { id: candidate.id, status: "waitlisted" },
+            data: { status: "rejected", adminNote: "候补期间推广对象已失效，请恢复内容后重新申请。", rejectedAt: now },
+          });
+          if (invalidated.count) {
+            rejected += 1;
+            await tx.notification.create({
+              data: {
+                userId: candidate.userId,
+                category: "market",
+                level: "normal",
+                title: "推广候补已结束",
+                content: `${candidate.planName} 的推广对象已不可用，本次候补已结束；恢复内容后可以重新申请。`,
+                link: "/market/promotions",
+                source: "靠浦推广服务",
+                payload: JSON.stringify({ promotionOrderId: candidate.id, status: "rejected" }),
+              },
+            });
+          }
+          continue;
+        }
+        const claimed = await tx.promotionOrder.updateMany({
+          where: { id: candidate.id, status: "waitlisted" },
+          data: {
+            status: "pending",
+            paymentCode: nextPromotionPaymentCode(),
+            paymentExpiresAt: promotionPaymentExpiresAt(now),
+            slotNotifiedAt: now,
+          },
+        });
+        if (!claimed.count) continue;
+        promoted += 1;
+        available -= 1;
+        await tx.notification.create({
+          data: {
+            userId: candidate.userId,
+            category: "market",
+            level: "strong",
+            title: "推广位置已空出",
+            content: `${candidate.planName} 现在可以启用。请在 30 分钟内进入推广订单扫码付款并确认四位秘钥；系统不会自动扣款或自动启用。`,
+            link: "/market/promotions",
+            source: "靠浦推广服务",
+            payload: JSON.stringify({ promotionOrderId: candidate.id, status: "pending", paymentExpiresAt: promotionPaymentExpiresAt(now) }),
+          },
+        });
+      }
+      return { promoted, rejected };
+    });
+    result.promoted += counts.promoted;
+    result.rejected += counts.rejected;
+  }
+  return result;
+}
+
 export async function refreshExpiredPromotions(db: any = prisma, now = new Date()) {
+  const legacyPending = await db.promotionOrder.findMany({
+    where: { status: "pending", paymentCode: "" },
+    select: { id: true },
+    take: 100,
+  });
   const endingMerchantOrders = await db.promotionOrder.findMany({
     where: { status: "confirmed", expiresAt: { lte: now }, merchantProfileId: { not: null } },
     include: { merchantProfile: { select: { inquiryCount: true } } },
   });
-  const [orders, listingPins, homeFeatures, wantedUrgent, merchantPages] = await db.$transaction([
+  const [orders, paymentOrders, listingPins, homeFeatures, wantedUrgent, merchantPages] = await db.$transaction([
     db.promotionOrder.updateMany({
       where: { status: "confirmed", expiresAt: { lte: now } },
+      data: { status: "expired" },
+    }),
+    db.promotionOrder.updateMany({
+      where: { status: "pending", paymentSubmittedAt: null, paymentExpiresAt: { lte: now } },
       data: { status: "expired" },
     }),
     db.marketItem.updateMany({
@@ -186,13 +356,20 @@ export async function refreshExpiredPromotions(db: any = prisma, now = new Date(
       where: { id: order.id },
       data: { inquiryEndCount: order.merchantProfile?.inquiryCount ?? order.inquiryStartCount },
     })),
+    ...legacyPending.map((order: any) => db.promotionOrder.update({
+      where: { id: order.id },
+      data: { paymentCode: nextPromotionPaymentCode(), paymentExpiresAt: promotionPaymentExpiresAt(now) },
+    })),
   ]);
+  const queue = await promoteWaitlistedOrders(db, now);
   return {
     orders: orders.count,
+    paymentOrders: paymentOrders.count,
     listingPins: listingPins.count,
     homeFeatures: homeFeatures.count,
     wantedUrgent: wantedUrgent.count,
     merchantPages: merchantPages.count,
+    queue,
   };
 }
 
@@ -204,6 +381,7 @@ export async function confirmPromotionOrder(
     adminNote?: string;
     method?: string;
     reference?: string;
+    paymentCode?: string;
     verifiedAmountCents?: number | null;
   } = "",
   now = new Date(),
@@ -217,46 +395,28 @@ export async function confirmPromotionOrder(
     if (!order) throw new Error("PROMOTION_ORDER_NOT_FOUND");
     ensurePromotionTransition(order.status, "confirmed");
     const confirmation = typeof verification === "string" ? { adminNote: verification } : verification;
+    if (!order.paymentSubmittedAt) throw new Error("PROMOTION_PAYMENT_NOT_SUBMITTED");
+    if (!/^\d{4}$/.test(String(order.paymentCode || "")) || String(confirmation.paymentCode || "") !== order.paymentCode) {
+      throw new Error("PROMOTION_PAYMENT_CODE_MISMATCH");
+    }
+    if (!String(confirmation.method || "").trim() || !String(confirmation.reference || "").trim()) {
+      throw new Error("PROMOTION_VERIFICATION_REQUIRED");
+    }
     const verifiedAmountCents = confirmation.verifiedAmountCents ?? order.amountCents;
     if (verifiedAmountCents !== order.amountCents) throw new Error("PROMOTION_VERIFIED_AMOUNT_MISMATCH");
 
-    let currentUntil: Date | null = null;
-    let currentPromotionOrderId: number | null = null;
-    if (order.type === "listing_pin") {
-      if (!order.marketItem || order.marketItem.sellerId !== order.userId || order.marketItem.status !== "active" || order.marketItem.visibility !== "public" || order.marketItem.deliveryType !== "physical") {
-        throw new Error("PROMOTION_TARGET_UNAVAILABLE");
-      }
-      currentUntil = order.marketItem.pinnedUntil;
-      currentPromotionOrderId = order.marketItem.pinnedPromotionOrderId;
-    } else if (order.type === "home_featured") {
-      if (!order.marketItem || order.marketItem.sellerId !== order.userId || order.marketItem.status !== "active" || order.marketItem.visibility !== "public" || order.marketItem.deliveryType !== "physical") {
-        throw new Error("PROMOTION_TARGET_UNAVAILABLE");
-      }
-      currentUntil = order.marketItem.homeFeaturedUntil;
-      currentPromotionOrderId = order.marketItem.homePromotionOrderId;
-    } else if (order.type === "wanted_urgent") {
-      if (!order.wantedPost || order.wantedPost.authorId !== order.userId || !["active", "responded"].includes(order.wantedPost.status)) {
-        throw new Error("PROMOTION_TARGET_UNAVAILABLE");
-      }
-      currentUntil = order.wantedPost.urgentUntil;
-      currentPromotionOrderId = order.wantedPost.urgentPromotionOrderId;
-    } else if (order.type === "merchant_homepage") {
-      if (!order.merchantProfile || order.merchantProfile.userId !== order.userId || order.merchantProfile.status !== "approved") {
-        throw new Error("PROMOTION_TARGET_UNAVAILABLE");
-      }
-      currentUntil = order.merchantProfile.activeUntil;
-      currentPromotionOrderId = order.merchantProfile.activePromotionOrderId;
-    } else {
-      throw new Error("PROMOTION_TYPE_UNSUPPORTED");
-    }
+    const targetState = await promotionTargetState(tx, order, now);
+    const currentUntil = targetState.currentUntil;
+    const currentPromotionOrderId = targetState.currentPromotionOrderId;
 
     await acquirePromotionLock(tx, PROMOTION_CAPACITY_LOCK_SCOPE, Math.max(1, PROMOTION_TYPES.indexOf(order.type as PromotionType) + 1));
-    const renewingExistingSlot = Boolean(currentUntil && currentUntil.getTime() > now.getTime());
-    if (!renewingExistingSlot && order.plan.maxActive > 0) {
+    const renewingExistingSlot = targetState.renewing;
+    const capacity = capacityForPlan(order.plan);
+    if (!renewingExistingSlot && capacity > 0) {
       const activeCount = await tx.promotionOrder.count({
         where: { type: order.type, status: "confirmed", startsAt: { lte: now }, expiresAt: { gt: now } },
       });
-      if (activeCount >= order.plan.maxActive) throw new Error("PROMOTION_CAPACITY_REACHED");
+      if (activeCount >= capacity) throw new Error("PROMOTION_CAPACITY_REACHED");
     }
 
     const { startsAt, expiresAt } = nextPromotionWindow(currentUntil, order.durationDays, now);
@@ -301,8 +461,25 @@ export async function confirmPromotionOrder(
   });
 }
 
-export async function rejectPromotionOrder(db: any, orderId: number, reviewerId: number, adminNote: string, now = new Date()) {
+export async function submitPromotionPaymentClaim(db: any, orderId: number, userId: number, paymentCode: string, now = new Date()) {
   return db.$transaction(async (tx: any) => {
+    await acquirePromotionLock(tx, PROMOTION_ORDER_LOCK_SCOPE, orderId);
+    const order = await tx.promotionOrder.findUnique({ where: { id: orderId }, include: promotionOrderInclude });
+    if (!order || order.userId !== userId) throw new Error("PROMOTION_ORDER_NOT_FOUND");
+    if (order.status !== "pending") throw new Error("PROMOTION_ORDER_NOT_PENDING");
+    if (order.paymentSubmittedAt) return order;
+    if (order.paymentExpiresAt && new Date(order.paymentExpiresAt).getTime() <= now.getTime()) throw new Error("PROMOTION_PAYMENT_EXPIRED");
+    if (!/^\d{4}$/.test(paymentCode) || paymentCode !== order.paymentCode) throw new Error("PROMOTION_PAYMENT_CODE_MISMATCH");
+    return tx.promotionOrder.update({
+      where: { id: order.id },
+      data: { paymentSubmittedAt: now, paymentExpiresAt: null },
+      include: promotionOrderInclude,
+    });
+  });
+}
+
+export async function rejectPromotionOrder(db: any, orderId: number, reviewerId: number, adminNote: string, now = new Date()) {
+  const updated = await db.$transaction(async (tx: any) => {
     await acquirePromotionLock(tx, PROMOTION_ORDER_LOCK_SCOPE, orderId);
     const order = await tx.promotionOrder.findUnique({ where: { id: orderId } });
     if (!order) throw new Error("PROMOTION_ORDER_NOT_FOUND");
@@ -318,16 +495,20 @@ export async function rejectPromotionOrder(db: any, orderId: number, reviewerId:
       },
     });
   });
+  await promoteWaitlistedOrders(db, now);
+  return updated;
 }
 
 export async function cancelPromotionOrder(db: any, orderId: number, userId: number, now = new Date()) {
-  return db.$transaction(async (tx: any) => {
+  const updated = await db.$transaction(async (tx: any) => {
     await acquirePromotionLock(tx, PROMOTION_ORDER_LOCK_SCOPE, orderId);
     const order = await tx.promotionOrder.findUnique({ where: { id: orderId } });
     if (!order || order.userId !== userId) throw new Error("PROMOTION_ORDER_NOT_FOUND");
     ensurePromotionTransition(order.status, "cancelled");
     return tx.promotionOrder.update({ where: { id: orderId }, data: { status: "cancelled", cancelledAt: now } });
   });
+  await promoteWaitlistedOrders(db, now);
+  return updated;
 }
 
 export async function createPromotionAdjustment(db: any, input: {

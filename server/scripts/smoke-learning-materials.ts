@@ -31,21 +31,16 @@ async function cleanupMaterialSupportNotificationResidue() {
 }
 
 async function cleanupSmokeItem(itemId: number) {
-  const item = await prisma.marketItem.findUnique({ where: { id: itemId }, select: { sellerId: true, topicId: true, topic: { select: { boardId: true, metadata: true } }, learningMaterial: { select: { id: true } } } });
+  const item = await prisma.marketItem.findUnique({ where: { id: itemId }, select: { topicId: true, learningMaterial: { select: { id: true } } } });
   if (!item) {
     await cleanupMaterialSupportNotificationResidue();
     return;
   }
-  const wasPublished = (() => { try { return JSON.parse(item.topic?.metadata || "{}").materialPublished === true; } catch { return false; } })();
   await prisma.$transaction(async (tx) => {
     await tx.marketOrder.deleteMany({ where: { itemId } });
     await tx.marketOffer.deleteMany({ where: { itemId } });
     await tx.marketItem.delete({ where: { id: itemId } });
     if (item.topicId) await tx.topic.delete({ where: { id: item.topicId } }).catch(() => null);
-    if (wasPublished && item.topic) {
-      await tx.user.update({ where: { id: item.sellerId }, data: { postCount: { decrement: 1 } } });
-      await tx.board.update({ where: { id: item.topic.boardId }, data: { topicCount: { decrement: 1 } } });
-    }
   });
   if (item.learningMaterial?.id) {
     const privateRoot = path.resolve(process.cwd(), "runtime", "learning-materials");
@@ -108,6 +103,7 @@ async function main() {
     });
     itemId = created.id;
     assert.equal(created.status, "draft");
+    assert.equal(created.topicId, null, "学习资料不应自动生成广场帖子");
     await expectRejected(sellerToken, `/market/items/${itemId}`, { method: "PATCH", body: JSON.stringify({ title: "绕过专属编辑接口" }) });
 
     const form = new FormData();

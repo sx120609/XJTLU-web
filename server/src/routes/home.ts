@@ -12,7 +12,7 @@ import { buildUserTrustSnapshot } from "../services/userTrust";
 import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 import { amountCentsToMoney } from "../services/epay";
 import { MARKET_PUBLIC_USER_SELECT } from "../services/marketPublicUser";
-import { refreshExpiredPromotions, serializeItemPromotions } from "../services/promotion";
+import { refreshExpiredPromotions, serializeItemPromotions, serializeWantedPromotion } from "../services/promotion";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -51,14 +51,14 @@ homeRouter.get("/summary", async (req, res, next) => {
     await refreshExpiredPromotions();
     const publicSummary = await withCache(
       "home",
-      ["summary-xjtlu-v3", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-xjtlu-v4-square-only", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
           forumAccessEnabled ? listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 6) : Promise.resolve([]),
-          forumAccessEnabled ? listHotTopics(6, contentBoardTypes) : Promise.resolve([]),
+          forumAccessEnabled ? listHotTopics(16, contentBoardTypes) : Promise.resolve([]),
           forumAccessEnabled ? prisma.topic.findMany({
-            where: { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes }, slug: { not: WEIWALL_BOARD_SLUG } } },
+            where: { hidden: false, id: { notIn: globalPinnedIds }, board: publicSquareBoardWhere(contentBoardTypes) },
             orderBy: { createdAt: "desc" },
             take: 10,
             include: {
@@ -94,7 +94,15 @@ homeRouter.get("/summary", async (req, res, next) => {
     );
     // 推广位必须在管理员确认后立即生效，不进入一分钟的首页内容缓存。
     const promotionNow = new Date();
-    const promotions = await prisma.marketItem.findMany({
+    const topicInclude = {
+      board: { select: { slug: true, name: true, color: true, type: true } },
+      author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+      tags: { include: { tag: true } },
+      linkedWantedPost: {
+        include: { urgentPromotionOrder: { select: { id: true, status: true, type: true, startsAt: true, expiresAt: true } } },
+      },
+    } as const;
+    const [promotions, promotedWantedTopics] = await Promise.all([prisma.marketItem.findMany({
       where: {
         status: "active",
         visibility: "public",
@@ -104,13 +112,39 @@ homeRouter.get("/summary", async (req, res, next) => {
         homePromotionOrder: { is: { status: "confirmed", startsAt: { lte: promotionNow }, expiresAt: { gt: promotionNow } } },
       },
       orderBy: [{ homeFeaturedUntil: "desc" }, { createdAt: "desc" }],
-      take: 4,
+      take: 8,
       include: {
         seller: { select: MARKET_PUBLIC_USER_SELECT },
         images: { orderBy: [{ sort: "asc" }, { id: "asc" }], take: 1 },
         homePromotionOrder: { select: { id: true, status: true, type: true, startsAt: true, expiresAt: true } },
       },
-    });
+    }), forumAccessEnabled ? prisma.topic.findMany({
+      where: {
+        hidden: false,
+        board: publicSquareBoardWhere(contentBoardTypes),
+        linkedWantedPost: {
+          is: {
+            status: { in: ["active", "responded"] },
+            urgentUntil: { gt: promotionNow },
+            urgentPromotionOrderId: { not: null },
+            urgentPromotionOrder: { is: { status: "confirmed", startsAt: { lte: promotionNow }, expiresAt: { gt: promotionNow } } },
+          },
+        },
+      },
+      orderBy: [{ linkedWantedPost: { urgentUntil: "desc" } }, { createdAt: "desc" }],
+      take: 8,
+      include: topicInclude,
+    }) : Promise.resolve([])]);
+
+    const promotedHotTopics = promotedWantedTopics.map((item: any) => ({
+      ...decodeTopicForViewer(item, { userId, role }),
+      promotion: serializeWantedPromotion(item.linkedWantedPost, promotionNow).urgent,
+    }));
+    const promotedTopicIds = new Set(promotedHotTopics.map((item: any) => item.id));
+    const naturalHotTopics = forumAccessEnabled ? publicSummary.hotTopics
+      .filter((item: any) => !promotedTopicIds.has(item.id))
+      .map((item: any) => decodeTopicForViewer(item, { userId, role })) : [];
+    const mergedHotTopics = [...promotedHotTopics, ...naturalHotTopics].slice(0, 8);
 
     const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
 
@@ -128,11 +162,11 @@ homeRouter.get("/summary", async (req, res, next) => {
         unreadCount,
       } : null,
       pinnedTopics: forumAccessEnabled ? publicSummary.pinnedTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
-      hotTopics: forumAccessEnabled ? publicSummary.hotTopics.map((item: any, index: number) => ({
+      hotTopics: mergedHotTopics.map((item: any, index: number) => ({
         rank: index + 1,
         hotScore: computeHotScore(item, isRecentTopic(item)),
-        ...decodeTopicForViewer(item, { userId, role }),
-      })) : [],
+        ...item,
+      })),
       latestTopics: forumAccessEnabled ? publicSummary.latestTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
       announce: publicSummary.announce.map((item: any) => decodeTopicForViewer(item, { userId, role })),
       services: publicSummary.services
@@ -149,7 +183,10 @@ homeRouter.get("/summary", async (req, res, next) => {
         campus: item.campus,
         cover: item.images?.[0]?.url || "",
         seller: item.seller,
-         promotion: serializeItemPromotions(item, promotionNow).home,
+        listingType: "sell",
+        negotiable: item.negotiable,
+        createdAt: item.createdAt,
+        promotion: serializeItemPromotions(item, promotionNow).home,
       })),
     });
   } catch (e) { next(e); }
@@ -170,7 +207,7 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     if (!forumAccessEnabled) return ok(res, []);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
-    const list = await withCache("home", ["hot-ranking"], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
+    const list = await withCache("home", ["hot-ranking-v2-square-only"], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     ok(res, list.map((item, index) => ({
       rank: index + 1,
       hotScore: computeHotScore(item, isRecentTopic(item)),
@@ -197,8 +234,8 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     const size = querySize(req.query.size, LATEST_FEED_DEFAULT_SIZE, 10, 50);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const globalPinnedIds = getGlobalPinnedTopicIds();
-    const where = { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes }, slug: { not: WEIWALL_BOARD_SLUG } } } as const;
-    const cached = await withCache("home", ["latest-feed", page, size], 60_000, async () => {
+    const where = { hidden: false, id: { notIn: globalPinnedIds }, board: publicSquareBoardWhere(contentBoardTypes) } as const;
+    const cached = await withCache("home", ["latest-feed-v2-square-only", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({
@@ -238,7 +275,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
       where: {
         id: { in: orderedIds },
         hidden: false,
-        board: { type: { in: boardTypes }, slug: { not: WEIWALL_BOARD_SLUG } },
+        board: publicSquareBoardWhere(boardTypes),
       },
     include,
   });
@@ -257,7 +294,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
     prisma.topic.findMany({
       where: {
         hidden: false,
-        board: { type: { in: boardTypes }, slug: { not: WEIWALL_BOARD_SLUG } },
+        board: publicSquareBoardWhere(boardTypes),
         lastReplyAt: { gte: cutoff },
       },
       orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
@@ -267,7 +304,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
     prisma.topic.findMany({
       where: {
         hidden: false,
-        board: { type: { in: boardTypes }, slug: { not: WEIWALL_BOARD_SLUG } },
+        board: publicSquareBoardWhere(boardTypes),
         OR: [{ lastReplyAt: null }, { lastReplyAt: { lt: cutoff } }],
       },
       orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
@@ -283,6 +320,15 @@ async function listHotTopics(size: number, boardTypes: string[]) {
     merged.push(...olderSorted.slice(0, size - merged.length));
   }
   return merged;
+}
+
+/** 首页与广场聚合只读取公开 12 频道；内部市集、历史频道和公告不参与热议。 */
+function publicSquareBoardWhere(boardTypes: string[]) {
+  return {
+    type: { in: boardTypes },
+    section: { not: null },
+    slug: { not: WEIWALL_BOARD_SLUG },
+  } as const;
 }
 
 function computeHotScore(topic: any, recent: boolean) {

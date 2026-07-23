@@ -96,12 +96,21 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
   const order = await api("/market/promotions/orders", sellerToken, "POST", { planCode: "listing_pin_7d", targetId: item.id, note: "阶段九核验" });
   assert.equal(order.paymentMode, "manual");
   assert.equal(order.status, "pending");
+  assert.match(order.paymentCode, /^\d{4}$/);
+  const claimed = await api(`/market/promotions/orders/${order.id}/payment-claim`, sellerToken, "POST", { paymentCode: order.paymentCode });
+  assert.ok(claimed.paymentSubmittedAt);
+
+  const unauthorizedAdmin = await call(`/market/admin/promotions/orders/${order.id}`, sellerToken, "PATCH", {
+    action: "confirm", verificationMethod: "alipay", verificationReference: "DENIED", verifiedAmount: Number(order.amount), paymentCode: order.paymentCode, note: "普通用户不得确认",
+  });
+  assert.equal(unauthorizedAdmin.response.status, 403);
 
   const mismatch = await call(`/market/admin/promotions/orders/${order.id}`, adminToken, "PATCH", {
     action: "confirm",
     verificationMethod: "alipay",
     verificationReference: `P9-WRONG-${suffix}`,
     verifiedAmount: Number(order.amount) + 1,
+    paymentCode: order.paymentCode,
     note: "金额不一致时必须失败",
   });
   assert.equal(mismatch.response.status, 400);
@@ -114,6 +123,7 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
     verificationMethod: "alipay",
     verificationReference: reference,
     verifiedAmount: Number(order.amount),
+    paymentCode: order.paymentCode,
     note: "已核对推广对象、订单金额和线下收款记录",
   });
   assert.equal(confirmed.status, "confirmed");
@@ -124,6 +134,7 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
   const ownOrders = await api("/market/promotions/orders", sellerToken);
   const ownOrder = ownOrders.list.find((row: any) => row.id === order.id);
   assert.equal("verificationReference" in ownOrder, false);
+  assert.equal(ownOrder.paymentCode, order.paymentCode);
   assert.equal(ownOrder.verificationReferenceMasked.endsWith(reference.slice(-4)), true);
   const adminOrders = await api(`/market/admin/promotions/orders?q=${encodeURIComponent(order.outTradeNo)}`, adminToken);
   assert.equal(adminOrders.list[0].verificationReference, reference);
@@ -137,4 +148,5 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
   const audit = await prisma.adminActionLog.findFirstOrThrow({ where: { actorId: admin.id, targetType: "promotion_order", targetId: String(order.id) } });
   assert.equal(audit.detail.includes(reference), false);
   assert.equal(audit.detail.includes(reference.slice(-4)), true);
+  assert.equal(audit.detail.includes(order.paymentCode), false);
 });

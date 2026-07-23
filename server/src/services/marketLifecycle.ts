@@ -1,4 +1,3 @@
-export const LISTING_LIFETIME_DAYS = 30;
 export const WANTED_LIFETIME_DAYS = 21;
 export const INTENT_LIFETIME_DAYS = 7;
 export const RESERVATION_LIFETIME_HOURS = 72;
@@ -9,10 +8,6 @@ export function addDays(from: Date, days: number) {
 
 export function addHours(from: Date, hours: number) {
   return new Date(from.getTime() + hours * 60 * 60 * 1000);
-}
-
-export function nextListingExpiry(now = new Date()) {
-  return addDays(now, LISTING_LIFETIME_DAYS);
 }
 
 export function nextWantedExpiry(now = new Date()) {
@@ -68,19 +63,6 @@ export async function sweepMarketLifecycle(prisma: any, now = new Date()) {
     }).catch(() => null);
   }
 
-  const expiredListings = await prisma.marketItem.findMany({
-    where: { status: { in: ["active", "negotiating"] }, visibility: "public", expiresAt: { lte: now } },
-    select: { id: true },
-    take: 200,
-  });
-  if (expiredListings.length) {
-    const ids = expiredListings.map((item: { id: number }) => item.id);
-    await prisma.$transaction([
-      prisma.marketItem.updateMany({ where: { id: { in: ids }, status: { in: ["active", "negotiating"] } }, data: { status: "expired" } }),
-      prisma.tradeIntent.updateMany({ where: { itemId: { in: ids }, status: "pending" }, data: { status: "expired" } }),
-    ]).catch(() => null);
-  }
-
   const expiredWanted = await prisma.wantedPost.findMany({
     where: { status: { in: ["active", "responded"] }, expiresAt: { lte: now } },
     select: { id: true },
@@ -98,7 +80,7 @@ export async function sweepMarketLifecycle(prisma: any, now = new Date()) {
   await prisma.tradeIntent.updateMany({ where: { status: "pending", expiresAt: { lte: now } }, data: { status: "expired" } });
   return {
     reservations: expiredReservations.length,
-    listings: expiredListings.length,
+    listings: 0,
     wantedPosts: expiredWanted.length,
   };
 }

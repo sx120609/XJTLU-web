@@ -66,16 +66,17 @@ test("stage 10 real routes enforce inventory, renewal, manual after-service reco
   }
   async function createAndConfirm(sellerToken: string, itemId: number, reference: string) {
     const order = await api("/market/promotions/orders", sellerToken, "POST", { planCode: plan.code, targetId: itemId, note: "阶段十真实流程" });
-    const confirmed = await api(`/market/admin/promotions/orders/${order.id}`, adminToken, "PATCH", { action: "confirm", verificationMethod: "bank", verificationReference: reference, verifiedAmount: Number(order.amount), note: "已逐单核对收款和推广对象" });
+    assert.equal(order.status, "pending");
+    await api(`/market/promotions/orders/${order.id}/payment-claim`, sellerToken, "POST", { paymentCode: order.paymentCode });
+    const confirmed = await api(`/market/admin/promotions/orders/${order.id}`, adminToken, "PATCH", { action: "confirm", verificationMethod: "bank", verificationReference: reference, verifiedAmount: Number(order.amount), paymentCode: order.paymentCode, note: "已逐单核对收款、秘钥和推广对象" });
     return confirmed;
   }
 
   const first = await createAndConfirm(sellerAToken, items[0].id, `P10-FIRST-${suffix}`);
   assert.equal(first.manualCostCents, 150);
   const secondPending = await api("/market/promotions/orders", sellerBToken, "POST", { planCode: plan.code, targetId: items[1].id, note: "库存应拦截" });
-  const capacity = await call(`/market/admin/promotions/orders/${secondPending.id}`, adminToken, "PATCH", { action: "confirm", verificationMethod: "bank", verificationReference: `P10-FULL-${suffix}`, verifiedAmount: Number(secondPending.amount), note: "库存已满时不得确认" });
-  assert.equal(capacity.response.status, 409);
-  assert.match(capacity.body.message, /库存/);
+  assert.equal(secondPending.status, "waitlisted");
+  assert.equal(secondPending.paymentCode, "");
 
   const renewal = await createAndConfirm(sellerAToken, items[0].id, `P10-RENEW-${suffix}`);
   assert.equal((await prisma.promotionOrder.findUniqueOrThrow({ where: { id: first.id } })).status, "expired");
@@ -101,6 +102,16 @@ test("stage 10 real routes enforce inventory, renewal, manual after-service reco
   const dashboard = await api("/market/admin/operations?days=30", adminToken);
   assert.ok(dashboard.headline.promotionManualCostCents >= 150);
   assert.equal(typeof dashboard.headline.promotionNetContribution, "string");
+
+  const expiredAt = new Date(Date.now() - 60_000);
+  await prisma.promotionOrder.update({ where: { id: renewal.id }, data: { expiresAt: expiredAt } });
+  await prisma.marketItem.update({ where: { id: items[0].id }, data: { pinnedUntil: expiredAt } });
+  const queuedOrders = await api("/market/promotions/orders?size=50", sellerBToken);
+  const promotedFromQueue = queuedOrders.list.find((row: any) => row.id === secondPending.id);
+  assert.equal(promotedFromQueue.status, "pending");
+  assert.match(promotedFromQueue.paymentCode, /^\d{4}$/);
+  assert.ok(promotedFromQueue.slotNotifiedAt);
+  assert.ok(await prisma.notification.count({ where: { userId: sellerB.id, title: "推广位置已空出" } }));
 
   await api("/admin/features", adminToken, "PATCH", { promotion: false });
   assert.deepEqual(await api("/market/promotions/plans"), []);

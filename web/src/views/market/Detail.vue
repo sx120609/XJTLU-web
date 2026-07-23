@@ -31,10 +31,10 @@
             <el-button circle :icon="item.favorited ? StarFilled : Star" @click="favorite" />
           </div>
           <div v-else class="owner-actions">
-            <el-button v-if="['active', 'draft', 'expired', 'withdrawn'].includes(item.status)" type="primary" @click="$router.push({ name: 'market-edit', params: { id: item.id } })">编辑商品</el-button>
+            <el-button v-if="['active', 'draft', 'expired', 'withdrawn', 'sold'].includes(item.status)" type="primary" @click="$router.push({ name: 'market-edit', params: { id: item.id } })">编辑商品</el-button>
             <el-button v-if="item.status === 'active'" @click="$router.push('/market/promotions')">申请置顶 / 首页推广</el-button>
             <el-button @click="$router.push({ name: 'market-mine', query: { tab: 'intents' } })">管理意向</el-button>
-            <el-button v-if="['active', 'expired', 'withdrawn'].includes(item.status)" @click="renew">续期上架</el-button>
+            <el-button v-if="['expired', 'withdrawn', 'sold'].includes(item.status)" @click="relist">重新上架</el-button>
             <el-button v-if="['active', 'expired', 'withdrawn'].includes(item.status)" type="success" plain @click="markSold">标记已售</el-button>
             <el-button v-if="['active', 'negotiating', 'expired'].includes(item.status)" type="danger" plain @click="withdraw">下架</el-button>
           </div>
@@ -47,7 +47,7 @@
         <article class="description-card cpu-card">
           <h2>商品详情</h2><div class="description">{{ item.description }}</div>
           <div v-if="item.flaws" class="flaw-note"><b>瑕疵说明</b><span>{{ item.flaws }}</span></div>
-          <div class="public-actions"><el-button v-if="item.topicId" plain @click="$router.push(`/forum/topic/${item.topicId}`)">公开问答 {{ item.topic?.replyCount || 0 }}</el-button><el-button plain @click="$router.push({ path: '/post', query: { board: 'trade-talk', itemId: item.id } })">发起关联讨论</el-button><el-button plain @click="shareOpen = true">分享商品</el-button><el-button v-if="!item.mine && auth.isLoggedIn" text type="danger" @click="reportOpen = true">举报信息</el-button></div>
+          <div class="public-actions"><el-button plain @click="$router.push({ path: '/post', query: { board: 'trade-talk', itemId: item.id } })">发起关联讨论</el-button><el-button plain @click="shareOpen = true">分享商品</el-button><el-button v-if="!item.mine && auth.isLoggedIn" text type="danger" @click="reportOpen = true">举报信息</el-button></div>
         </article>
         <aside class="seller-card cpu-card" role="button" tabindex="0" @click="$router.push(`/market/seller/${item.sellerId}`)" @keydown.enter="$router.push(`/market/seller/${item.sellerId}`)">
           <div class="seller-head"><UserAvatar :size="52" :src="item.seller.avatar" :name="item.seller.nickname" /><div><strong>{{ item.seller.nickname || '靠浦用户' }}</strong><span>{{ sellerTrust?.identity.label || (item.seller.studentSso ? '✓ XJTLU 校园认证' : '校园平台用户') }}</span></div></div>
@@ -79,7 +79,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, type MarketItem, type MarketTrustProfile, type MarketWantedMatch } from "@/api/market";
+import { marketApi, marketTradeModeLabel, type MarketItem, type MarketTrustProfile, type MarketWantedMatch } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import MarketShareDialog from "@/components/market/MarketShareDialog.vue";
@@ -174,10 +174,10 @@ async function withdraw() {
   ElMessage.success("商品已下架");
 }
 
-async function renew() {
+async function relist() {
   if (!item.value) return;
-  item.value = await marketApi.updateItemLifecycle(item.value.id, item.value.status === "active" ? "renew" : "relist");
-  ElMessage.success("商品已续期并上架");
+  item.value = await marketApi.updateItemLifecycle(item.value.id, "relist");
+  ElMessage.success("商品已重新上架");
 }
 
 async function markSold() {
@@ -196,7 +196,7 @@ async function submitReport() {
 
 function categoryLabel(value: string) { return categories.value[value] || value; }
 function conditionLabel(value: string) { return ({ new: "全新", like_new: "近全新", good: "使用良好", fair: "有使用痕迹" } as Record<string, string>)[value] || value; }
-function tradeModeLabel(value: string) { return ({ meetup: "校园面交", shipping: "邮寄", both: "面交或邮寄", online: "线上发货" } as Record<string, string>)[value] || value; }
+const tradeModeLabel = marketTradeModeLabel;
 function statusLabel(value: string) { return ({ draft: "草稿", reviewing: "审核中", active: "在售", negotiating: "洽谈中", reserved: "已预订", sold: "已售出", expired: "已过期", withdrawn: "已下架", hidden: "已隐藏" } as Record<string, string>)[value] || value; }
 function formatDate(value: string) { return new Date(value).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }); }
 </script>

@@ -948,7 +948,7 @@ model MarketItem {
   originalPriceCents       Int?
   negotiable               Boolean   @default(false)
   condition                String    @default("good")
-  tradeMode                String    @default("meetup") // meetup / shipping / both
+  tradeMode                String    @default("meetup") // meetup / shipping / online / any
   campus                   String    @default("")
   location                 String    @default("")
   brand                    String    @default("")
@@ -1001,6 +1001,10 @@ model MarketItem {
   @@index([sellerId, status, updatedAt])
   @@index([listingType, status, createdAt])
   @@index([priceCents])
+  @@index([status, priceCents])
+  @@index([condition, status, createdAt])
+  @@index([tradeMode, status, createdAt])
+  @@index([campus, status, createdAt])
   @@index([expiresAt, status])
   @@index([sourceWantedPostId])
 }
@@ -1446,7 +1450,13 @@ model PromotionOrder {
   manualCostCents       Int       @default(0)
   durationDays          Int
   paymentMode           String    @default("manual")
-  status                String    @default("pending") // pending / confirmed / rejected / cancelled / expired
+  status                String    @default("pending") // waitlisted / pending / confirmed / rejected / cancelled / expired
+  paymentCode           String    @default("") @db.VarChar(4)
+  paymentSubmittedAt    DateTime?
+  paymentExpiresAt      DateTime?
+  reservesSlot          Boolean   @default(true)
+  waitlistedAt          DateTime?
+  slotNotifiedAt        DateTime?
   applicantNote         String    @default("")
   adminNote             String    @default("")
   verificationMethod    String    @default("")
@@ -1483,6 +1493,8 @@ model PromotionOrder {
   @@index([userId, status, createdAt])
   @@index([paymentMode, status, createdAt])
   @@index([paymentMode, confirmedAt])
+  @@index([type, status, createdAt])
+  @@index([status, paymentExpiresAt])
   @@index([status, expiresAt])
   @@index([type, status, startsAt, expiresAt])
   @@index([marketItemId, status])

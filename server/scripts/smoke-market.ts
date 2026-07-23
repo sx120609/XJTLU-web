@@ -9,7 +9,6 @@ async function main() {
   assert(user, "需要一个可用的管理员账号运行商城冒烟测试");
   const token = signToken({ userId: user.id, studentId: user.username, role: user.role, campus: "" });
   let itemId = 0;
-  let topicId = 0;
   const call = async (path: string, init: RequestInit = {}) => {
     const response = await fetch(`${baseUrl}${path}`, {
       ...init,
@@ -40,8 +39,8 @@ async function main() {
       }),
     });
     itemId = created.id;
-    topicId = created.topicId;
     assert.equal(created.status, "draft");
+    assert.equal(created.topicId, null, "出售商品不应自动生成广场帖子");
     assert.equal(created.price, "1.23");
     const detail = await call(`/market/items/${itemId}`);
     assert.equal(detail.id, itemId);
@@ -58,7 +57,6 @@ async function main() {
     console.log(JSON.stringify({ ok: true, checks: ["catalog-boundary", "meta", "materials", "create", "detail", "update", "favorite", "mine", "admin", "withdraw"] }));
   } finally {
     if (itemId) await prisma.marketItem.delete({ where: { id: itemId } }).catch(() => null);
-    if (topicId) await prisma.topic.delete({ where: { id: topicId } }).catch(() => null);
     await prisma.$disconnect();
   }
 }

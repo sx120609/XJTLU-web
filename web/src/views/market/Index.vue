@@ -7,9 +7,9 @@
         <p>只面向 XJTLUer 的校内闲置空间：提交意向、校内预约、当面验货、双方直接付款。</p>
       </div>
       <div class="hero-actions">
-        <el-button @click="$router.push('/market/merchants')">合作商户</el-button>
-        <el-button v-if="auth.isLoggedIn" @click="$router.push('/market/promotions')">推广服务</el-button>
+        <el-button @click="$router.push('/market/merchant/apply')">成为商户</el-button>
         <el-button v-if="auth.isLoggedIn" @click="$router.push({ name: 'market-mine' })">我的交易</el-button>
+        <el-button v-if="auth.isLoggedIn" @click="$router.push('/market/promotions')">推广服务</el-button>
         <el-button v-if="auth.isLoggedIn" type="primary" @click="$router.push({ name: 'publish-listing' })">
           <el-icon><Plus /></el-icon> 发布商品
         </el-button>
@@ -70,10 +70,8 @@
           <el-option v-for="item in conditionOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <label>交付方式</label>
-        <el-select v-model="filters.tradeMode" clearable placeholder="全部方式">
-          <el-option label="校园面交" value="meetup" />
-          <el-option label="邮寄" value="shipping" />
-          <el-option label="面交或邮寄" value="both" />
+        <el-select v-model="filters.tradeMode" placeholder="任意交付方式">
+          <el-option v-for="mode in tradeModes" :key="mode" :label="marketTradeModeLabel(mode)" :value="mode" />
         </el-select>
         <label>校区</label>
         <el-select v-model="filters.campus" clearable placeholder="全部校区">
@@ -152,7 +150,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Filter, Plus, Search, Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { MARKET_CAMPUSES, marketApi, normalizeMarketCampus, type MarketCategoryOption, type MarketItem } from "@/api/market";
+import { MARKET_CAMPUSES, MARKET_CONDITION_LABELS, MARKET_TRADE_MODE_LABELS, marketApi, marketConditionLabel, marketTradeModeLabel, normalizeMarketCampus, type MarketCategoryOption, type MarketCondition, type MarketItem, type MarketTradeMode } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
@@ -173,8 +171,9 @@ const mobileFiltersOpen = ref(false);
 let requestSeq = 0;
 
 const categories = ref<Array<MarketCategoryOption & { slug: string }>>([{ id: 0, slug: "", name: "全部商品", icon: "🛍️", description: "", fulfillmentType: "physical", imageRequired: false, enabled: true, sort: 0 }]);
-const conditionOptions = [{ label: "全新", value: "new" }, { label: "近全新", value: "like_new" }, { label: "使用良好", value: "good" }, { label: "有使用痕迹", value: "fair" }];
-const filters = reactive({ q: "", category: "", listingType: "sell", condition: "", tradeMode: "", campus: "", minPrice: undefined as number | undefined, maxPrice: undefined as number | undefined, sort: "new" as "new" | "popular" | "price_asc" | "price_desc" });
+const conditionOptions = ref<Array<{ label: string; value: Exclude<MarketCondition, "wanted"> }>>(Object.entries(MARKET_CONDITION_LABELS).map(([value, label]) => ({ label, value: value as Exclude<MarketCondition, "wanted"> })));
+const tradeModes = ref<MarketTradeMode[]>(Object.keys(MARKET_TRADE_MODE_LABELS) as MarketTradeMode[]);
+const filters = reactive({ q: "", category: "", listingType: "sell", condition: "", tradeMode: "any" as MarketTradeMode, campus: "", minPrice: undefined as number | undefined, maxPrice: undefined as number | undefined, sort: "new" as "new" | "popular" | "price_asc" | "price_desc" });
 const activeCategoryLabel = computed(() => categories.value.find((item) => item.slug === filters.category)?.name || "全部商品");
 
 onMounted(async () => {
@@ -182,6 +181,8 @@ onMounted(async () => {
   try {
     const meta = await marketApi.meta({ suppressErrorMessage: true });
     categories.value = [categories.value[0], ...meta.categories];
+    conditionOptions.value = meta.conditions.map((value) => ({ value, label: MARKET_CONDITION_LABELS[value] }));
+    tradeModes.value = meta.tradeModes;
   } catch { /* 商品列表仍可独立加载 */ }
   await load();
 });
@@ -215,7 +216,7 @@ function search() {
 }
 function selectCategory(value: string) { filters.category = value; search(); }
 function openItem(item: MarketItem) { if (item.promotions.pinned?.orderId) void marketApi.recordPromotionEvent(item.promotions.pinned.orderId, "click", { suppressErrorMessage: true }); void router.push({ name: "market-item", params: { id: item.id } }); }
-function resetFilters() { Object.assign(filters, { q: "", category: "", listingType: "sell", condition: "", tradeMode: "", campus: "", minPrice: undefined, maxPrice: undefined, sort: "new" }); search(); }
+function resetFilters() { Object.assign(filters, { q: "", category: "", listingType: "sell", condition: "", tradeMode: "any", campus: "", minPrice: undefined, maxPrice: undefined, sort: "new" }); search(); }
 async function toggleFavorite(item: MarketItem) {
   try {
     const result = await marketApi.favorite(item.id);
@@ -223,8 +224,8 @@ async function toggleFavorite(item: MarketItem) {
     item.favoriteCount = result.favoriteCount;
   } catch { ElMessage.error("收藏操作失败"); }
 }
-function conditionLabel(value: string) { return ({ new: "全新", like_new: "近全新", good: "使用良好", fair: "有使用痕迹", wanted: "求购" } as Record<string, string>)[value] || value; }
-function tradeModeLabel(value: string) { return ({ meetup: "校园面交", shipping: "邮寄", both: "面交/邮寄", online: "线上发货" } as Record<string, string>)[value] || value; }
+const conditionLabel = marketConditionLabel;
+const tradeModeLabel = marketTradeModeLabel;
 function categoryIcon(value: string) { return categories.value.find((item) => item.slug === value)?.icon || "📦"; }
 function hydrateFiltersFromRoute() {
   const first = (value: unknown) => Array.isArray(value) ? value[0] : value;
@@ -233,7 +234,8 @@ function hydrateFiltersFromRoute() {
   filters.category = String(first(route.query.category) || "");
   filters.listingType = "sell";
   filters.condition = String(first(route.query.condition) || "");
-  filters.tradeMode = String(first(route.query.tradeMode) || "");
+  const tradeMode = String(first(route.query.tradeMode) || "any");
+  filters.tradeMode = tradeMode === "both" ? "any" : (tradeMode in MARKET_TRADE_MODE_LABELS ? tradeMode as MarketTradeMode : "any");
   filters.campus = normalizeMarketCampus(first(route.query.campus));
   filters.sort = (["new", "popular", "price_asc", "price_desc"] as const).includes(sort as any) ? sort as typeof filters.sort : "new";
   const minPrice = Number(first(route.query.minPrice));
