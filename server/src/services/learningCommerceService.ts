@@ -39,6 +39,11 @@ import {
   reconcileLearningCreatorGovernance,
   refreshLearningCreatorMetrics,
 } from "./learningTrustService";
+import {
+  TRANSACTION_POINT_RULES,
+  awardTransactionPointsBatchInTransaction,
+  awardTransactionPointsInTransaction,
+} from "./transactionPoints";
 
 const CATEGORY = "digital_goods";
 const COMMAND_TTL_MS = 24 * 60 * 60 * 1000;
@@ -863,6 +868,13 @@ export async function decideMaterialReview(
         where: { id: current.version.profile.itemId },
         data: { status: "active", moderationNote: "", moderatedAt: now },
       });
+      await awardTransactionPointsInTransaction(tx, {
+        userId: current.version.createdById,
+        delta: TRANSACTION_POINT_RULES.learningMaterialApproved,
+        event: "learning_material_approved",
+        sourceType: "learning_version",
+        sourceId: current.versionId,
+      });
     } else {
       const hasOtherActive = Boolean(
         current.version.profile.activeVersionId
@@ -1389,6 +1401,22 @@ export async function completeLearningCommerceOrder(
           closedAt: now,
         },
       });
+      await awardTransactionPointsBatchInTransaction(tx, [
+        {
+          userId: row.order.buyerId,
+          delta: TRANSACTION_POINT_RULES.learningTradeBuyerCompleted,
+          event: "learning_trade_buyer_completed",
+          sourceType: "learning_order",
+          sourceId: commerceOrderId,
+        },
+        {
+          userId: row.order.sellerId,
+          delta: TRANSACTION_POINT_RULES.learningTradeCreatorCompleted,
+          event: "learning_trade_creator_completed",
+          sourceType: "learning_order",
+          sourceId: commerceOrderId,
+        },
+      ]);
       await appendOrderEvents(tx, commerceOrderId, [{
         type: "ORDER_COMPLETED",
         actorId: actor.userId,

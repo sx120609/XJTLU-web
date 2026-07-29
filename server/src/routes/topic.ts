@@ -40,6 +40,7 @@ import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 import { evaluateMarketContent } from "../services/marketTrust";
 import { WANTED_DEMAND_BOARD_SLUG } from "../services/defaultBoardCatalog";
+import { ensureV1HotRankingFresh } from "../services/v1DiscoveryService";
 
 export const topicRouter = Router();
 
@@ -104,6 +105,7 @@ topicRouter.get("/", async (req, res, next) => {
     const page = queryPage(req.query.page);
     const size = querySize(req.query.size, 20, 5, 50);
     const sort = String(req.query.sort ?? "new");
+    if (sort === "hot") await ensureV1HotRankingFresh();
     const pinnedMode = req.query.pinned ? String(req.query.pinned) : "include";
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? null;
@@ -135,7 +137,7 @@ topicRouter.get("/", async (req, res, next) => {
     const orderBy: any = pinnedMode === "only"
       ? [{ createdAt: "desc" }]
       : sort === "hot"
-        ? [{ pinned: "desc" }, { likeCount: "desc" }, { lastReplyAt: "desc" }]
+        ? [{ pinned: "desc" }, { hotScore: "desc" }, { createdAt: "desc" }]
         : [{ pinned: "desc" }, { createdAt: "desc" }];
 
     const cached = await withCache(

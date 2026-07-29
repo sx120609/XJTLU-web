@@ -4,7 +4,7 @@
 
 ## 1. 环境与启动
 
-要求：Node.js 18 以上（生产建议 Node 20+）、npm 9 以上、PostgreSQL 14 以上。
+要求：Node.js 22 以上、npm 10 以上、PostgreSQL 14 以上。
 
 安装依赖：
 

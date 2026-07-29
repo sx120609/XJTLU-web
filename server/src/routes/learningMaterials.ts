@@ -40,6 +40,7 @@ import {
 } from "../services/learningMaterials";
 import { normalizeMulterOriginalNames } from "../utils/uploadFilename";
 import { MARKET_PUBLIC_USER_SELECT } from "../services/marketPublicUser";
+import { ensureV1HotRankingFresh, parseHotSignals } from "../services/v1DiscoveryService";
 import {
   PAID_LEARNING_MATERIALS_ENABLED,
   PAID_MATERIAL_DISABLED_MESSAGE,
@@ -321,6 +322,9 @@ export function serializeLearningMaterialItem(item: any, viewerId?: number) {
     viewCount: item.viewCount,
     favoriteCount: item._count?.favorites ?? item.favoriteCount ?? 0,
     offerCount: item._count?.offers ?? item.offerCount ?? 0,
+    hotScore: item.hotScore || 0,
+    hotReasons: parseHotSignals(item.hotSignals).reasons,
+    hotScoreUpdatedAt: item.hotScoreUpdatedAt,
     images: (item.images || []).map((image: any) => ({ id: image.id, url: image.url, sort: image.sort })),
     cover: item.images?.[0]?.url || parseImagesFromDescription(item.description || "")[0] || "",
     seller: seller ? {
@@ -550,9 +554,10 @@ learningMaterialsRouter.get("/items", async (req, res, next) => {
       }];
     }
     const sort = String(req.query.sort || "new");
+    if (sort === "popular") await ensureV1HotRankingFresh();
     const orderBy: any = sort === "price_asc" ? { priceCents: "asc" }
       : sort === "price_desc" ? { priceCents: "desc" }
-        : sort === "popular" ? [{ favoriteCount: "desc" }, { viewCount: "desc" }, { createdAt: "desc" }]
+        : sort === "popular" ? [{ hotScore: "desc" }, { createdAt: "desc" }]
           : { createdAt: "desc" };
     const [list, total] = await Promise.all([
       prisma.marketItem.findMany({

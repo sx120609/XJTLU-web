@@ -15,6 +15,7 @@ import { MARKET_PUBLIC_USER_SELECT } from "../services/marketPublicUser";
 import { refreshExpiredPromotions, serializeItemPromotions, serializeWantedPromotion } from "../services/promotion";
 import { detectLoginClient } from "../utils/loginClient";
 import { notificationTargetClientWhere } from "../services/notificationTargeting";
+import { ensureV1HotRankingFresh } from "../services/v1DiscoveryService";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -179,9 +180,9 @@ homeRouter.get("/summary", async (req, res, next) => {
       } : null,
       pinnedTopics: forumAccessEnabled ? publicSummary.pinnedTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
       hotTopics: mergedHotTopics.map((item: any, index: number) => ({
+        ...item,
         rank: index + 1,
         hotScore: computeHotScore(item, isRecentTopic(item)),
-        ...item,
       })),
       latestTopics: forumAccessEnabled ? publicSummary.latestTopics.map((item: any) => decodeTopicForViewer(item, { userId, role })) : [],
       announce: publicSummary.announce.map((item: any) => decodeTopicForViewer(item, { userId, role })),
@@ -224,11 +225,14 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     if (!forumAccessEnabled) return ok(res, []);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const list = await withCache("home", ["hot-ranking-v2-square-only"], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
-    ok(res, list.map((item, index) => ({
-      rank: index + 1,
-      hotScore: computeHotScore(item, isRecentTopic(item)),
-      ...decodeTopicForViewer(item, { userId, role }),
-    })));
+    ok(res, list.map((item, index) => {
+      const decoded = decodeTopicForViewer(item, { userId, role });
+      return {
+        ...decoded,
+        rank: index + 1,
+        hotScore: computeHotScore(item, isRecentTopic(item)),
+      };
+    }));
   } catch (e) { next(e); }
 });
 
@@ -300,6 +304,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
 }
 
 async function listHotTopics(size: number, boardTypes: string[]) {
+  await ensureV1HotRankingFresh();
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
@@ -313,7 +318,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
         board: publicSquareBoardWhere(boardTypes),
         lastReplyAt: { gte: cutoff },
       },
-      orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
+      orderBy: [{ hotScore: "desc" }, { lastReplyAt: "desc" }],
       take: 60,
       include,
     }),
@@ -323,7 +328,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
         board: publicSquareBoardWhere(boardTypes),
         OR: [{ lastReplyAt: null }, { lastReplyAt: { lt: cutoff } }],
       },
-      orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
+      orderBy: [{ hotScore: "desc" }, { createdAt: "desc" }],
       take: 60,
       include,
     }),
@@ -348,6 +353,9 @@ function publicSquareBoardWhere(boardTypes: string[]) {
 }
 
 function computeHotScore(topic: any, recent: boolean) {
+  if (topic.hotScoreUpdatedAt && Number.isFinite(Number(topic.hotScore))) {
+    return Number(topic.hotScore);
+  }
   const raw = (topic.likeCount ?? 0) * 5 + (topic.replyCount ?? 0) * 3 + (topic.viewCount ?? 0) * 0.03;
   return recent ? raw : raw * 0.72;
 }

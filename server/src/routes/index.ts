@@ -23,6 +23,7 @@ import { courseBotRouter } from "./courseBot";
 import { ehallRouter } from "./ehall";
 import { academicRouter } from "./academic";
 import { marketRouter } from "./market";
+import { productAnalyticsRouter } from "./productAnalytics";
 
 export const router = Router();
 
@@ -45,6 +46,7 @@ router.use("/course-bot", authRequired, courseBotRouter);
 router.use("/ehall", authRequired, ehallRouter);
 router.use("/academic", authRequired, academicRouter);
 router.use("/market", marketRouter);
+router.use("/product", authRequired, productAnalyticsRouter);
 
 // 站内登录后
 router.use("/user", authRequired, userRouter);

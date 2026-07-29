@@ -18,6 +18,7 @@ import { findMatchesForWanted } from "../services/marketMatching";
 import { marketCampusStorageAliases } from "../services/marketCampus";
 import { Errors, ok } from "../utils/response";
 import { positiveRouteInteger, queryPage, querySize } from "../utils/query";
+import { ensureV1HotRankingFresh } from "../services/v1DiscoveryService";
 
 export const marketWantedCatalogRouter = Router();
 
@@ -43,6 +44,12 @@ marketWantedCatalogRouter.get("/wanted", async (req, res, next) => {
       { brandModel: { contains: q, mode: "insensitive" } },
       { location: { contains: q, mode: "insensitive" } },
     ];
+    const sort = String(req.query.sort || "new");
+    if (!["new", "popular"].includes(sort)) throw Errors.badRequest("求购排序方式无效");
+    if (sort === "popular") await ensureV1HotRankingFresh();
+    const contentOrder = sort === "popular"
+      ? [{ hotScore: "desc" as const }, { createdAt: "desc" as const }]
+      : [{ createdAt: "desc" as const }];
     const [list, total] = await Promise.all([
       prisma.wantedPost.findMany({
         where,
@@ -54,7 +61,9 @@ marketWantedCatalogRouter.get("/wanted", async (req, res, next) => {
           linkedTopics: wantedDemandTopicInclude,
           _count: { select: { responses: true } },
         },
-        orderBy: [{ urgentUntil: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+        orderBy: sort === "popular"
+          ? contentOrder
+          : [{ urgentUntil: { sort: "desc", nulls: "last" } }, ...contentOrder],
         skip: (page - 1) * size,
         take: size,
       }),
@@ -95,6 +104,9 @@ marketWantedCatalogRouter.get("/wanted/:id", async (req, res, next) => {
     const isStaff = ["admin", "mod"].includes(req.user?.role || "");
     if (["reviewing", "removed"].includes(post.status) && !isOwner && !isStaff) {
       throw Errors.notFound("求购不存在");
+    }
+    if (!["reviewing", "removed"].includes(post.status)) {
+      prisma.wantedPost.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => null);
     }
     const responses = visibleWantedResponses(
       post.responses,

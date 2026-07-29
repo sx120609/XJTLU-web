@@ -23,9 +23,9 @@
     "weiwall": "npm run weiwall --prefix server --"
   },
   "devDependencies": {
-    "concurrently": "^9.0.1"
+    "concurrently": "^10.0.4"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }

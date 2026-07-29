@@ -8,6 +8,7 @@ import { startSponsorOrderExpiryPoller } from "../services/sponsor";
 import { startForumVideoModerationPoller } from "../services/videoModeration";
 import { startWeiwallSyncScheduler } from "../services/weiwallSync";
 import { startXjtluAnnouncementSyncScheduler } from "../services/xjtluAnnouncementSync";
+import { startV1HotRankingPoller } from "../services/v1DiscoveryService";
 
 let backgroundWorkersStarted = false;
 
@@ -29,6 +30,7 @@ export function startBackgroundWorkers() {
   startSponsorOrderExpiryPoller();
   startPromotionExpiryPoller();
   startMarketReminderPoller();
+  startV1HotRankingPoller();
   startScheduler();
   startWeiwallSyncScheduler();
   startXjtluAnnouncementSyncScheduler();

@@ -156,6 +156,7 @@ test("delivered learning orders auto-complete only after the no-issue deadline",
         orderId: 100,
         status: "delivered",
         completionDueAt: new Date("2026-07-29T11:00:00.000Z"),
+        order: { buyerId: 1, sellerId: 2 },
         issues: [],
       }),
       updateMany: async ({ data }: any) => {
@@ -168,6 +169,19 @@ test("delivered learning orders auto-complete only after the no-issue deadline",
         writes.push({ model: "marketOrder", data });
         return {};
       },
+    },
+    transactionPointEntry: {
+      findUnique: async () => null,
+      create: async ({ data }: any) => {
+        writes.push({ model: "transactionPointEntry", data });
+        return data;
+      },
+    },
+    user: {
+      findUnique: async () => ({ transactionPoints: 0 }),
+      update: async ({ data }: any) => ({
+        transactionPoints: data.transactionPoints.increment,
+      }),
     },
     learningOrderEvent: {
       aggregate: async () => ({ _max: { sequence: 4 } }),
@@ -192,6 +206,13 @@ test("delivered learning orders auto-complete only after the no-issue deadline",
   assert.ok(writes.some((row) => row.model === "learningCommerceOrder" && row.data.status === "completed"));
   assert.ok(writes.some((row) => row.model === "marketOrder" && row.data.status === "completed"));
   assert.ok(writes.some((row) => row.model === "learningOrderEvent" && row.data.type === "ORDER_AUTO_COMPLETED"));
+  assert.deepEqual(
+    writes
+      .filter((row) => row.model === "transactionPointEntry")
+      .map((row) => row.data.event)
+      .sort(),
+    ["learning_trade_buyer_completed", "learning_trade_creator_completed"],
+  );
 });
 
 test("iteration one keeps schema, migration, API and three frontend roles aligned", () => {

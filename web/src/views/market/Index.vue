@@ -128,6 +128,7 @@
                 <span>{{ tradeModeLabel(item.tradeMode) }}</span>
                 <span v-if="item.campus">{{ item.campus }}</span>
               </div>
+              <div v-if="filters.sort === 'popular' && item.hotReasons.length" class="hot-reasons"><b>热门原因</b>{{ item.hotReasons.join(' · ') }}</div>
               <div class="seller-line">
                 <UserAvatar :size="25" :src="item.seller?.avatar" :name="item.seller?.nickname" />
                 <span>{{ item.seller?.nickname || "校园用户" }}</span>
@@ -251,6 +252,7 @@ function hydrateFiltersFromRoute() {
 @media(max-width:1200px){.category-strip{grid-template-columns:repeat(5,1fr)}.goods-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:850px){.market-hero{align-items:flex-start;flex-direction:column;padding:24px}.market-hero h1{font-size:25px}.hero-actions{width:100%}.hero-actions .el-button{flex:1}.materials-feature{grid-template-columns:auto 1fr auto}.materials-meta{display:none}.category-strip{display:flex;overflow-x:auto}.category-strip button{flex:0 0 105px}.market-body{grid-template-columns:1fr}.filter-panel{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.filter-title,.filter-panel .trust-note,.filter-panel>.el-button{grid-column:1/-1}.goods-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.market-page{gap:13px}.materials-feature{grid-template-columns:auto 1fr;padding:17px}.materials-mark{width:48px;height:48px;border-radius:14px}.materials-copy h2{font-size:18px}.materials-copy p{display:none}.materials-enter{grid-column:1/-1;text-align:center}.search-bar{padding:10px}.search-bar>.el-button{display:none}.filter-panel{padding:13px}.goods-grid{gap:9px}.goods-card{border-radius:11px}.goods-copy{padding:9px}.goods-copy h3{font-size:13px}.price-line strong{font-size:20px}.seller-line i{display:none}.goods-toolbar h2{font-size:18px}.sort-select{width:130px}}
 .budget-prefix{padding:2px 5px;border-radius:4px;color:#0f766e;background:#ecfdf5;font-size:9px;font-weight:700}
 .trust-note,.seller-line i,.budget-prefix{color:var(--cpu-primary);background:var(--cpu-primary-soft)}.favorite-btn{color:var(--cpu-text-secondary);background:var(--cpu-card);box-shadow:0 2px 9px rgba(15,23,42,.12)}
+.hot-reasons{margin-top:8px;color:var(--cpu-text-secondary);font-size:9px}.hot-reasons b{margin-right:6px;color:var(--cpu-primary)}
 .channel-tip{display:flex;align-items:center;justify-content:space-between;padding:9px;border-radius:8px;color:var(--cpu-primary);background:var(--cpu-primary-soft);font-size:10px}.channel-tip a{color:var(--cpu-primary);font-weight:700;text-decoration:none}
 .toolbar-actions{display:flex;align-items:center;gap:8px}.mobile-filter-btn{display:none}@media(max-width:850px){.filter-panel{display:none}.filter-panel.is-mobile-open{display:grid}.mobile-filter-btn{display:inline-flex}}@media(max-width:560px){.goods-toolbar{align-items:flex-start;gap:8px}.toolbar-actions{align-items:stretch;flex-direction:column-reverse}.mobile-filter-btn,.sort-select{width:130px}}
 :global(html[data-theme="dark"]) .goods-card:hover{box-shadow:0 12px 28px rgba(0,0,0,.34)}

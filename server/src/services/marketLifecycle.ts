@@ -1,6 +1,11 @@
 import { acquireMarketItemLock } from "./marketItemLockService";
 import { acquireMarketOrderLock } from "./marketOrderLockService";
 import { LEARNING_ISSUE_SLA_MS } from "./marketPolicy";
+import { refreshLearningCreatorMetrics } from "./learningTrustService";
+import {
+  TRANSACTION_POINT_RULES,
+  awardTransactionPointsBatchInTransaction,
+} from "./transactionPoints";
 
 export const WANTED_LIFETIME_DAYS = 21;
 export const INTENT_LIFETIME_DAYS = 7;
@@ -332,6 +337,12 @@ export async function sweepMarketLifecycle(prisma: any, now = new Date()) {
           orderId: true,
           status: true,
           completionDueAt: true,
+          order: {
+            select: {
+              buyerId: true,
+              sellerId: true,
+            },
+          },
           issues: {
             where: {
               status: { in: ["open", "waiting_buyer", "waiting_seller", "refund_requested"] },
@@ -374,6 +385,25 @@ export async function sweepMarketLifecycle(prisma: any, now = new Date()) {
           expiresAt: null,
         },
       });
+      await awardTransactionPointsBatchInTransaction(tx, [
+        {
+          userId: current.order.buyerId,
+          delta: TRANSACTION_POINT_RULES.learningTradeBuyerCompleted,
+          event: "learning_trade_buyer_completed",
+          sourceType: "learning_order",
+          sourceId: current.id,
+        },
+        {
+          userId: current.order.sellerId,
+          delta: TRANSACTION_POINT_RULES.learningTradeCreatorCompleted,
+          event: "learning_trade_creator_completed",
+          sourceType: "learning_order",
+          sourceId: current.id,
+        },
+      ]);
+      if (tx.learningCreatorProfile) {
+        await refreshLearningCreatorMetrics(current.order.sellerId, tx);
+      }
       const latestEvent = await tx.learningOrderEvent.aggregate({
         where: { commerceOrderId: current.id },
         _max: { sequence: true },

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { config } from "../config";
 import { Errors } from "../utils/response";
+import { transactionPointLevel } from "./transactionPoints";
 
 export type MarketContentDecision = "allow" | "review" | "block";
 export type MarketAccessAction = "publish" | "trade";
@@ -105,6 +106,8 @@ export function calculateMarketTrustScore(input: {
   noShowCount: number;
   cancelledByUserCount: number;
   activeViolations: Array<{ level: string }>;
+  transactionPoints?: number;
+  creatorQualityScore?: number | null;
 }) {
   const identityPoints = input.identityVerified ? 10 : 0;
   const tradePoints = Math.min(15, input.completedTradeCount * 2);
@@ -116,7 +119,12 @@ export function calculateMarketTrustScore(input: {
     if (violation.level === "moderate") return sum + 12;
     return sum + 6;
   }, 0);
+  const contributionPoints = Math.min(5, Math.floor(Math.max(0, input.transactionPoints || 0) / 100));
+  const creatorQualityPoints = input.creatorQualityScore === null || input.creatorQualityScore === undefined
+    ? 0
+    : Math.max(-3, Math.min(3, Math.round((input.creatorQualityScore - 60) / 15)));
   const score = Math.max(0, Math.min(100, 60 + identityPoints + tradePoints + ratingPoints
+    + contributionPoints + creatorQualityPoints
     - input.noShowCount * 8 - input.cancelledByUserCount * 2 - violationPenalty));
   return { score, ...trustLevel(score) };
 }
@@ -124,14 +132,76 @@ export function calculateMarketTrustScore(input: {
 export async function getMarketTrustProfile(prisma: any, userId: number, includePrivate = false) {
   const now = new Date();
   await expireMarketViolations(prisma, now);
-  const [user, completedTradeCount, reviewSummary, positiveReviewCount, noShowCount, cancelledByUserCount, activeViolations] = await Promise.all([
+  const [
+    user,
+    physicalCompletedTradeCount,
+    learningCompletedTradeCount,
+    physicalReviewSummary,
+    physicalPositiveReviewCount,
+    learningReviewSummary,
+    learningPositiveReviewCount,
+    noShowCount,
+    cancelledByUserCount,
+    activeViolations,
+    activeLearningViolations,
+    creatorProfile,
+    recentPointEntries,
+  ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, nickname: true, avatar: true, role: true, studentSso: true, createdAt: true },
+      select: {
+        id: true,
+        nickname: true,
+        avatar: true,
+        role: true,
+        studentSso: true,
+        transactionPoints: true,
+        createdAt: true,
+      },
     }),
-    prisma.marketOrder.count({ where: { status: "completed", OR: [{ buyerId: userId }, { sellerId: userId }] } }),
-    prisma.marketReview.aggregate({ where: { targetUserId: userId }, _avg: { rating: true }, _count: true }),
-    prisma.marketReview.count({ where: { targetUserId: userId, rating: { gte: 4 } } }),
+    prisma.marketOrder.count({
+      where: {
+        status: "completed",
+        deliveryType: "physical",
+        learningCommerceOrder: { is: null },
+        OR: [{ buyerId: userId }, { sellerId: userId }],
+      },
+    }),
+    prisma.learningCommerceOrder.count({
+      where: {
+        status: "completed",
+        order: { OR: [{ buyerId: userId }, { sellerId: userId }] },
+      },
+    }),
+    prisma.marketReview.aggregate({
+      where: {
+        targetUserId: userId,
+        order: {
+          deliveryType: "physical",
+          learningCommerceOrder: { is: null },
+        },
+      },
+      _avg: { rating: true },
+      _count: true,
+    }),
+    prisma.marketReview.count({
+      where: {
+        targetUserId: userId,
+        rating: { gte: 4 },
+        order: {
+          deliveryType: "physical",
+          learningCommerceOrder: { is: null },
+        },
+      },
+    }),
+    prisma.learningMaterialRating.aggregate({
+      where: { creatorId: userId, status: "published" },
+      _avg: { overall: true },
+      _count: true,
+    }),
+    prisma.learningMaterialRating.count({
+      where: { creatorId: userId, status: "published", overall: { gte: 4 } },
+    }),
     prisma.marketOrder.count({
       where: { OR: [{ buyerId: userId, noShowParty: "buyer" }, { sellerId: userId, noShowParty: "seller" }] },
     }),
@@ -143,11 +213,84 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
         : { id: true, level: true },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.learningCreatorViolation.findMany({
+      where: {
+        creatorId: userId,
+        status: "active",
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: includePrivate
+        ? {
+          id: true,
+          type: true,
+          severity: true,
+          action: true,
+          reason: true,
+          status: true,
+          expiresAt: true,
+          createdAt: true,
+          appeals: {
+            select: {
+              id: true,
+              status: true,
+              content: true,
+              handleNote: true,
+              createdAt: true,
+            },
+          },
+        }
+        : { id: true, severity: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.learningCreatorProfile.findUnique({
+      where: { userId },
+      select: {
+        status: true,
+        level: true,
+        qualityScore: true,
+        completedOrderCount: true,
+        averageRatingBps: true,
+        refundRateBps: true,
+        disputeRateBps: true,
+      },
+    }),
+    includePrivate
+      ? prisma.transactionPointEntry.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          delta: true,
+          event: true,
+          sourceType: true,
+          sourceId: true,
+          reason: true,
+          createdAt: true,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 20,
+      })
+      : Promise.resolve([]),
   ]);
   if (!user) throw Errors.notFound("用户不存在");
   const identityVerified = Boolean(user.studentSso || ["admin", "mod"].includes(user.role));
-  const averageRating = Number(reviewSummary._avg.rating || 0);
-  const reviewCount = Number(reviewSummary._count || 0);
+  const physicalReviewCount = Number(physicalReviewSummary._count || 0);
+  const learningReviewCount = Number(learningReviewSummary._count || 0);
+  const reviewCount = physicalReviewCount + learningReviewCount;
+  const positiveReviewCount = physicalPositiveReviewCount + learningPositiveReviewCount;
+  const averageRating = reviewCount
+    ? (
+      Number(physicalReviewSummary._avg.rating || 0) * physicalReviewCount
+      + Number(learningReviewSummary._avg.overall || 0) * learningReviewCount
+    ) / reviewCount
+    : 0;
+  const completedTradeCount = physicalCompletedTradeCount + learningCompletedTradeCount;
+  const normalizedLearningViolations = activeLearningViolations.map((violation: any) => ({
+    level: violation.severity === "critical" || violation.severity === "high"
+      ? "serious"
+      : violation.severity === "medium"
+        ? "moderate"
+        : "warning",
+  }));
   const trust = calculateMarketTrustScore({
     identityVerified,
     completedTradeCount,
@@ -156,20 +299,43 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
     reviewCount,
     noShowCount,
     cancelledByUserCount,
-    activeViolations,
+    activeViolations: [...activeViolations, ...normalizedLearningViolations],
+    transactionPoints: user.transactionPoints,
+    creatorQualityScore: creatorProfile?.qualityScore,
   });
+  const pointLevel = transactionPointLevel(user.transactionPoints);
+  const isNew = completedTradeCount === 0 && reviewCount === 0;
   return {
-    user,
+    user: {
+      id: user.id,
+      nickname: user.nickname,
+      avatar: user.avatar,
+      role: user.role,
+      studentSso: user.studentSso,
+      createdAt: user.createdAt,
+    },
     identity: { verified: identityVerified, label: identityVerified ? "校园身份已核验" : "校园身份未核验" },
     ...trust,
+    isNew,
+    historyLabel: isNew ? "新用户，暂无交易历史" : `已完成 ${completedTradeCount} 笔可信交易`,
     completedTradeCount,
+    physicalCompletedTradeCount,
+    learningCompletedTradeCount,
     averageRating,
     reviewCount,
+    physicalReviewCount,
+    learningReviewCount,
     positiveRate: reviewCount ? Math.round((positiveReviewCount / reviewCount) * 100) : 0,
     noShowCount,
     cancelledByUserCount,
-    activeViolationCount: activeViolations.length,
+    activeViolationCount: activeViolations.length + activeLearningViolations.length,
+    transactionPoints: {
+      ...pointLevel,
+      recentEntries: includePrivate ? recentPointEntries : undefined,
+    },
+    creator: creatorProfile,
     restrictions: includePrivate ? activeViolations : undefined,
+    learningRestrictions: includePrivate ? activeLearningViolations : undefined,
   };
 }
 

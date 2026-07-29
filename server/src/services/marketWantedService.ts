@@ -3,6 +3,7 @@ import { amountCentsToMoney } from "./epay";
 import { serializeItem } from "./marketCatalogService";
 import { serializeWantedPromotion } from "./promotion";
 import { acquireMarketItemLock } from "./marketItemLockService";
+import { parseHotSignals } from "./v1DiscoveryService";
 
 /**
  * Shared wanted-post projections and serializers.
@@ -75,6 +76,10 @@ export function serializeWantedPost(post: any, viewerId?: number) {
     budgetMin: amountCentsToMoney(post.budgetMinCents),
     budgetMax: amountCentsToMoney(post.budgetMaxCents),
     responseCount: post._count?.responses ?? post.responseCount ?? 0,
+    viewCount: post.viewCount || 0,
+    hotScore: post.hotScore || 0,
+    hotReasons: parseHotSignals(post.hotSignals).reasons,
+    hotScoreUpdatedAt: post.hotScoreUpdatedAt,
     mine: Boolean(viewerId && post.authorId === viewerId),
     moderationNote: viewerId === post.authorId ? moderationNote : undefined,
     moderatedAt: viewerId === post.authorId ? moderatedAt : undefined,

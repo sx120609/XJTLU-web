@@ -14,6 +14,7 @@ import {
   MARKET_CAMPUSES,
   normalizeMarketCampus,
 } from "./marketCampus";
+import { parseHotSignals } from "./v1DiscoveryService";
 
 /**
  * Shared marketplace catalog rules and serializers.
@@ -116,6 +117,9 @@ export function serializeItem(item: any, viewerId?: number) {
     viewCount: item.viewCount,
     favoriteCount: item._count?.favorites ?? item.favoriteCount ?? 0,
     offerCount: item._count?.tradeIntents ?? item._count?.offers ?? item.offerCount ?? 0,
+    hotScore: item.hotScore || 0,
+    hotReasons: parseHotSignals(item.hotSignals).reasons,
+    hotScoreUpdatedAt: item.hotScoreUpdatedAt,
     images: (item.images || []).map((image: any) => ({ id: image.id, url: image.url, sort: image.sort })),
     cover: item.images?.[0]?.url || extractImagesFromContent(item.description || "")[0] || "",
     seller: item.seller,

@@ -254,6 +254,9 @@ export interface MarketItem {
   viewCount: number;
   favoriteCount: number;
   offerCount: number;
+  hotScore: number;
+  hotReasons: string[];
+  hotScoreUpdatedAt?: string | null;
   images: Array<{ id: number; url: string; sort: number }>;
   cover: string;
   seller: MarketUser;
@@ -586,6 +589,10 @@ export interface WantedPost {
   status: "reviewing" | "active" | "responded" | "matched" | "completed" | "cancelled" | "expired" | "removed";
   expiresAt: string;
   responseCount: number;
+  viewCount: number;
+  hotScore: number;
+  hotReasons: string[];
+  hotScoreUpdatedAt?: string | null;
   mine: boolean;
   topicId: number | null;
   topicUrl: string | null;
@@ -603,6 +610,7 @@ export interface WantedListParams extends Record<string, unknown> {
   category?: string;
   campus?: MarketCampus | "";
   status?: Extract<WantedPost["status"], "active" | "responded">;
+  sort?: "new" | "popular";
 }
 
 export interface WantedResponse {
@@ -723,7 +731,25 @@ export interface MarketPublicUserProfile {
 export interface MarketOperationsDashboard {
   generatedAt: string;
   window: { days: number; since: string; until: string };
-  headline: { pendingTotal: number; overdueTotal: number; promotionRevenueCents: number; promotionRevenue: string; promotionNetContributionCents: number; promotionNetContribution: string; promotionManualCostCents: number; promotionManualCost: string; promotionRefundCents: number; promotionCompensationCents: number; promotionComplaintCount: number; promotionComplaintRate: number; averageManualReviewMinutes: number; merchantInquiryConversion: number; promotionCtr: number };
+  headline: { pendingTotal: number; overdueTotal: number; promotionRevenueCents: number; promotionRevenue: string; promotionNetContributionCents: number; promotionNetContribution: string; promotionManualCostCents: number; promotionManualCost: string; promotionRefundCents: number; promotionCompensationCents: number; promotionComplaintCount: number; promotionComplaintRate: number; averageManualReviewMinutes: number; merchantInquiryConversion: number; promotionCtr: number; verifiedCampusUsers: number; dau: number; wau: number; sevenDayReturnRate: number; coreEntryUsers: number };
+  product: {
+    today: string;
+    dau: number;
+    wau: number;
+    previousWeekUsers: number;
+    returningUsers: number;
+    sevenDayReturnRate: number;
+    surfaceActiveUsers: Array<{ surface: string; users: number; visits: number }>;
+    coreEntryUsers: number;
+  };
+  readiness: {
+    ready: boolean;
+    passed: number;
+    total: number;
+    checks: Array<{ key: string; label: string; current: number; target: number; passed: boolean }>;
+    failedRuntimeJobs: Array<{ key: string; label: string; error: string | null }>;
+    note: string;
+  };
   funnels: Array<{ key: string; label: string; note: string; stages: Array<{ label: string; value: number }> }>;
   queues: Array<{ key: string; label: string; count: number; overdue: number; route: string }>;
   timeline: Array<{ id: string; kind: "action" | "report" | "appeal" | "violation"; title: string; status: string; actor: string; target: string; createdAt: string }>;
@@ -872,14 +898,55 @@ export interface MarketTrustProfile {
   score: number;
   code: "excellent" | "reliable" | "normal" | "caution";
   label: string;
+  isNew: boolean;
+  historyLabel: string;
   completedTradeCount: number;
+  physicalCompletedTradeCount: number;
+  learningCompletedTradeCount: number;
   averageRating: number;
   reviewCount: number;
   positiveRate: number;
   noShowCount: number;
   cancelledByUserCount: number;
   activeViolationCount: number;
+  transactionPoints: {
+    points: number;
+    code: string;
+    label: string;
+    currentFloor: number;
+    nextLevelAt: number | null;
+    nextLevelLabel: string | null;
+    pointsToNextLevel: number;
+    progress: number;
+    recentEntries?: Array<{
+      id: number;
+      delta: number;
+      event: string;
+      sourceType: string;
+      sourceId: string;
+      reason: string;
+      createdAt: string;
+    }>;
+  };
+  creator?: {
+    status: string;
+    level: string;
+    qualityScore: number;
+    completedOrderCount: number;
+    averageRatingBps: number;
+    refundRateBps: number;
+    disputeRateBps: number;
+  } | null;
   restrictions?: MarketViolation[];
+  learningRestrictions?: Array<{
+    id: number;
+    severity: string;
+    action: string;
+    reason: string;
+    status: string;
+    expiresAt?: string | null;
+    createdAt: string;
+  }>;
 }
 
 export interface MarketContactCardResult {

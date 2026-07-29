@@ -18,6 +18,13 @@ import { hideMarketItemForReportInTransaction } from "./marketItemWriteService";
 import { syncPersistedWantedDemandTopic } from "./wantedDemandTopic";
 import { ensureUserCanSpeak } from "./userModeration";
 import { closePendingWantedInterest } from "./marketWantedService";
+import {
+  TRANSACTION_POINT_RULES,
+  awardTransactionPointsBatchInTransaction,
+  awardTransactionPointsInTransaction,
+  restoreViolationPointsInTransaction,
+  violationPointPenalty,
+} from "./transactionPoints";
 
 export const marketReviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
@@ -194,6 +201,9 @@ export async function createMarketReview(
       if (order.status !== "completed") {
         throw Errors.badRequest("交易完成后才能评价");
       }
+      if (order.deliveryType !== "physical") {
+        throw Errors.badRequest("学习资料订单请使用已购资料评价");
+      }
       const targetUserId = order.buyerId === actor.userId
         ? order.sellerId
         : order.buyerId;
@@ -206,6 +216,22 @@ export async function createMarketReview(
           content: input.content,
         },
       });
+      await awardTransactionPointsBatchInTransaction(tx, [
+        {
+          userId: actor.userId,
+          delta: TRANSACTION_POINT_RULES.physicalReviewAuthored,
+          event: "physical_review_authored",
+          sourceType: "market_review",
+          sourceId: review.id,
+        },
+        ...(input.rating >= 4 ? [{
+          userId: targetUserId,
+          delta: TRANSACTION_POINT_RULES.physicalPositiveReviewReceived,
+          event: "physical_positive_review_received",
+          sourceType: "market_review",
+          sourceId: review.id,
+        }] : []),
+      ]);
       return { review, targetUserId, itemTitle: order.item.title };
     });
   } catch (error) {
@@ -645,6 +671,14 @@ export async function createMarketViolation(
     const violation = await tx.marketViolation.create({
       data: { ...input, createdById: actor.userId },
     });
+    await awardTransactionPointsInTransaction(tx, {
+      userId: input.userId,
+      delta: violationPointPenalty(input.level),
+      event: "market_violation",
+      sourceType: "market_violation",
+      sourceId: violation.id,
+      reason: `市集违规：${input.reason}`,
+    });
     await logMarketAdminAction(tx, {
       actorId: actor.userId,
       action: "market.violation.create",
@@ -703,6 +737,14 @@ export async function revokeMarketViolation(
     }
     const violation = await tx.marketViolation.findUniqueOrThrow({
       where: { id: violationId },
+    });
+    await restoreViolationPointsInTransaction(tx, {
+      userId: current.userId,
+      originalEvent: "market_violation",
+      restoreEvent: "market_violation_restored",
+      sourceType: "market_violation",
+      sourceId: violationId,
+      reason: input.note || "市集违规处理撤销，返还原扣积分",
     });
     await logMarketAdminAction(tx, {
       actorId: actor.userId,
@@ -765,6 +807,14 @@ export async function handleMarketAppeal(
       await tx.marketViolation.update({
         where: { id: current.violationId },
         data: { status: "revoked", revokedAt: new Date() },
+      });
+      await restoreViolationPointsInTransaction(tx, {
+        userId: current.userId,
+        originalEvent: "market_violation",
+        restoreEvent: "market_violation_restored",
+        sourceType: "market_violation",
+        sourceId: current.violationId,
+        reason: "市集申诉通过，返还原扣积分",
       });
     }
     const appeal = await tx.marketAppeal.findUniqueOrThrow({
@@ -869,6 +919,15 @@ export async function handleMarketReport(
     const report = await tx.marketReport.findUniqueOrThrow({
       where: { id: reportId },
     });
+    if (input.status === "resolved") {
+      await awardTransactionPointsInTransaction(tx, {
+        userId: report.reporterId,
+        delta: TRANSACTION_POINT_RULES.validReport,
+        event: "valid_report",
+        sourceType: "market_report",
+        sourceId: reportId,
+      });
+    }
     await logMarketAdminAction(tx, {
       actorId: actor.userId,
       action: "market.report.handle",

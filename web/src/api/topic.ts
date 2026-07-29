@@ -21,6 +21,9 @@ export interface Topic {
   viewCount: number;
   replyCount: number;
   likeCount: number;
+  hotScore: number;
+  hotReasons: string[];
+  hotScoreUpdatedAt?: string | null;
   editCount?: number;
   lastReplyAt?: string;
   aiReviewStatus?: string;

@@ -7,6 +7,11 @@ import { nextReservationExpiry } from "./marketLifecycle";
 import { notifyMarketUser } from "./marketNotificationService";
 import { acquireMarketOrderLock } from "./marketOrderLockService";
 import { serializeMarketOrder } from "./marketOrderService";
+import {
+  TRANSACTION_POINT_RULES,
+  awardTransactionPointsBatchInTransaction,
+  awardTransactionPointsInTransaction,
+} from "./transactionPoints";
 
 export const marketOrderActionSchema = z.object({
   action: z.enum([
@@ -185,6 +190,24 @@ export async function transitionMarketOrder(
             data: { status: "completed" },
           });
         }
+        if (order.deliveryType === "physical") {
+          await awardTransactionPointsBatchInTransaction(tx, [
+            {
+              userId: order.buyerId,
+              delta: TRANSACTION_POINT_RULES.physicalTradeBuyerCompleted,
+              event: "physical_trade_buyer_completed",
+              sourceType: "market_order",
+              sourceId: orderId,
+            },
+            {
+              userId: order.sellerId,
+              delta: TRANSACTION_POINT_RULES.physicalTradeSellerCompleted,
+              event: "physical_trade_seller_completed",
+              sourceType: "market_order",
+              sourceId: orderId,
+            },
+          ]);
+        }
         if (order.paidAt) {
           await tx.marketSettlement.upsert({
             where: { orderId },
@@ -263,6 +286,16 @@ export async function transitionMarketOrder(
           where: { id: order.itemId },
           data: { status: restoredItemStatus(order.item, now) },
         });
+        if (order.deliveryType === "physical") {
+          await awardTransactionPointsInTransaction(tx, {
+            userId: actor.userId,
+            delta: TRANSACTION_POINT_RULES.acceptedOrderCancelled,
+            event: "accepted_order_cancelled",
+            sourceType: "market_order",
+            sourceId: orderId,
+            reason: "接受交易后主动取消",
+          });
+        }
         return {
           response: serializeForActor(cancelled, actor),
           notifications: [{

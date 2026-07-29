@@ -7,6 +7,13 @@ import type { LearningCommerceActor } from "./learningCommerceService";
 import { notifyMarketUser } from "./marketNotificationService";
 import { acquireMarketOrderLock } from "./marketOrderLockService";
 import { evaluateMarketContent } from "./marketTrust";
+import {
+  TRANSACTION_POINT_RULES,
+  awardTransactionPointsBatchInTransaction,
+  awardTransactionPointsInTransaction,
+  restoreViolationPointsInTransaction,
+  violationPointPenalty,
+} from "./transactionPoints";
 
 type TransactionClient = Prisma.TransactionClient;
 type DatabaseClient = TransactionClient | typeof prisma;
@@ -213,6 +220,24 @@ export async function rateLearningMaterialOrder(
       },
       include: { buyer: { select: MARKET_PUBLIC_USER_SELECT } },
     });
+    if (ratingStatus === "published") {
+      await awardTransactionPointsBatchInTransaction(tx, [
+        {
+          userId: row.order.buyerId,
+          delta: TRANSACTION_POINT_RULES.learningRatingAuthored,
+          event: "learning_rating_authored",
+          sourceType: "learning_rating",
+          sourceId: rating.id,
+        },
+        ...(overall >= 4 ? [{
+          userId: row.order.sellerId,
+          delta: TRANSACTION_POINT_RULES.learningPositiveRatingReceived,
+          event: "learning_positive_rating_received",
+          sourceType: "learning_rating",
+          sourceId: rating.id,
+        }] : []),
+      ]);
+    }
     await refreshLearningCreatorMetrics(row.order.sellerId, tx);
     return rating;
   });
@@ -312,6 +337,14 @@ export async function createLearningCreatorViolation(
         expiresAt,
       },
     });
+    await awardTransactionPointsInTransaction(tx, {
+      userId: input.creatorId,
+      delta: violationPointPenalty(input.severity),
+      event: "learning_violation",
+      sourceType: "learning_violation",
+      sourceId: violation.id,
+      reason: `学习资料违规：${input.reason}`,
+    });
     if (input.action === "hide_material" && input.itemId) {
       await tx.marketItem.update({
         where: { id: input.itemId },
@@ -399,6 +432,14 @@ export async function decideLearningCreatorAppeal(
       await tx.learningCreatorViolation.update({
         where: { id: appeal.violationId },
         data: { status: "revoked", revokedAt: now },
+      });
+      await restoreViolationPointsInTransaction(tx, {
+        userId: appeal.violation.creatorId,
+        originalEvent: "learning_violation",
+        restoreEvent: "learning_violation_restored",
+        sourceType: "learning_violation",
+        sourceId: appeal.violationId,
+        reason: "学习资料治理申诉通过，返还原扣积分",
       });
       const remainingBlocking = await tx.learningCreatorViolation.findMany({
         where: {

@@ -100,10 +100,10 @@ CPU-web/
 
 ### 环境要求
 
-- Node.js `>= 18`
-- npm `>= 9`
+- Node.js `>= 22`
+- npm `>= 10`
 - PostgreSQL `>= 14`
-- 建议本地和生产统一使用 Node 20+；`deploy.sh` 会按 Node 20 处理
+- 本地与生产统一使用 Node 22+；`deploy.sh` 会安装 Node 22 LTS
 
 ### 1. 安装依赖
 
@@ -383,7 +383,7 @@ chmod +x deploy.sh
 部署脚本默认行为：
 
 - 主服务端口：`24333`
-- Node 版本：按 Node 20+ 处理
+- Node 版本：按 Node 22+ 处理
 - 进程管理：`pm2`
 
 ## 多端与子项目说明

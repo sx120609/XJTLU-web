@@ -151,6 +151,7 @@ model User {
   anonymousWeekKey       String?
   anonymousCreditsFrozen Boolean   @default(false)
   sponsorTotalCents      Int       @default(0)
+  transactionPoints      Int       @default(0)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -250,6 +251,8 @@ model User {
   learningCommerceCommands               LearningCommerceCommand[]        @relation("LearningCommerceCommandActor")
   marketPreference                       MarketPreference?
   marketMatchNotices                     MarketMatchNotice[]
+  transactionPointEntries                TransactionPointEntry[]
+  productActivityDays                    ProductActivityDaily[]
 }
 
 // ============ 论坛核心 ============
@@ -321,6 +324,9 @@ model Topic {
   viewCount          Int       @default(0)
   replyCount         Int       @default(0)
   likeCount          Int       @default(0)
+  hotScore           Int       @default(0)
+  hotSignals         String    @default("{}")
+  hotScoreUpdatedAt  DateTime?
   lastReplyAt        DateTime? // 用于排序
   lastReplyById      Int?
   createdAt          DateTime  @default(now())
@@ -341,6 +347,7 @@ model Topic {
   @@index([boardId, hidden, createdAt])
   @@index([hidden, createdAt])
   @@index([hidden, lastReplyAt])
+  @@index([hidden, hotScore, createdAt])
   @@index([authorId])
   @@index([authorId, aiReviewStatus])
   @@index([linkedMarketItemId, createdAt])
@@ -1107,6 +1114,9 @@ model MarketItem {
   viewCount                Int       @default(0)
   favoriteCount            Int       @default(0)
   offerCount               Int       @default(0)
+  hotScore                 Int       @default(0)
+  hotSignals               String    @default("{}")
+  hotScoreUpdatedAt        DateTime?
   soldAt                   DateTime?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
@@ -1136,6 +1146,7 @@ model MarketItem {
   @@index([category, status, createdAt])
   @@index([sellerId, status, updatedAt])
   @@index([listingType, status, createdAt])
+  @@index([listingType, status, hotScore, createdAt])
   @@index([priceCents])
   @@index([status, priceCents])
   @@index([condition, status, createdAt])
@@ -1233,6 +1244,10 @@ model WantedPost {
   moderatedAt            DateTime?
   urgentUntil            DateTime?
   urgentPromotionOrderId Int?      @unique
+  viewCount              Int       @default(0)
+  hotScore               Int       @default(0)
+  hotSignals             String    @default("{}")
+  hotScoreUpdatedAt      DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -1248,6 +1263,7 @@ model WantedPost {
   matchNotices         MarketMatchNotice[]
 
   @@index([status, createdAt])
+  @@index([status, hotScore, createdAt])
   @@index([category, status, createdAt])
   @@index([authorId, status, updatedAt])
   @@index([expiresAt, status])
@@ -2393,6 +2409,43 @@ model LearningCommerceCommand {
   @@unique([actorId, operation, idempotencyKey])
   @@index([status, expiresAt])
   @@index([resourceType, resourceId, createdAt])
+}
+
+/// V1 交易积分流水。forum reputation 仍只表示社区活跃，两者不得混用。
+model TransactionPointEntry {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  delta      Int
+  event      String
+  sourceType String
+  sourceId   String
+  reason     String   @default("")
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, event, sourceType, sourceId])
+  @@index([userId, createdAt])
+  @@index([event, createdAt])
+}
+
+/// 隐私最小化的日级产品访问聚合；不保存 IP、搜索词或内容详情。
+model ProductActivityDaily {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  dateKey        String
+  surface        String
+  source         String   @default("direct")
+  visitCount     Int      @default(1)
+  firstVisitedAt DateTime @default(now())
+  lastVisitedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey, surface, source])
+  @@index([dateKey, surface])
+  @@index([userId, dateKey])
+  @@index([surface, lastVisitedAt])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

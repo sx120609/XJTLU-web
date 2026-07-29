@@ -1,4 +1,7 @@
 import { prisma } from "../prisma";
+import { getRuntimeHealthSnapshot } from "./runtimeHealth";
+import { shanghaiDateKey } from "./v1ProductAnalytics";
+import { FEATURED_XJTLU_APPS } from "./xjtluEhallClient";
 
 function amount(cents: number) {
   return (cents / 100).toFixed(2);
@@ -109,6 +112,68 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     prisma.merchantProfile.count({ where: { status: "approved", reviewDueAt: { lte: now } } }),
   ]);
 
+  const currentWeekStart = shanghaiDateKey(new Date(now.getTime() - 6 * 86_400_000));
+  const previousWeekStart = shanghaiDateKey(new Date(now.getTime() - 13 * 86_400_000));
+  const previousWeekEnd = shanghaiDateKey(new Date(now.getTime() - 7 * 86_400_000));
+  const todayKey = shanghaiDateKey(now);
+  const [
+    activityRows,
+    verifiedCampusUsers,
+    physicalSupply,
+    wantedSupply,
+    learningSupply,
+    activeCreators,
+    publicSquareContent,
+    pendingLearningReviews,
+    pendingLearningEvidence,
+    pendingLearningIssues,
+    overdueLearningIssues,
+    pendingCreatorApplications,
+    pendingCreatorAppeals,
+  ] = await Promise.all([
+    prisma.productActivityDaily.findMany({
+      where: { dateKey: { gte: previousWeekStart, lte: todayKey } },
+      select: { userId: true, dateKey: true, surface: true, source: true, visitCount: true },
+    }),
+    prisma.user.count({ where: { studentSso: true, status: "active" } }),
+    prisma.marketItem.count({
+      where: {
+        listingType: "sell",
+        deliveryType: "physical",
+        visibility: "public",
+        status: "active",
+      },
+    }),
+    prisma.wantedPost.count({ where: { status: { in: ["active", "responded"] }, expiresAt: { gt: now } } }),
+    prisma.marketItem.count({
+      where: {
+        category: "digital_goods",
+        status: "active",
+        learningMaterial: { is: { commerceMode: "paid", activeVersionId: { not: null } } },
+      },
+    }),
+    prisma.learningCreatorProfile.count({ where: { status: "active" } }),
+    prisma.topic.count({
+      where: {
+        hidden: false,
+        board: { section: { not: null } },
+      },
+    }),
+    prisma.learningMaterialReview.count({ where: { status: { in: ["submitted", "reviewing"] } } }),
+    prisma.learningPaymentEvidence.count({ where: { status: "submitted" } }),
+    prisma.learningOrderIssue.count({
+      where: { status: { in: ["open", "waiting_buyer", "waiting_seller", "refund_requested"] } },
+    }),
+    prisma.learningOrderIssue.count({
+      where: {
+        status: { in: ["open", "waiting_buyer", "waiting_seller", "refund_requested"] },
+        slaDueAt: { lt: now },
+      },
+    }),
+    prisma.learningCreatorApplication.count({ where: { status: { in: ["submitted", "reviewing"] } } }),
+    prisma.learningCreatorAppeal.count({ where: { status: "pending" } }),
+  ]);
+
   const revenueCents = promotionRevenue._sum.amountCents || 0;
   const adjustmentByType = new Map(promotionAdjustments.map((row) => [row.type, row]));
   const refundCents = adjustmentByType.get("refund_record")?._sum.amountCents || 0;
@@ -169,6 +234,63 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     { key: "merchant-review", label: "商户周期复核到期", count: merchantReviewDue, overdue: merchantReviewDue, route: "/admin?tab=promotion" },
     { key: "promotion", label: "盈利订单人工确认", count: pendingPromotions, overdue: stalePromotions, route: "/admin?tab=promotion" },
     { key: "expiry", label: "7 天内商户主页到期", count: expiringMerchants, overdue: 0, route: "/admin?tab=promotion" },
+    { key: "learning-review", label: "学习资料审核", count: pendingLearningReviews, overdue: 0, route: "/admin?tab=learning-commerce" },
+    { key: "learning-evidence", label: "收款凭证核验", count: pendingLearningEvidence, overdue: 0, route: "/admin?tab=learning-commerce" },
+    { key: "learning-issue", label: "资料售后与争议", count: pendingLearningIssues, overdue: overdueLearningIssues, route: "/admin?tab=learning-commerce" },
+    { key: "creator", label: "创作者认证", count: pendingCreatorApplications, overdue: 0, route: "/admin?tab=learning-commerce" },
+    { key: "creator-appeal", label: "创作者申诉", count: pendingCreatorAppeals, overdue: 0, route: "/admin?tab=learning-commerce" },
+  ];
+
+  const activeToday = new Set(activityRows.filter((row) => row.dateKey === todayKey).map((row) => row.userId));
+  const activeCurrentWeek = new Set(
+    activityRows.filter((row) => row.dateKey >= currentWeekStart).map((row) => row.userId),
+  );
+  const activePreviousWeek = new Set(
+    activityRows
+      .filter((row) => row.dateKey >= previousWeekStart && row.dateKey <= previousWeekEnd)
+      .map((row) => row.userId),
+  );
+  const returningUsers = [...activePreviousWeek].filter((userId) => activeCurrentWeek.has(userId)).length;
+  const surfaceActiveUsers = ["schedule", "portal", "square", "market", "learning"].map((surface) => ({
+    surface,
+    users: new Set(
+      activityRows
+        .filter((row) => row.dateKey >= currentWeekStart && row.surface === surface)
+        .map((row) => row.userId),
+    ).size,
+    visits: activityRows
+      .filter((row) => row.dateKey >= currentWeekStart && row.surface === surface)
+      .reduce((sum, row) => sum + row.visitCount, 0),
+  }));
+  const coreEntrants = activityRows.filter((row) => (
+    row.dateKey >= currentWeekStart
+    && ["market", "learning"].includes(row.surface)
+    && ["schedule", "portal", "square"].includes(row.source)
+  ));
+  const transitionUsers = new Set(coreEntrants.map((row) => row.userId)).size;
+  const runtimeJobs = getRuntimeHealthSnapshot(now.getTime()).jobs;
+  const failedRuntimeJobs = runtimeJobs.filter((job) => job.status === "failed");
+  const readinessChecks = [
+    { key: "physical_supply", label: "在售实体商品", current: physicalSupply, target: 20, passed: physicalSupply >= 20 },
+    { key: "wanted_supply", label: "进行中求购", current: wantedSupply, target: 5, passed: wantedSupply >= 5 },
+    { key: "learning_supply", label: "已审核付费资料", current: learningSupply, target: 5, passed: learningSupply >= 5 },
+    { key: "creator_supply", label: "活跃认证创作者", current: activeCreators, target: 3, passed: activeCreators >= 3 },
+    { key: "square_supply", label: "广场公开内容", current: publicSquareContent, target: 10, passed: publicSquareContent >= 10 },
+    { key: "portal_entries", label: "校园门户入口", current: FEATURED_XJTLU_APPS.length, target: 15, passed: FEATURED_XJTLU_APPS.length >= 15 },
+    {
+      key: "overdue_governance",
+      label: "超时治理任务",
+      current: queues.reduce((sum, queue) => sum + queue.overdue, 0),
+      target: 0,
+      passed: queues.every((queue) => queue.overdue === 0),
+    },
+    {
+      key: "runtime_health",
+      label: "后台任务故障",
+      current: failedRuntimeJobs.length,
+      target: 0,
+      passed: failedRuntimeJobs.length === 0,
+    },
   ];
 
   const timeline = [
@@ -229,6 +351,37 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
       averageManualReviewMinutes,
       merchantInquiryConversion: merchantPromotionClicks ? Number(((merchantInquiriesAttributed / merchantPromotionClicks) * 100).toFixed(2)) : 0,
       promotionCtr: promotionImpressions ? Number(((promotionClicks / promotionImpressions) * 100).toFixed(2)) : 0,
+      verifiedCampusUsers,
+      dau: activeToday.size,
+      wau: activeCurrentWeek.size,
+      sevenDayReturnRate: activePreviousWeek.size
+        ? Number(((returningUsers / activePreviousWeek.size) * 100).toFixed(2))
+        : 0,
+      coreEntryUsers: transitionUsers,
+    },
+    product: {
+      today: todayKey,
+      dau: activeToday.size,
+      wau: activeCurrentWeek.size,
+      previousWeekUsers: activePreviousWeek.size,
+      returningUsers,
+      sevenDayReturnRate: activePreviousWeek.size
+        ? Number(((returningUsers / activePreviousWeek.size) * 100).toFixed(2))
+        : 0,
+      surfaceActiveUsers,
+      coreEntryUsers: transitionUsers,
+    },
+    readiness: {
+      ready: readinessChecks.every((check) => check.passed),
+      passed: readinessChecks.filter((check) => check.passed).length,
+      total: readinessChecks.length,
+      checks: readinessChecks,
+      failedRuntimeJobs: failedRuntimeJobs.map((job) => ({
+        key: job.key,
+        label: job.label,
+        error: job.lastError,
+      })),
+      note: "上线前仍须执行仓库内完整测试、数据库迁移校验、备份恢复演练与回滚检查。",
     },
     funnels,
     queues,

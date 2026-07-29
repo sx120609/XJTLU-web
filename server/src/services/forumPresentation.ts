@@ -47,6 +47,11 @@ function normalizeTags(tags: any) {
 }
 
 export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
+  const { hotSignals, ...publicTopic } = topic;
+  const parsedHotSignals = safeJson(hotSignals);
+  const hotReasons = Array.isArray(parsedHotSignals?.reasons)
+    ? parsedHotSignals.reasons.filter((reason: unknown) => typeof reason === "string").slice(0, 3)
+    : [];
   const rawMetadata = safeJson(topic.metadata);
   const baseMetadata = rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
   const metadata = baseMetadata;
@@ -55,9 +60,10 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
     const externalName = topic?.weiwallMap?.externalAuthorName || metadata?.externalAuthorName || "逛逛同学";
     const externalAvatar = topic?.weiwallMap?.externalAuthorAvatar || metadata?.externalAuthorAvatar || null;
     return {
-      ...topic,
+      ...publicTopic,
       authorId: null,
       globalPinned: isGlobalPinnedTopic(Number(topic.id)),
+      hotReasons,
       metadata,
       tags: normalizeTags(topic.tags),
       isAnonymous: false,
@@ -69,9 +75,10 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
   const anonymous = Boolean(topic?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, topic?.authorId);
   return {
-    ...topic,
+    ...publicTopic,
     authorId: anonymous && !reveal ? null : topic.authorId,
     globalPinned: isGlobalPinnedTopic(Number(topic.id)),
+    hotReasons,
     metadata,
     tags: normalizeTags(topic.tags),
     isAnonymous: anonymous,

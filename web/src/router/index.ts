@@ -3,6 +3,11 @@ import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
+import {
+  productAnalyticsApi,
+  type ProductSource,
+  type ProductSurface,
+} from "@/api/productAnalytics";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
 
@@ -238,4 +243,36 @@ router.beforeEach(async (to) => {
     }
   }
   return true;
+});
+
+function routeSurface(routeName: unknown): ProductSurface | null {
+  const name = String(routeName || "");
+  if (name === "academic") return "schedule";
+  if (name === "services" || name === "campus-resources" || name.startsWith("service-")) return "portal";
+  if (
+    name === "learning"
+    || name.startsWith("market-learning-")
+  ) return "learning";
+  if (
+    ["square", "forum", "forum-hot", "forum-latest", "board", "topic", "post", "publish-post", "edit-post"].includes(name)
+  ) return "square";
+  if (name === "market" || name.startsWith("market-") || ["publish-listing", "publish-wanted"].includes(name)) {
+    return "market";
+  }
+  return null;
+}
+
+let lastActivityKey = "";
+let lastActivityAt = 0;
+
+router.afterEach((to, from) => {
+  const auth = useAuthStore();
+  const surface = routeSurface(to.name);
+  if (!auth.user || !surface) return;
+  const source = (routeSurface(from.name) || "direct") as ProductSource;
+  const key = `${surface}:${source}:${to.fullPath}`;
+  if (key === lastActivityKey && Date.now() - lastActivityAt < 30_000) return;
+  lastActivityKey = key;
+  lastActivityAt = Date.now();
+  void productAnalyticsApi.record(surface, source).catch(() => undefined);
 });

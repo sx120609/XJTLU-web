@@ -22,6 +22,10 @@ import { notifyMarketUser } from "./marketNotificationService";
 import { acquireMarketWantedLock } from "./marketWantedLockService";
 import { acquireMarketItemLock } from "./marketItemLockService";
 import { acquireMarketCategoryLock } from "./marketCategoryLockService";
+import {
+  TRANSACTION_POINT_RULES,
+  awardTransactionPointsInTransaction,
+} from "./transactionPoints";
 
 const wantedResponseImageSchema = z.string().trim().min(1).max(2048).refine(
   (value) => value.startsWith("/") || /^https?:\/\//i.test(value),
@@ -346,6 +350,13 @@ export async function transitionMarketWantedResponse(
         status: "targeted",
       },
       data: { status: "withdrawn" },
+    });
+    await awardTransactionPointsInTransaction(tx, {
+      userId: response.sellerId,
+      delta: TRANSACTION_POINT_RULES.wantedResponseAccepted,
+      event: "wanted_response_accepted",
+      sourceType: "wanted_response",
+      sourceId: responseId,
     });
     return {
       kind: "order" as const,

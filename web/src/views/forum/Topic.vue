@@ -91,6 +91,7 @@
             <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
             · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
           </div>
+          <div v-if="hotReasons.length" class="hot-reasons">热门原因：{{ hotReasons.join(" · ") }}</div>
         </div>
         <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>
       </div>
@@ -762,7 +763,16 @@ const showWeiwallContactSection = computed(() => {
   const isOver = normalizeWeiwallOverFlag(topic.value?.metadata?.externalIsOver);
   return status === "normal" && isOver === 0;
 });
-const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
+const hotScore = computed(() => {
+  const persisted = Number(topic.value?.hotScore);
+  if (topic.value?.hotScoreUpdatedAt && Number.isFinite(persisted)) return Math.round(persisted);
+  return Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03);
+});
+const hotReasons = computed(() => (
+  Array.isArray(topic.value?.hotReasons)
+    ? topic.value.hotReasons.filter((reason: unknown) => typeof reason === "string").slice(0, 3)
+    : []
+));
 const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || site.siteName));
 const shareCardHost = computed(() => {
   try { return new URL(site.siteOrigin || window.location.origin).host; }
@@ -1851,4 +1861,5 @@ async function onDelete() {
 <style scoped lang="scss" src="./styles/topic-responsive.scss"></style>
 <style scoped>
 .linked-market-card{display:flex;align-items:center;gap:12px;margin:16px 0;padding:13px;border:1px solid rgba(22,135,118,.24);border-radius:12px;color:var(--cpu-text);background:rgba(22,135,118,.06);text-decoration:none}.linked-market-card:hover{border-color:var(--cpu-primary)}.linked-market-card.wanted{border-color:rgba(109,92,231,.25);background:rgba(109,92,231,.06)}.linked-cover{display:grid;place-items:center;width:58px;height:58px;flex:0 0 58px;overflow:hidden;border-radius:9px;background:var(--cpu-card);font-size:24px}.linked-cover img{width:100%;height:100%;object-fit:cover}.linked-market-card>div:nth-child(2){display:flex;min-width:0;flex:1;flex-direction:column;gap:3px}.linked-market-card small{color:var(--cpu-primary);font-size:9px;font-weight:700}.linked-market-card b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.linked-market-card span{color:var(--cpu-text-secondary);font-size:10px}.linked-market-card em{color:var(--cpu-primary);font-size:11px;font-style:normal;white-space:nowrap}@media(max-width:560px){.linked-market-card em{display:none}}
+.hot-reasons{margin-top:5px;color:#047857;font-size:10px}
 </style>

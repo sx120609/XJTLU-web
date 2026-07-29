@@ -24,6 +24,7 @@ import {
 import { serializeWantedPost } from "../services/marketWantedService";
 import { findMatchesForItem } from "../services/marketMatching";
 import { marketCampusStorageAliases } from "../services/marketCampus";
+import { ensureV1HotRankingFresh } from "../services/v1DiscoveryService";
 
 // Public, read-oriented marketplace endpoints. URLs and response envelopes
 // remain mounted under /api/market by the parent market router.
@@ -72,9 +73,10 @@ async function listMarketItems(req: any, res: any, next: any, scope: MarketCatal
       ...(maxPrice !== null ? { lte: maxPrice } : {}),
     };
     const sort = String(req.query.sort || "new");
+    if (sort === "popular") await ensureV1HotRankingFresh();
     const contentOrderBy: any = sort === "price_asc" ? { priceCents: "asc" }
       : sort === "price_desc" ? { priceCents: "desc" }
-        : sort === "popular" ? [{ favoriteCount: "desc" }, { viewCount: "desc" }, { createdAt: "desc" }]
+        : sort === "popular" ? [{ hotScore: "desc" }, { createdAt: "desc" }]
           : { createdAt: "desc" };
     const orderBy: any = [
       { pinnedUntil: { sort: "desc", nulls: "last" } },
