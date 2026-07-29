@@ -98,6 +98,24 @@ enum LearningCommerceCommandStatus {
   failed
 }
 
+enum LearningMaterialRatingStatus {
+  published
+  hidden
+  excluded
+}
+
+enum LearningCreatorViolationStatus {
+  active
+  revoked
+  expired
+}
+
+enum LearningCreatorAppealStatus {
+  pending
+  approved
+  rejected
+}
+
 // ============ 用户（站内独立账号，不接学校账号） ============
 
 model User {
@@ -203,6 +221,9 @@ model User {
   learningMaterialTypesCreated           LearningMaterialType[]           @relation("LearningMaterialTypeCreator")
   learningMaterialVersionsCreated        LearningMaterialVersion[]        @relation("LearningMaterialVersionCreator")
   learningMaterialAccesses               LearningMaterialAccess[]
+  learningMaterialAccessEvents           LearningMaterialAccessEvent[]
+  learningMaterialRatingsAuthored        LearningMaterialRating[]         @relation("LearningMaterialRatingBuyer")
+  learningMaterialRatingsReceived        LearningMaterialRating[]         @relation("LearningMaterialRatingCreator")
   learningMaterialSupportTicketsAsBuyer  LearningMaterialSupportTicket[]  @relation("LearningMaterialSupportBuyer")
   learningMaterialSupportTicketsAsSeller LearningMaterialSupportTicket[]  @relation("LearningMaterialSupportSeller")
   learningMaterialSupportMessages        LearningMaterialSupportMessage[] @relation("LearningMaterialSupportMessageSender")
@@ -220,6 +241,12 @@ model User {
   learningOrderEvents                    LearningOrderEvent[]             @relation("LearningOrderEventActor")
   requestedLearningOrderIssues           LearningOrderIssue[]             @relation("LearningOrderIssueRequester")
   resolvedLearningOrderIssues            LearningOrderIssue[]             @relation("LearningOrderIssueResolver")
+  assignedLearningOrderIssues            LearningOrderIssue[]             @relation("LearningOrderIssueAssignee")
+  learningOrderIssueMessages             LearningOrderIssueMessage[]      @relation("LearningOrderIssueMessageSender")
+  learningCreatorViolations              LearningCreatorViolation[]       @relation("LearningCreatorViolationUser")
+  createdLearningCreatorViolations       LearningCreatorViolation[]       @relation("LearningCreatorViolationCreator")
+  learningCreatorAppeals                 LearningCreatorAppeal[]          @relation("LearningCreatorAppealUser")
+  handledLearningCreatorAppeals          LearningCreatorAppeal[]          @relation("LearningCreatorAppealHandler")
   learningCommerceCommands               LearningCommerceCommand[]        @relation("LearningCommerceCommandActor")
   marketPreference                       MarketPreference?
   marketMatchNotices                     MarketMatchNotice[]
@@ -1084,24 +1111,26 @@ model MarketItem {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
-  topic                Topic?                   @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  seller               User                     @relation("MarketSeller", fields: [sellerId], references: [id], onDelete: Cascade)
-  images               MarketImage[]
-  favorites            MarketFavorite[]
-  offers               MarketOffer[]
-  orders               MarketOrder[]
-  conversations        MarketConversation[]
-  reports              MarketReport[]
-  violations           MarketViolation[]
-  learningMaterial     LearningMaterialProfile?
-  tradeIntents         TradeIntent[]
-  wantedResponses      WantedResponse[]
-  sourceWantedPost     WantedPost?              @relation("WantedTargetedItems", fields: [sourceWantedPostId], references: [id], onDelete: SetNull)
-  linkedTopics         Topic[]                  @relation("TopicLinkedMarketItem")
-  promotionOrders      PromotionOrder[]         @relation("PromotionMarketItem")
-  pinnedPromotionOrder PromotionOrder?          @relation("ActiveListingPin", fields: [pinnedPromotionOrderId], references: [id], onDelete: SetNull)
-  homePromotionOrder   PromotionOrder?          @relation("ActiveHomeFeature", fields: [homePromotionOrderId], references: [id], onDelete: SetNull)
-  matchNotices         MarketMatchNotice[]
+  topic                     Topic?                     @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  seller                    User                       @relation("MarketSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  images                    MarketImage[]
+  favorites                 MarketFavorite[]
+  offers                    MarketOffer[]
+  orders                    MarketOrder[]
+  conversations             MarketConversation[]
+  reports                   MarketReport[]
+  violations                MarketViolation[]
+  learningMaterial          LearningMaterialProfile?
+  learningMaterialRatings   LearningMaterialRating[]
+  learningCreatorViolations LearningCreatorViolation[]
+  tradeIntents              TradeIntent[]
+  wantedResponses           WantedResponse[]
+  sourceWantedPost          WantedPost?                @relation("WantedTargetedItems", fields: [sourceWantedPostId], references: [id], onDelete: SetNull)
+  linkedTopics              Topic[]                    @relation("TopicLinkedMarketItem")
+  promotionOrders           PromotionOrder[]           @relation("PromotionMarketItem")
+  pinnedPromotionOrder      PromotionOrder?            @relation("ActiveListingPin", fields: [pinnedPromotionOrderId], references: [id], onDelete: SetNull)
+  homePromotionOrder        PromotionOrder?            @relation("ActiveHomeFeature", fields: [homePromotionOrderId], references: [id], onDelete: SetNull)
+  matchNotices              MarketMatchNotice[]
 
   @@index([status, createdAt])
   @@index([category, status, createdAt])
@@ -1282,24 +1311,25 @@ model MarketOrder {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
-  item                    MarketItem                     @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  offer                   MarketOffer?                   @relation(fields: [offerId], references: [id], onDelete: Restrict)
-  tradeIntent             TradeIntent?                   @relation(fields: [tradeIntentId], references: [id], onDelete: Restrict)
-  wantedPost              WantedPost?                    @relation(fields: [wantedPostId], references: [id], onDelete: SetNull)
-  wantedResponse          WantedResponse?                @relation(fields: [wantedResponseId], references: [id], onDelete: Restrict)
-  buyer                   User                           @relation("MarketOrderBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
-  seller                  User                           @relation("MarketOrderSeller", fields: [sellerId], references: [id], onDelete: Restrict)
-  cancelledBy             User?                          @relation("MarketOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  conversation            MarketConversation?
-  paymentLogs             MarketPaymentLog[]
-  refunds                 MarketRefund[]
-  settlement              MarketSettlement?
-  reviews                 MarketReview[]
-  reports                 MarketReport[]
-  violations              MarketViolation[]
-  learningMaterialAccess  LearningMaterialAccess?
-  learningMaterialSupport LearningMaterialSupportTicket?
-  learningCommerceOrder   LearningCommerceOrder?
+  item                         MarketItem                     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  offer                        MarketOffer?                   @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  tradeIntent                  TradeIntent?                   @relation(fields: [tradeIntentId], references: [id], onDelete: Restrict)
+  wantedPost                   WantedPost?                    @relation(fields: [wantedPostId], references: [id], onDelete: SetNull)
+  wantedResponse               WantedResponse?                @relation(fields: [wantedResponseId], references: [id], onDelete: Restrict)
+  buyer                        User                           @relation("MarketOrderBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller                       User                           @relation("MarketOrderSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  cancelledBy                  User?                          @relation("MarketOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  conversation                 MarketConversation?
+  paymentLogs                  MarketPaymentLog[]
+  refunds                      MarketRefund[]
+  settlement                   MarketSettlement?
+  reviews                      MarketReview[]
+  reports                      MarketReport[]
+  violations                   MarketViolation[]
+  learningMaterialAccess       LearningMaterialAccess?
+  learningMaterialSupport      LearningMaterialSupportTicket?
+  learningCommerceOrder        LearningCommerceOrder?
+  learningMaterialAccessEvents LearningMaterialAccessEvent[]
 
   @@index([buyerId, status, createdAt])
   @@index([sellerId, status, createdAt])
@@ -1881,6 +1911,7 @@ model LearningMaterialVersion {
   files          LearningMaterialFile[]
   accesses       LearningMaterialAccess[]
   reviews        LearningMaterialReview[]
+  ratings        LearningMaterialRating[]
   commerceOrders LearningCommerceOrder[]
 
   @@unique([profileId, versionNumber])
@@ -1888,20 +1919,24 @@ model LearningMaterialVersion {
 }
 
 model LearningMaterialFile {
-  id           Int      @id @default(autoincrement())
-  versionId    Int
-  originalName String
-  storedName   String
-  relativePath String   @unique
-  mimeType     String   @default("application/octet-stream")
-  fileSize     Int
-  format       String
-  pageCount    Int?
-  sha256       String
-  status       String   @default("active") // active / blocked / removed
-  createdAt    DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  versionId        Int
+  originalName     String
+  storedName       String
+  relativePath     String   @unique
+  mimeType         String   @default("application/octet-stream")
+  fileSize         Int
+  format           String
+  pageCount        Int?
+  previewEnabled   Boolean  @default(false)
+  previewPageStart Int?
+  previewPageEnd   Int?
+  sha256           String
+  status           String   @default("active") // active / blocked / removed
+  createdAt        DateTime @default(now())
 
-  version LearningMaterialVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  version      LearningMaterialVersion       @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  accessEvents LearningMaterialAccessEvent[]
 
   @@index([versionId, status])
   @@index([sha256])
@@ -1917,13 +1952,41 @@ model LearningMaterialAccess {
   lastAccessedAt DateTime?
   downloadCount  Int       @default(0)
 
-  order   MarketOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  version LearningMaterialVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
-  user    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order        MarketOrder                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  version      LearningMaterialVersion       @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  user         User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessEvents LearningMaterialAccessEvent[]
 
   @@index([userId, revokedAt, grantedAt])
   @@index([versionId, userId])
   @@index([grantedAt])
+}
+
+model LearningMaterialAccessEvent {
+  id            Int      @id @default(autoincrement())
+  accessId      Int?
+  fileId        Int?
+  userId        Int?
+  orderId       Int?
+  itemId        Int
+  action        String
+  outcome       String   @default("allowed")
+  watermarkCode String   @default("")
+  ipHash        String   @default("")
+  clientHash    String   @default("")
+  bytes         Int?
+  createdAt     DateTime @default(now())
+
+  access LearningMaterialAccess? @relation(fields: [accessId], references: [id], onDelete: SetNull)
+  file   LearningMaterialFile?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  user   User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  order  MarketOrder?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([fileId, createdAt])
+  @@index([accessId, createdAt])
+  @@index([userId, createdAt])
+  @@index([itemId, action, createdAt])
+  @@index([watermarkCode])
 }
 
 model LearningMaterialSupportTicket {
@@ -1989,15 +2052,24 @@ model LearningCreatorApplication {
 }
 
 model LearningCreatorProfile {
-  id             Int                   @id @default(autoincrement())
-  userId         Int                   @unique
-  status         LearningCreatorStatus @default(active)
-  certifiedById  Int?
-  certifiedAt    DateTime              @default(now())
-  lastReviewedAt DateTime?
-  statusReason   String                @default("")
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id                    Int                   @id @default(autoincrement())
+  userId                Int                   @unique
+  status                LearningCreatorStatus @default(active)
+  level                 String                @default("certified")
+  qualityScore          Int                   @default(60)
+  completedOrderCount   Int                   @default(0)
+  ratingCount           Int                   @default(0)
+  averageRatingBps      Int                   @default(0)
+  refundRateBps         Int                   @default(0)
+  disputeRateBps        Int                   @default(0)
+  averageConfirmMinutes Int?
+  metricsUpdatedAt      DateTime?
+  certifiedById         Int?
+  certifiedAt           DateTime              @default(now())
+  lastReviewedAt        DateTime?
+  statusReason          String                @default("")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
   user              User                       @relation("LearningCreatorUser", fields: [userId], references: [id], onDelete: Cascade)
   certifiedBy       User?                      @relation("LearningCreatorCertifier", fields: [certifiedById], references: [id], onDelete: SetNull)
@@ -2021,10 +2093,11 @@ model LearningPrivateAsset {
   createdAt    DateTime                   @default(now())
   updatedAt    DateTime                   @updatedAt
 
-  owner            User                      @relation("LearningPrivateAssetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner            User                       @relation("LearningPrivateAssetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   collectionMethod LearningCollectionMethod?
   paymentEvidence  LearningPaymentEvidence?
-  refundIssue      LearningOrderIssue?       @relation("LearningIssueRefundAsset")
+  refundIssue      LearningOrderIssue?        @relation("LearningIssueRefundAsset")
+  issueMessage     LearningOrderIssueMessage?
 
   @@index([ownerId, kind, status, createdAt])
   @@index([sha256])
@@ -2102,12 +2175,14 @@ model LearningCommerceOrder {
   createdAt           DateTime                     @default(now())
   updatedAt           DateTime                     @updatedAt
 
-  order            MarketOrder               @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  version          LearningMaterialVersion   @relation(fields: [versionId], references: [id], onDelete: Restrict)
-  collectionMethod LearningCollectionMethod? @relation(fields: [collectionMethodId], references: [id], onDelete: Restrict)
-  paymentEvidence  LearningPaymentEvidence[]
-  events           LearningOrderEvent[]
-  issues           LearningOrderIssue[]
+  order             MarketOrder                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  version           LearningMaterialVersion    @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  collectionMethod  LearningCollectionMethod?  @relation(fields: [collectionMethodId], references: [id], onDelete: Restrict)
+  paymentEvidence   LearningPaymentEvidence[]
+  events            LearningOrderEvent[]
+  issues            LearningOrderIssue[]
+  rating            LearningMaterialRating?
+  creatorViolations LearningCreatorViolation[]
 
   @@index([status, paymentDueAt])
   @@index([status, sellerResponseDueAt])
@@ -2164,30 +2239,138 @@ model LearningOrderEvent {
 }
 
 model LearningOrderIssue {
-  id                Int                      @id @default(autoincrement())
-  commerceOrderId   Int
-  requestedById     Int
-  type              String
-  status            LearningOrderIssueStatus @default(open)
-  reason            String
-  detail            String                   @default("")
-  refundAmountCents Int?
-  refundAssetId     Int?                     @unique
-  resolvedById      Int?
-  resolution        String                   @default("")
-  resolvedAt        DateTime?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  id                        Int                      @id @default(autoincrement())
+  commerceOrderId           Int
+  requestedById             Int
+  type                      String
+  status                    LearningOrderIssueStatus @default(open)
+  reason                    String
+  detail                    String                   @default("")
+  responsibility            String                   @default("unassigned")
+  slaDueAt                  DateTime?
+  assignedToId              Int?
+  assignedAt                DateTime?
+  firstRespondedAt          DateTime?
+  refundAmountCents         Int?
+  refundAssetId             Int?                     @unique
+  refundEvidenceUnavailable String                   @default("")
+  resolvedById              Int?
+  resolution                String                   @default("")
+  resolvedAt                DateTime?
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
 
-  commerceOrder LearningCommerceOrder @relation(fields: [commerceOrderId], references: [id], onDelete: Cascade)
-  requestedBy   User                  @relation("LearningOrderIssueRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  refundAsset   LearningPrivateAsset? @relation("LearningIssueRefundAsset", fields: [refundAssetId], references: [id], onDelete: Restrict)
-  resolvedBy    User?                 @relation("LearningOrderIssueResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  commerceOrder LearningCommerceOrder       @relation(fields: [commerceOrderId], references: [id], onDelete: Cascade)
+  requestedBy   User                        @relation("LearningOrderIssueRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  refundAsset   LearningPrivateAsset?       @relation("LearningIssueRefundAsset", fields: [refundAssetId], references: [id], onDelete: Restrict)
+  resolvedBy    User?                       @relation("LearningOrderIssueResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  assignedTo    User?                       @relation("LearningOrderIssueAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages      LearningOrderIssueMessage[]
 
   @@index([commerceOrderId, status, createdAt])
   @@index([status, createdAt])
+  @@index([status, slaDueAt])
+  @@index([assignedToId, status, updatedAt])
   @@index([requestedById, createdAt])
   @@index([resolvedById, resolvedAt])
+}
+
+model LearningOrderIssueMessage {
+  id                Int      @id @default(autoincrement())
+  issueId           Int
+  senderId          Int?
+  kind              String   @default("user") // user / staff / system
+  content           String
+  attachmentAssetId Int?     @unique
+  createdAt         DateTime @default(now())
+
+  issue      LearningOrderIssue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  sender     User?                 @relation("LearningOrderIssueMessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  attachment LearningPrivateAsset? @relation(fields: [attachmentAssetId], references: [id], onDelete: Restrict)
+
+  @@index([issueId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+model LearningMaterialRating {
+  id               Int                          @id @default(autoincrement())
+  commerceOrderId  Int                          @unique
+  itemId           Int
+  versionId        Int
+  buyerId          Int
+  creatorId        Int
+  accuracy         Int
+  usefulness       Int
+  descriptionMatch Int
+  fileQuality      Int
+  overall          Int
+  content          String                       @default("")
+  status           LearningMaterialRatingStatus @default(published)
+  moderationReason String                       @default("")
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  commerceOrder LearningCommerceOrder   @relation(fields: [commerceOrderId], references: [id], onDelete: Cascade)
+  item          MarketItem              @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  version       LearningMaterialVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  buyer         User                    @relation("LearningMaterialRatingBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  creator       User                    @relation("LearningMaterialRatingCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+
+  @@index([itemId, status, createdAt])
+  @@index([creatorId, status, createdAt])
+  @@index([buyerId, createdAt])
+  @@index([versionId, status])
+}
+
+model LearningCreatorViolation {
+  id              Int                            @id @default(autoincrement())
+  creatorId       Int
+  itemId          Int?
+  commerceOrderId Int?
+  type            String
+  severity        String
+  action          String
+  reason          String
+  evidence        String                         @default("")
+  status          LearningCreatorViolationStatus @default(active)
+  createdById     Int
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+
+  creator       User                    @relation("LearningCreatorViolationUser", fields: [creatorId], references: [id], onDelete: Cascade)
+  createdBy     User                    @relation("LearningCreatorViolationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  item          MarketItem?             @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  commerceOrder LearningCommerceOrder?  @relation(fields: [commerceOrderId], references: [id], onDelete: SetNull)
+  appeals       LearningCreatorAppeal[]
+
+  @@index([creatorId, status, createdAt])
+  @@index([status, expiresAt])
+  @@index([createdById, createdAt])
+  @@index([itemId, createdAt])
+  @@index([commerceOrderId, createdAt])
+}
+
+model LearningCreatorAppeal {
+  id          Int                         @id @default(autoincrement())
+  violationId Int
+  userId      Int
+  content     String
+  status      LearningCreatorAppealStatus @default(pending)
+  handledById Int?
+  handleNote  String                      @default("")
+  handledAt   DateTime?
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  violation LearningCreatorViolation @relation(fields: [violationId], references: [id], onDelete: Cascade)
+  user      User                     @relation("LearningCreatorAppealUser", fields: [userId], references: [id], onDelete: Cascade)
+  handledBy User?                    @relation("LearningCreatorAppealHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@unique([violationId, userId])
+  @@index([status, createdAt])
+  @@index([handledById, handledAt])
 }
 
 model LearningCommerceCommand {

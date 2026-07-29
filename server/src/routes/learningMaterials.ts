@@ -55,6 +55,16 @@ import {
 } from "../services/learningCommerceService";
 import { normalizeIdempotencyKey } from "../services/learningCommerceContracts";
 import { requestIdFromResponse } from "../middleware/requestObservability";
+import { config } from "../config";
+import {
+  createLearningPdfSample,
+  createLicensedLearningPdf,
+  hashLearningAccessValue,
+  inspectLearningPdf,
+  newLearningWatermarkCode,
+  validateLearningPdfPreviewRange,
+} from "../services/learningMaterialPdfService";
+import { listLearningMaterialRatings } from "../services/learningTrustService";
 
 export const learningMaterialsRouter = Router();
 const materialStaffRequired: RequestHandler = (req, _res, next) => {
@@ -113,6 +123,9 @@ const safeFileSelect = {
   fileSize: true,
   format: true,
   pageCount: true,
+  previewEnabled: true,
+  previewPageStart: true,
+  previewPageEnd: true,
   status: true,
   createdAt: true,
 } as const;
@@ -123,7 +136,18 @@ function materialItemInclude(viewerId?: number): any {
       select: {
         ...MARKET_PUBLIC_USER_SELECT,
         learningCreatorProfile: {
-          select: { status: true, certifiedAt: true },
+          select: {
+            status: true,
+            certifiedAt: true,
+            level: true,
+            qualityScore: true,
+            completedOrderCount: true,
+            ratingCount: true,
+            averageRatingBps: true,
+            refundRateBps: true,
+            disputeRateBps: true,
+            averageConfirmMinutes: true,
+          },
         },
       },
     },
@@ -261,6 +285,9 @@ function serializeVersion(version: any) {
       fileSize: file.fileSize,
       format: file.format,
       pageCount: file.pageCount,
+      previewEnabled: file.previewEnabled,
+      previewPageStart: file.previewPageStart,
+      previewPageEnd: file.previewPageEnd,
       status: file.status,
       createdAt: file.createdAt,
     })),
@@ -300,6 +327,20 @@ export function serializeLearningMaterialItem(item: any, viewerId?: number) {
       ...seller,
       creatorCertified: creatorProfile?.status === "active",
       creatorCertifiedAt: creatorProfile?.certifiedAt || null,
+      creatorLevel: creatorProfile?.level || "certified",
+      creatorQualityScore: creatorProfile?.qualityScore ?? 60,
+      creatorCompletedOrderCount: creatorProfile?.completedOrderCount ?? 0,
+      creatorRatingCount: creatorProfile?.ratingCount ?? 0,
+      creatorAverageRating: creatorProfile?.averageRatingBps
+        ? Number((creatorProfile.averageRatingBps / 100).toFixed(2))
+        : 0,
+      creatorRefundRate: creatorProfile?.refundRateBps
+        ? Number((creatorProfile.refundRateBps / 100).toFixed(2))
+        : 0,
+      creatorDisputeRate: creatorProfile?.disputeRateBps
+        ? Number((creatorProfile.disputeRateBps / 100).toFixed(2))
+        : 0,
+      creatorAverageConfirmMinutes: creatorProfile?.averageConfirmMinutes ?? null,
     } : seller,
     topic: item.topic,
     favorited: Array.isArray(item.favorites) && item.favorites.some((favorite: any) => favorite.userId === viewerId),
@@ -565,6 +606,19 @@ learningMaterialsRouter.get("/items/:id", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+learningMaterialsRouter.get("/items/:id/ratings", async (req, res, next) => {
+  try {
+    const itemId = positiveRouteInteger(req.params.id);
+    if (!itemId) throw Errors.badRequest("资料 ID 不合法");
+    const item = await prisma.marketItem.findFirst({
+      where: { id: itemId, category: CATEGORY, status: "active" },
+      select: { id: true },
+    });
+    if (!item) throw Errors.notFound("学习资料不存在");
+    ok(res, await listLearningMaterialRatings(itemId));
+  } catch (error) { next(error); }
+});
+
 learningMaterialsRouter.post("/items/:id/purchase", authRequired, async (req, res, next) => {
   try {
     const itemId = positiveRouteInteger(req.params.id);
@@ -763,6 +817,30 @@ function parseMaterialFiles(req: any, res: any, next: any) {
   });
 }
 
+type UploadedPreviewRange = { start: number; end: number } | null;
+
+function parseUploadedPreviewRanges(value: unknown, fileCount: number): UploadedPreviewRange[] {
+  if (!value) return Array.from({ length: fileCount }, () => null);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(value));
+  } catch {
+    throw Errors.badRequest("PDF 试读页配置格式无效");
+  }
+  if (!Array.isArray(parsed) || parsed.length !== fileCount) {
+    throw Errors.badRequest("PDF 试读页配置必须与上传文件一一对应");
+  }
+  return parsed.map((entry) => {
+    if (entry === null) return null;
+    const start = Number((entry as any)?.start);
+    const end = Number((entry as any)?.end);
+    if (!Number.isInteger(start) || !Number.isInteger(end)) {
+      throw Errors.badRequest("PDF 试读起止页必须为整数");
+    }
+    return { start, end };
+  });
+}
+
 learningMaterialsRouter.post("/items/:id/versions", authRequired, parseMaterialFiles, async (req, res, next) => {
   const uploadedFiles = (req.files || []) as Express.Multer.File[];
   const movedPaths: string[] = [];
@@ -775,26 +853,52 @@ learningMaterialsRouter.post("/items/:id/versions", authRequired, parseMaterialF
     for (const file of uploadedFiles) {
       if (!isAllowedLearningMaterialFile(file.originalname)) throw Errors.badRequest(`不支持的文件格式：${file.originalname}`);
     }
+    const previewRanges = parseUploadedPreviewRanges(req.body.previewRanges, uploadedFiles.length);
     const latest = await prisma.learningMaterialVersion.aggregate({ where: { profileId: item.learningMaterial.id }, _max: { versionNumber: true } });
     const versionNumber = (latest._max.versionNumber || 0) + 1;
     const relativeDir = path.posix.join(String(item.learningMaterial.id), String(versionNumber));
     const absoluteDir = path.resolve(PRIVATE_MATERIAL_ROOT, relativeDir);
     await mkdir(absoluteDir, { recursive: true });
-    const prepared: Array<{ originalName: string; storedName: string; relativePath: string; mimeType: string; fileSize: number; format: string; sha256: string }> = [];
-    for (const file of uploadedFiles) {
+    const prepared: Array<{
+      originalName: string;
+      storedName: string;
+      relativePath: string;
+      mimeType: string;
+      fileSize: number;
+      format: string;
+      pageCount: number | null;
+      previewEnabled: boolean;
+      previewPageStart: number | null;
+      previewPageEnd: number | null;
+      sha256: string;
+    }> = [];
+    for (const [fileIndex, file] of uploadedFiles.entries()) {
       const extension = path.extname(file.originalname).toLowerCase();
       const storedName = `${crypto.randomUUID()}${extension}`;
       const absolutePath = path.join(absoluteDir, storedName);
       await rename(file.path, absolutePath);
       movedPaths.push(absolutePath);
       const buffer = await readFile(absolutePath);
+      const format = learningMaterialFileFormat(file.originalname);
+      const previewRange = previewRanges[fileIndex];
+      let pageCount: number | null = null;
+      if (format === "PDF") {
+        pageCount = (await inspectLearningPdf(buffer)).pageCount;
+        if (previewRange) validateLearningPdfPreviewRange(pageCount, previewRange.start, previewRange.end);
+      } else if (previewRange) {
+        throw Errors.badRequest("当前仅支持为 PDF 配置真实试读页");
+      }
       prepared.push({
         originalName: file.originalname,
         storedName,
         relativePath: path.posix.join(relativeDir, storedName),
         mimeType: file.mimetype || "application/octet-stream",
         fileSize: file.size,
-        format: learningMaterialFileFormat(file.originalname),
+        format,
+        pageCount,
+        previewEnabled: Boolean(previewRange),
+        previewPageStart: previewRange?.start ?? null,
+        previewPageEnd: previewRange?.end ?? null,
         sha256: crypto.createHash("sha256").update(buffer).digest("hex"),
       });
     }
@@ -817,7 +921,12 @@ learningMaterialsRouter.post("/items/:id/versions", authRequired, parseMaterialF
       const actualFormats = prepared.map((file) => file.format);
       await tx.learningMaterialProfile.update({
         where: { id: item.learningMaterial!.id },
-        data: { declaredFormats: JSON.stringify(Array.from(new Set([...existingFormats, ...actualFormats]))) },
+        data: {
+          declaredFormats: JSON.stringify(Array.from(new Set([...existingFormats, ...actualFormats]))),
+          pageCount: prepared
+            .filter((file) => file.format === "PDF")
+            .reduce((total, file) => total + (file.pageCount || 0), 0) || item.learningMaterial!.pageCount,
+        },
       });
       return created;
     });
@@ -890,9 +999,63 @@ learningMaterialsRouter.get("/library", authRequired, async (req, res, next) => 
   } catch (error) { next(error); }
 });
 
-learningMaterialsRouter.get("/files/:fileId/download", authRequired, async (req, res, next) => {
+function resolvePrivateMaterialPath(relativePath: string) {
+  const absolutePath = path.resolve(PRIVATE_MATERIAL_ROOT, relativePath);
+  const rootPrefix = `${PRIVATE_MATERIAL_ROOT}${path.sep}`;
+  if (!absolutePath.startsWith(rootPrefix)) throw Errors.forbidden("资料文件路径无效");
+  return absolutePath;
+}
+
+learningMaterialsRouter.get("/items/:itemId/files/:fileId/sample", async (req, res, next) => {
   try {
-    const fileId = Number(req.params.fileId);
+    const itemId = positiveRouteInteger(req.params.itemId);
+    const fileId = positiveRouteInteger(req.params.fileId);
+    if (!itemId || !fileId) throw Errors.badRequest("资料或文件 ID 不合法");
+    const file = await prisma.learningMaterialFile.findUnique({
+      where: { id: fileId },
+      include: { version: { include: { profile: { include: { item: true } } } } },
+    });
+    if (
+      !file
+      || file.status !== "active"
+      || file.format !== "PDF"
+      || !file.previewEnabled
+      || !file.previewPageStart
+      || !file.previewPageEnd
+      || file.version.profile.itemId !== itemId
+      || file.version.profile.activeVersionId !== file.versionId
+      || file.version.profile.item.status !== "active"
+    ) {
+      throw Errors.notFound("该资料暂未开放真实试读");
+    }
+    const absolutePath = resolvePrivateMaterialPath(file.relativePath);
+    const source = await readFile(absolutePath).catch(() => {
+      throw Errors.notFound("资料试读文件已丢失，请联系平台");
+    });
+    const sample = await createLearningPdfSample(source, file.previewPageStart, file.previewPageEnd);
+    await prisma.learningMaterialAccessEvent.create({
+      data: {
+        fileId,
+        itemId,
+        userId: req.user?.userId || null,
+        action: "sample_preview",
+        bytes: sample.length,
+        ipHash: hashLearningAccessValue(req.ip || "", config.jwtSecret),
+        clientHash: hashLearningAccessValue(String(req.headers["user-agent"] || ""), config.jwtSecret),
+      },
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(`sample-${file.originalName}`)}`);
+    res.send(sample);
+  } catch (error) { next(error); }
+});
+
+async function serveAuthorizedMaterialFile(req: any, res: any, next: any, action: "online_preview" | "download") {
+  try {
+    const fileId = positiveRouteInteger(req.params.fileId);
+    if (!fileId) throw Errors.badRequest("文件 ID 不合法");
     const file = await prisma.learningMaterialFile.findUnique({
       where: { id: fileId },
       include: { version: { include: { profile: { include: { item: true } } } } },
@@ -903,15 +1066,77 @@ learningMaterialsRouter.get("/files/:fileId/download", authRequired, async (req,
     const access = isOwner || isStaff ? null : await prisma.learningMaterialAccess.findFirst({
       where: { userId: req.user!.userId, versionId: file.versionId, revokedAt: null, order: { status: { in: ["paid", "delivering", "completed", "refund_pending", "disputed"] } } },
     });
-    if (!isOwner && !isStaff && !access) throw Errors.forbidden("购买并完成付款后才能下载该资料");
-    const absolutePath = path.resolve(PRIVATE_MATERIAL_ROOT, file.relativePath);
-    const rootPrefix = `${PRIVATE_MATERIAL_ROOT}${path.sep}`;
-    if (!absolutePath.startsWith(rootPrefix)) throw Errors.forbidden("资料文件路径无效");
+    if (!isOwner && !isStaff && !access) throw Errors.forbidden("购买并完成付款后才能访问该资料");
+    if (action === "online_preview" && file.format !== "PDF") {
+      throw Errors.badRequest("当前仅支持 PDF 在线阅读，其他格式请下载后查看");
+    }
+    const absolutePath = resolvePrivateMaterialPath(file.relativePath);
     await stat(absolutePath).catch(() => { throw Errors.notFound("资料文件已丢失，请联系平台售后"); });
-    if (access) await prisma.learningMaterialAccess.update({ where: { id: access.id }, data: { downloadCount: { increment: 1 }, lastAccessedAt: new Date() } });
+    const accessedAt = new Date();
+    const watermarkCode = access && file.format === "PDF" ? newLearningWatermarkCode() : "";
+    let payload: Buffer | null = null;
+    if (access && file.format === "PDF") {
+      const source = await readFile(absolutePath);
+      payload = await createLicensedLearningPdf(source, {
+        userId: req.user!.userId,
+        orderId: access.orderId,
+        fileId,
+        accessedAt,
+        watermarkCode,
+      });
+    }
+    await prisma.$transaction(async (tx) => {
+      if (access) {
+        await tx.learningMaterialAccess.update({
+          where: { id: access.id },
+          data: {
+            downloadCount: action === "download" ? { increment: 1 } : undefined,
+            lastAccessedAt: accessedAt,
+          },
+        });
+      }
+      await tx.learningMaterialAccessEvent.create({
+        data: {
+          accessId: access?.id || null,
+          fileId,
+          userId: req.user!.userId,
+          orderId: access?.orderId || null,
+          itemId: file.version.profile.itemId,
+          action,
+          watermarkCode,
+          bytes: payload?.length ?? file.fileSize,
+          ipHash: hashLearningAccessValue(req.ip || "", config.jwtSecret),
+          clientHash: hashLearningAccessValue(String(req.headers["user-agent"] || ""), config.jwtSecret),
+        },
+      });
+    });
     res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (payload) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `${action === "online_preview" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
+      );
+      res.send(payload);
+      return;
+    }
+    if (action === "online_preview") {
+      res.setHeader("Content-Type", file.mimeType || "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}`);
+      res.sendFile(absolutePath);
+      return;
+    }
     res.download(absolutePath, file.originalName);
   } catch (error) { next(error); }
+}
+
+learningMaterialsRouter.get("/files/:fileId/view", authRequired, (req, res, next) => {
+  void serveAuthorizedMaterialFile(req, res, next, "online_preview");
+});
+
+learningMaterialsRouter.get("/files/:fileId/download", authRequired, (req, res, next) => {
+  void serveAuthorizedMaterialFile(req, res, next, "download");
 });
 
 const supportCreateSchema = z.object({

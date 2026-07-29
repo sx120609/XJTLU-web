@@ -13,6 +13,11 @@ import {
   creatorApplicationReviewSchema,
   learningOrderIssueDecisionSchema,
   learningOrderIssueInputSchema,
+  learningOrderIssueMessageSchema,
+  learningMaterialRatingSchema,
+  learningCreatorAppealDecisionSchema,
+  learningCreatorAppealSchema,
+  learningCreatorViolationSchema,
   materialReviewDecisionSchema,
   normalizeIdempotencyKey,
   paymentEvidenceMetadataSchema,
@@ -20,6 +25,8 @@ import {
 } from "../services/learningCommerceContracts";
 import {
   cancelLearningCommerceOrder,
+  addLearningOrderIssueMessage,
+  claimLearningOrderIssue,
   completeLearningCommerceOrder,
   confirmPaymentEvidence,
   createCollectionMethod,
@@ -30,6 +37,7 @@ import {
   getAuthorizedLearningPrivateAsset,
   getLearningCommerceOrder,
   getLearningCreatorContext,
+  getLearningOperationsOverview,
   learningCommercePublicStatus,
   listCreatorApplications,
   listLearningCommerceOrders,
@@ -48,6 +56,13 @@ import {
   prepareLearningPrivateAsset,
   resolveLearningPrivateAssetPath,
 } from "../services/learningPrivateAssetService";
+import {
+  appealLearningCreatorViolation,
+  createLearningCreatorViolation,
+  decideLearningCreatorAppeal,
+  listLearningCreatorViolations,
+  rateLearningMaterialOrder,
+} from "../services/learningTrustService";
 
 export const learningCommerceRouter = Router();
 
@@ -270,6 +285,21 @@ learningCommerceRouter.post("/orders/:id/complete", authRequired, async (req, re
   } catch (error) { next(error); }
 });
 
+learningCommerceRouter.put(
+  "/orders/:id/rating",
+  authRequired,
+  validate(learningMaterialRatingSchema),
+  async (req, res, next) => {
+    try {
+      ok(res, await rateLearningMaterialOrder(
+        actor(req, res),
+        routeId(req.params.id, "订单 ID"),
+        req.body,
+      ));
+    } catch (error) { next(error); }
+  },
+);
+
 learningCommerceRouter.post(
   "/orders/:id/cancel",
   authRequired,
@@ -296,6 +326,35 @@ learningCommerceRouter.post(
         actor(req, res),
         routeId(req.params.id, "订单 ID"),
         req.body,
+      ));
+    } catch (error) { next(error); }
+  },
+);
+
+learningCommerceRouter.post(
+  "/orders/:id/issues/:issueId/messages",
+  authRequired,
+  parseSingleImage,
+  async (req, res, next) => {
+    try {
+      const input = learningOrderIssueMessageSchema.parse({
+        content: req.body.content,
+        attachmentKind: req.body.attachmentKind || undefined,
+      });
+      if (!input.content && !req.file) throw Errors.badRequest("请填写沟通内容或上传证据图片");
+      const prepared = req.file
+        ? await prepareLearningPrivateAsset(
+          req.user!.userId,
+          input.attachmentKind,
+          req.file as any,
+        )
+        : undefined;
+      ok(res, await addLearningOrderIssueMessage(
+        actor(req, res),
+        routeId(req.params.id, "订单 ID"),
+        routeId(req.params.issueId, "售后 ID"),
+        { content: input.content },
+        prepared,
       ));
     } catch (error) { next(error); }
   },
@@ -394,6 +453,82 @@ learningCommerceRouter.get(
   },
 );
 
+learningCommerceRouter.get(
+  "/admin/operations",
+  authRequired,
+  staffRequired,
+  async (req, res, next) => {
+    try {
+      ok(res, await getLearningOperationsOverview(actor(req, res)));
+    } catch (error) { next(error); }
+  },
+);
+
+learningCommerceRouter.get(
+  "/creator/violations",
+  authRequired,
+  async (req, res, next) => {
+    try {
+      ok(res, await listLearningCreatorViolations(actor(req, res)));
+    } catch (error) { next(error); }
+  },
+);
+
+learningCommerceRouter.post(
+  "/creator/violations/:id/appeal",
+  authRequired,
+  validate(learningCreatorAppealSchema),
+  async (req, res, next) => {
+    try {
+      ok(res, await appealLearningCreatorViolation(
+        actor(req, res),
+        routeId(req.params.id, "违规记录 ID"),
+        req.body.content,
+      ));
+    } catch (error) { next(error); }
+  },
+);
+
+learningCommerceRouter.get(
+  "/admin/creator-violations",
+  authRequired,
+  staffRequired,
+  async (req, res, next) => {
+    try {
+      const creatorId = positiveRouteInteger(req.query.creatorId);
+      ok(res, await listLearningCreatorViolations(actor(req, res), creatorId || undefined));
+    } catch (error) { next(error); }
+  },
+);
+
+learningCommerceRouter.post(
+  "/admin/creator-violations",
+  authRequired,
+  staffRequired,
+  validate(learningCreatorViolationSchema),
+  async (req, res, next) => {
+    try {
+      ok(res, await createLearningCreatorViolation(actor(req, res), req.body));
+    } catch (error) { next(error); }
+  },
+);
+
+learningCommerceRouter.patch(
+  "/admin/creator-appeals/:id",
+  authRequired,
+  staffRequired,
+  validate(learningCreatorAppealDecisionSchema),
+  async (req, res, next) => {
+    try {
+      ok(res, await decideLearningCreatorAppeal(
+        actor(req, res),
+        routeId(req.params.id, "申诉 ID"),
+        req.body,
+      ));
+    } catch (error) { next(error); }
+  },
+);
+
 learningCommerceRouter.patch(
   "/admin/orders/:orderId/issues/:issueId",
   authRequired,
@@ -406,6 +541,21 @@ learningCommerceRouter.patch(
         routeId(req.params.orderId, "订单 ID"),
         routeId(req.params.issueId, "售后 ID"),
         req.body,
+      ));
+    } catch (error) { next(error); }
+  },
+);
+
+learningCommerceRouter.post(
+  "/admin/orders/:orderId/issues/:issueId/claim",
+  authRequired,
+  staffRequired,
+  async (req, res, next) => {
+    try {
+      ok(res, await claimLearningOrderIssue(
+        actor(req, res),
+        routeId(req.params.orderId, "订单 ID"),
+        routeId(req.params.issueId, "售后 ID"),
       ));
     } catch (error) { next(error); }
   },

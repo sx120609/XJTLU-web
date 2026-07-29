@@ -19,7 +19,7 @@
       title="平台不代收资料款。买家直接向你的收款码付款；你核对到账后确认，系统才会解锁完整资料。"
     />
 
-    <section v-if="!activeCreator" class="cpu-card application-card">
+    <section v-if="!context.profile" class="cpu-card application-card">
       <div class="section-head">
         <div>
           <h2>创作者认证</h2>
@@ -57,22 +57,28 @@
     </section>
 
     <template v-else>
+      <el-alert v-if="!activeCreator" type="error" :closable="false" show-icon :title="`创作者权限当前为 ${context.profile?.status}：${context.profile?.statusReason || '请查看治理记录并按需申诉'}`" />
       <section class="status-grid">
         <article class="cpu-card">
-          <span>认证状态</span>
-          <strong>已认证</strong>
-          <small>{{ formatDate(context.profile?.certifiedAt) }}</small>
+          <span>创作者等级</span>
+          <strong>{{ levelLabel }}</strong>
+          <small>质量分 {{ context.profile?.qualityScore ?? 60 }}</small>
         </article>
         <article class="cpu-card">
-          <span>有效收款方式</span>
-          <strong>{{ activeMethods.length }}</strong>
-          <small>至少保留一种才能提交审核</small>
+          <span>成交评分</span>
+          <strong>{{ context.profile?.averageRatingBps ? (context.profile.averageRatingBps/100).toFixed(2) : "—" }}</strong>
+          <small>{{ context.profile?.ratingCount || 0 }} 条已购评价</small>
         </article>
         <article class="cpu-card">
-          <span>平台服务费</span>
-          <strong>¥0</strong>
-          <small>资料款由买家直接支付给创作者</small>
+          <span>完成订单</span>
+          <strong>{{ context.profile?.completedOrderCount || 0 }}</strong>
+          <small>退款 {{ ((context.profile?.refundRateBps || 0)/100).toFixed(2) }}% · 争议 {{ ((context.profile?.disputeRateBps || 0)/100).toFixed(2) }}%</small>
         </article>
+      </section>
+
+      <section v-if="violations.length" class="cpu-card collection-card">
+        <div class="section-head"><div><h2>治理记录与申诉</h2><p>违规动作、证据和处理状态在这里留痕；申诉通过不会自动恢复已下架资料，需重新审核。</p></div></div>
+        <div class="violation-list"><article v-for="row in violations" :key="row.id"><div><el-tag :type="row.status==='active'?'danger':'info'">{{ row.status }}</el-tag><b>{{ row.reason }}</b><span>{{ row.action }} · {{ formatDate(row.createdAt) }}</span></div><el-button v-if="row.status==='active'&&!row.appeals.some(item=>item.status==='pending')" size="small" @click="appealViolation=row">发起申诉</el-button><small v-else-if="row.appeals.length">申诉：{{ row.appeals[0].status }} {{ row.appeals[0].handleNote }}</small></article></div>
       </section>
 
       <section class="cpu-card collection-card">
@@ -122,6 +128,7 @@
         <el-button type="primary" :loading="savingMethod" @click="saveMethod">保存收款码</el-button>
       </template>
     </el-dialog>
+    <el-dialog v-model="appealDialog" title="申诉治理记录" width="520px"><el-input v-model="appealContent" type="textarea" :rows="6" maxlength="3000" show-word-limit placeholder="说明异议、事实依据和希望复核的内容（至少 10 字）" /><template #footer><el-button @click="appealViolation=null">取消</el-button><el-button type="primary" @click="submitAppeal">提交申诉</el-button></template></el-dialog>
   </div>
 </template>
 
@@ -133,6 +140,7 @@ import {
   learningMaterialsApi,
   type LearningCollectionProvider,
   type LearningCreatorContext,
+  type LearningCreatorViolation,
 } from "@/api/learningMaterials";
 
 const router = useRouter();
@@ -149,6 +157,9 @@ const methodForm = reactive<{ provider: LearningCollectionProvider; label: strin
   image: null,
 });
 const methodPreview = ref("");
+const violations = ref<LearningCreatorViolation[]>([]);
+const appealContent = ref("");
+const appealViolation = ref<LearningCreatorViolation | null>(null);
 
 const activeCreator = computed(() => context.profile?.status === "active");
 const activeMethods = computed(() => context.profile?.collectionMethods.filter((row) => row.status === "active") || []);
@@ -162,6 +173,8 @@ const applicationStatusLabels: Record<string, string> = {
 };
 const applicationStatus = computed(() => applicationStatusLabels[context.application?.status || ""] || "未申请");
 const applicationTagType = computed(() => applicationPending.value ? "warning" : context.application?.status === "rejected" ? "danger" : "info");
+const levelLabel = computed(() => ({ certified: "认证", reliable: "可信", excellent: "卓越" }[context.profile?.level || "certified"]));
+const appealDialog = computed({ get: () => Boolean(appealViolation.value), set: (value) => { if (!value) appealViolation.value = null; } });
 
 onMounted(load);
 onBeforeUnmount(clearPreview);
@@ -169,7 +182,12 @@ onBeforeUnmount(clearPreview);
 async function load() {
   loading.value = true;
   try {
-    Object.assign(context, await learningMaterialsApi.creatorContext({ suppressErrorMessage: true }));
+    const [nextContext, nextViolations] = await Promise.all([
+      learningMaterialsApi.creatorContext({ suppressErrorMessage: true }),
+      learningMaterialsApi.creatorViolations({ suppressErrorMessage: true }),
+    ]);
+    Object.assign(context, nextContext);
+    violations.value = nextViolations;
   } finally {
     loading.value = false;
   }
@@ -235,6 +253,16 @@ async function disableMethod(id: number) {
   await load();
 }
 
+async function submitAppeal() {
+  if (!appealViolation.value) return;
+  if (appealContent.value.trim().length < 10) return ElMessage.warning("请填写至少 10 个字符的申诉说明");
+  await learningMaterialsApi.appealCreatorViolation(appealViolation.value.id, appealContent.value.trim());
+  ElMessage.success("申诉已提交，等待运营人员复核");
+  appealViolation.value = null;
+  appealContent.value = "";
+  await load();
+}
+
 function providerLabel(provider: LearningCollectionProvider) {
   return provider === "wechat" ? "微信支付" : "支付宝";
 }
@@ -246,4 +274,5 @@ function formatDate(value?: string | null) {
 
 <style scoped>
 .creator-page{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:18px}.page-head,.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.page-head span{color:#a21caf;font-size:10px;font-weight:800;letter-spacing:.16em}.page-head h1{margin:6px 0;font-size:30px}.page-head p,.section-head p{margin:0;color:var(--cpu-text-secondary);font-size:12px}.head-actions{display:flex;gap:9px}.application-card,.collection-card{padding:24px}.section-head{margin-bottom:18px}.section-head h2{margin:0 0 5px}.application-form{max-width:760px}.form-actions{margin-top:18px}.pending-copy{display:flex;flex-direction:column;gap:8px;padding:25px;border-radius:12px;background:var(--cpu-surface-soft)}.pending-copy span{color:var(--cpu-text-secondary);font-size:12px}.status-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.status-grid article{display:flex;flex-direction:column;padding:20px}.status-grid span,.status-grid small{color:var(--cpu-text-secondary);font-size:11px}.status-grid strong{margin:6px 0;color:#a21caf;font-size:28px}.method-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.method-grid article{display:grid;grid-template-columns:92px 1fr auto;align-items:center;gap:14px;padding:14px;border:1px solid var(--cpu-border-soft);border-radius:13px}.method-grid article.disabled{opacity:.58}.method-grid img{width:92px;height:92px;border-radius:10px;object-fit:contain;background:#fff}.method-grid article>div{display:flex;align-items:flex-start;flex-direction:column;gap:6px}.method-grid b{font-size:13px}.method-grid span{color:var(--cpu-text-secondary);font-size:10px}.image-picker{display:grid;place-items:center;min-height:220px;border:1px dashed #c084fc;border-radius:12px;background:#fdf4ff;cursor:pointer}.image-picker input{display:none}.image-picker img{max-width:210px;max-height:210px;object-fit:contain}.image-picker span{color:#86198f;font-size:12px}@media(max-width:760px){.page-head,.section-head{flex-direction:column}.head-actions{width:100%}.head-actions .el-button{flex:1}.status-grid,.method-grid{grid-template-columns:1fr}.method-grid article{grid-template-columns:76px 1fr auto}.method-grid img{width:76px;height:76px}}
+.violation-list{display:flex;flex-direction:column;gap:8px}.violation-list article{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px;border:1px solid var(--cpu-border-soft);border-radius:10px}.violation-list article>div{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.violation-list span,.violation-list small{color:var(--cpu-text-secondary);font-size:10px}
 </style>

@@ -3,6 +3,7 @@ import path from "node:path";
 import { rm } from "node:fs/promises";
 import { prisma } from "../src/prisma";
 import { signToken } from "../src/utils/jwt";
+import { PDFDocument } from "pdf-lib";
 
 const baseUrl = String(process.env.MATERIALS_SMOKE_URL || "http://127.0.0.1:3011/api").replace(/\/$/, "");
 const runId = `${Date.now()}_${Math.floor(Math.random() * 100_000)}`;
@@ -11,6 +12,15 @@ const pngBytes = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=",
   "base64",
 );
+
+async function createSmokePdf() {
+  const document = await PDFDocument.create();
+  for (let index = 0; index < 4; index += 1) {
+    const page = document.addPage([480, 680]);
+    page.drawText(`Kaopu paid learning materials smoke page ${index + 1}`, { x: 30, y: 620, size: 16 });
+  }
+  return Buffer.from(await document.save());
+}
 
 type SmokeUser = {
   id: number;
@@ -219,8 +229,8 @@ async function main() {
           courseCode: "SMOKE101",
           applicableSemester: "Y1S1",
           typeId: approvedType.id,
-          fileFormats: ["TXT"],
-          pageCount: 1,
+          fileFormats: ["PDF"],
+          pageCount: 4,
           versionLabel: "v1.0 smoke",
           language: "zh-CN",
           originalityKind: "original",
@@ -234,13 +244,11 @@ async function main() {
     assert.equal(created.priceCents, 990);
 
     const versionForm = new FormData();
-    versionForm.append(
-      "files",
-      new Blob(["Kaopu paid learning materials smoke test"], { type: "text/plain" }),
-      "smoke-notes.txt",
-    );
+    const smokePdf = await createSmokePdf();
+    versionForm.append("files", new Blob([smokePdf], { type: "application/pdf" }), "smoke-notes.pdf");
     versionForm.append("label", "v1.0 smoke");
     versionForm.append("releaseNotes", "付费学习资料迭代一全链路冒烟测试");
+    versionForm.append("previewRanges", JSON.stringify([{ start: 1, end: 2 }]));
     const version = await apiCall(sellerToken, `/market/materials/items/${itemId}/versions`, {
       method: "POST",
       body: versionForm,
@@ -271,6 +279,9 @@ async function main() {
 
     const publicItems = await apiCall(outsiderToken, "/market/materials/items?courseCode=SMOKE101");
     assert(publicItems.list.some((row: any) => row.id === itemId));
+    const sampleResponse = await fetch(`${baseUrl}/market/materials/items/${itemId}/files/${version.files[0].id}/sample`);
+    assert.equal(sampleResponse.status, 200);
+    assert.equal((await PDFDocument.load(await sampleResponse.arrayBuffer())).getPageCount(), 2);
 
     const orderKey = `create-order-${runId}`;
     const order = await apiCall(buyerToken, `/market/materials/commerce/items/${itemId}/orders`, {
@@ -321,6 +332,12 @@ async function main() {
         detail: "售后未结案时不允许买家确认完成订单。",
       }),
     });
+    const issueMessage = await uploadImage(
+      buyerToken,
+      `/market/materials/commerce/orders/${order.id}/issues/${issue.id}/messages`,
+      { content: "补充上传问题截图作为证据。", attachmentKind: "dispute_attachment" },
+    );
+    assert.equal(issueMessage.attachment.kind, "dispute_attachment");
     await apiCall(
       buyerToken,
       `/market/materials/commerce/orders/${order.id}/complete`,
@@ -334,7 +351,7 @@ async function main() {
       `/market/materials/commerce/admin/orders/${order.id}/issues/${issue.id}`,
       {
         method: "PATCH",
-        body: JSON.stringify({ action: "resolve", resolution: "已核验资料内容，问题完成处理。" }),
+        body: JSON.stringify({ action: "resolve", resolution: "已核验资料内容，问题完成处理。", responsibility: "no_fault" }),
       },
     );
     assert.equal(issueResolvedOrder.issues.find((row: any) => row.id === issue.id)?.status, "resolved");
@@ -345,12 +362,27 @@ async function main() {
       { method: "POST", headers: idempotencyHeaders("complete-order"), body: "{}" },
     );
     assert.equal(completed.status, "completed");
+    const rating = await apiCall(buyerToken, `/market/materials/commerce/orders/${order.id}/rating`, {
+      method: "PUT",
+      body: JSON.stringify({
+        accuracy: 5,
+        usefulness: 5,
+        descriptionMatch: 5,
+        fileQuality: 5,
+        content: "冒烟测试已购评价。",
+      }),
+    });
+    assert.equal(rating.status, "published");
     const download = await fetch(
       `${baseUrl}/market/materials/files/${completed.version.files[0].id}/download`,
       { headers: { Authorization: `Bearer ${buyerToken}` } },
     );
     assert.equal(download.status, 200);
-    assert.equal(await download.text(), "Kaopu paid learning materials smoke test");
+    assert.equal((await PDFDocument.load(await download.arrayBuffer())).getPageCount(), 4);
+    const accessAudit = await prisma.learningMaterialAccessEvent.findFirst({
+      where: { orderId: completed.orderId, fileId: completed.version.files[0].id, action: "download" },
+    });
+    assert(accessAudit?.watermarkCode, "买家 PDF 下载必须写入水印追踪码和访问日志");
 
     const refundOrder = await apiCall(
       refundBuyerToken,
@@ -386,6 +418,12 @@ async function main() {
         }),
       },
     );
+    const refundProofMessage = await uploadImage(
+      adminToken,
+      `/market/materials/commerce/orders/${refundOrder.id}/issues/${refundIssue.id}/messages`,
+      { content: "运营核验：线下退款凭证。", attachmentKind: "refund_evidence" },
+    );
+    assert.equal(refundProofMessage.attachment.kind, "refund_evidence");
     const refunded = await apiCall(
       adminToken,
       `/market/materials/commerce/admin/orders/${refundOrder.id}/issues/${refundIssue.id}`,
@@ -395,6 +433,7 @@ async function main() {
           action: "record_refund",
           resolution: "已核验线下全额退款完成。",
           refundAmountCents: 990,
+          responsibility: "creator",
         }),
       },
     );
@@ -413,11 +452,16 @@ async function main() {
         "private-collection-qr",
         "paid-price",
         "private-version-upload",
+        "real-pdf-sample",
+        "licensed-pdf-watermark",
+        "per-access-audit",
         "material-review",
         "public-listing",
         "idempotent-order",
         "private-qr-authorization",
         "payment-evidence",
+        "verified-purchase-rating",
+        "issue-evidence-chain",
         "seller-confirmation",
         "delivery-access",
         "issue-completion-guard",

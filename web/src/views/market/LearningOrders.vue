@@ -106,11 +106,11 @@
             <el-button @click="router.push({ name: 'market-learning-material-library' })">进入资料库</el-button>
           </header>
           <div>
-            <a v-for="file in selected.version.files" :key="file.id" :href="learningMaterialsApi.downloadUrl(file.id)">
+            <article v-for="file in selected.version.files" :key="file.id">
               <b>{{ file.originalName }}</b>
               <span>{{ file.format }} · {{ formatBytes(file.fileSize) }}</span>
-              <em>下载</em>
-            </a>
+              <div><a v-if="file.format==='PDF'" :href="learningMaterialsApi.viewUrl(file.id)" target="_blank" rel="noopener">带水印阅读</a><a :href="learningMaterialsApi.downloadUrl(file.id)">下载</a></div>
+            </article>
           </div>
         </section>
 
@@ -118,7 +118,7 @@
           <h3>售后与争议</h3>
           <article v-for="issue in selected.issues" :key="issue.id">
             <el-tag :type="['resolved', 'closed', 'refund_recorded'].includes(issue.status) ? 'success' : 'warning'">{{ issue.status }}</el-tag>
-            <div><b>{{ issue.reason }}</b><p>{{ issue.detail }}</p><small v-if="issue.resolution">处理结果：{{ issue.resolution }}</small></div>
+            <div><b>{{ issue.reason }}</b><p>{{ issue.detail }}</p><small v-if="issue.slaDueAt">响应时限：{{ formatDate(issue.slaDueAt) }}<template v-if="issue.overdue"> · 已超时</template></small><div v-if="issue.messages.length" class="issue-thread"><p v-for="message in issue.messages" :key="message.id"><b>{{ message.kind==='staff'?'平台运营':message.sender?.nickname||'订单参与方' }}</b>：{{ message.content }}<a v-if="message.attachment" :href="message.attachment.imageUrl" target="_blank" rel="noopener">查看{{ message.attachment.kind==='refund_evidence'?'退款凭证':'证据' }}</a></p></div><small v-if="issue.resolution">处理结果（{{ responsibilityLabel(issue.responsibility) }}）：{{ issue.resolution }}</small><el-button v-if="!['resolved','closed','refund_recorded'].includes(issue.status)" size="small" text type="primary" @click="openIssueMessage(issue.id)">补充说明 / 证据</el-button></div>
           </article>
         </section>
 
@@ -127,6 +127,7 @@
             <el-button v-if="selected.status === 'pending_payment'" type="primary" @click="evidenceDialog = true">已付款，上传凭证</el-button>
             <el-button v-if="selected.status === 'pending_payment'" @click="cancelOrder">取消订单</el-button>
             <el-button v-if="selected.status === 'delivered'" type="success" @click="completeOrder">确认资料无误</el-button>
+            <el-button v-if="selected.status === 'completed'" type="primary" plain @click="openRating">评价资料</el-button>
           </template>
           <template v-if="(selected.mine.seller || selected.mine.staff) && ['awaiting_seller_confirmation', 'disputed'].includes(selected.status) && latestEvidence?.status === 'submitted'">
             <el-button type="success" @click="confirmEvidence">确认到账并交付</el-button>
@@ -167,11 +168,13 @@
         <el-button type="primary" :loading="submittingEvidence" @click="submitEvidence">提交凭证</el-button>
       </template>
     </el-dialog>
+    <el-dialog v-model="ratingDialog" title="已购资料评价" width="560px"><el-form label-position="left" label-width="100px"><el-form-item label="内容准确"><el-rate v-model="rating.accuracy" /></el-form-item><el-form-item label="学习实用性"><el-rate v-model="rating.usefulness" /></el-form-item><el-form-item label="描述相符"><el-rate v-model="rating.descriptionMatch" /></el-form-item><el-form-item label="文件质量"><el-rate v-model="rating.fileQuality" /></el-form-item><el-form-item label="文字评价"><el-input v-model="rating.content" type="textarea" :rows="4" maxlength="2000" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="ratingDialog=false">取消</el-button><el-button type="primary" @click="submitRating">发布已购评价</el-button></template></el-dialog>
+    <el-dialog v-model="issueMessageDialog" title="补充售后说明与证据" width="520px"><el-input v-model="issueMessage" type="textarea" :rows="4" maxlength="2000" show-word-limit placeholder="说明事实、时间和诉求" /><el-select v-if="selected?.mine.seller||selected?.mine.staff" v-model="issueAttachmentKind" style="width:100%;margin-top:12px"><el-option label="问题证据" value="dispute_attachment" /><el-option label="已退款凭证" value="refund_evidence" /></el-select><label class="issue-file-picker"><input type="file" accept="image/png,image/jpeg,image/webp" @change="pickIssueEvidence" /><span>{{ issueEvidence?.name || "选择证据图片（可选，最大 5MB）" }}</span></label><template #footer><el-button @click="issueMessageDialog=false">取消</el-button><el-button type="primary" @click="sendIssueMessage">提交补充材料</el-button></template></el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -192,6 +195,13 @@ const evidenceFile = ref<File | null>(null);
 const evidencePreview = ref("");
 const evidenceNote = ref("");
 const submittingEvidence = ref(false);
+const ratingDialog = ref(false);
+const rating = reactive({ accuracy: 5, usefulness: 5, descriptionMatch: 5, fileQuality: 5, content: "" });
+const issueMessageDialog = ref(false);
+const issueMessageId = ref(0);
+const issueMessage = ref("");
+const issueEvidence = ref<File | null>(null);
+const issueAttachmentKind = ref<"dispute_attachment" | "refund_evidence">("dispute_attachment");
 
 const latestEvidence = computed<LearningPaymentEvidence | null>(() => selected.value?.paymentEvidence?.[0] || null);
 const canDownload = computed(() => Boolean(selected.value && ["delivered", "completed"].includes(selected.value.status)));
@@ -335,6 +345,57 @@ async function openIssue() {
   await refreshSelected();
 }
 
+function openRating() {
+  const current = selected.value?.rating;
+  Object.assign(rating, {
+    accuracy: current?.accuracy ?? 5,
+    usefulness: current?.usefulness ?? 5,
+    descriptionMatch: current?.descriptionMatch ?? 5,
+    fileQuality: current?.fileQuality ?? 5,
+    content: current?.content ?? "",
+  });
+  ratingDialog.value = true;
+}
+
+async function submitRating() {
+  if (!selected.value) return;
+  const result = await learningMaterialsApi.rateOrder(selected.value.id, rating);
+  ElMessage.success(result.status === "published" ? "已发布真实购买评价" : "评价已提交，正在等待内容复核");
+  ratingDialog.value = false;
+  await refreshSelected();
+}
+
+function openIssueMessage(issueId: number) {
+  issueMessageId.value = issueId;
+  issueMessage.value = "";
+  issueEvidence.value = null;
+  issueAttachmentKind.value = "dispute_attachment";
+  issueMessageDialog.value = true;
+}
+
+function pickIssueEvidence(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0] || null;
+  if (file && file.size > 5 * 1024 * 1024) return ElMessage.warning("证据图片不能超过 5MB");
+  issueEvidence.value = file;
+}
+
+async function sendIssueMessage() {
+  if (!selected.value || !issueMessageId.value) return;
+  if (!issueMessage.value.trim() && !issueEvidence.value) return ElMessage.warning("请填写说明或选择证据图片");
+  await learningMaterialsApi.sendOrderIssueMessage(selected.value.id, issueMessageId.value, {
+    content: issueMessage.value.trim(),
+    image: issueEvidence.value || undefined,
+    attachmentKind: issueAttachmentKind.value,
+  });
+  ElMessage.success("补充材料已进入售后证据链");
+  issueMessageDialog.value = false;
+  await refreshSelected();
+}
+
+function responsibilityLabel(value: string) {
+  return { buyer: "买家责任", creator: "创作者责任", platform: "平台责任", shared: "双方责任", no_fault: "无责处理", unassigned: "待认定" }[value] || value;
+}
+
 function statusLabel(status: LearningCommerceOrderStatus) {
   return {
     pending_payment: "待付款",
@@ -376,6 +437,7 @@ function eventLabel(type: string) {
     ORDER_CANCELLED: "订单已取消",
     PAYMENT_TIMEOUT: "订单付款超时",
     ISSUE_OPENED: "已发起售后或争议",
+    ISSUE_MESSAGE_ADDED: "售后记录已补充说明或证据",
     ISSUE_RESOLVED: "售后问题已处理",
     ISSUE_CLOSED: "售后记录已关闭",
     REFUND_RECORDED: "管理员已登记退款",
@@ -394,4 +456,5 @@ function formatBytes(value: number) {
 
 <style scoped>
 .orders-page{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:15px}.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.page-head>div:last-child{display:flex;gap:8px}.page-head span{color:#a21caf;font-size:10px;font-weight:800;letter-spacing:.17em}.page-head h1{margin:6px 0;font-size:30px}.page-head p{margin:0;color:var(--cpu-text-secondary);font-size:12px}.order-layout{display:grid;grid-template-columns:390px 1fr;align-items:start;gap:15px}.order-list{display:flex;flex-direction:column;gap:9px}.order-list article{display:grid;grid-template-columns:68px 1fr auto;align-items:center;gap:10px;padding:10px;cursor:pointer}.order-list article.active{border-color:#c084fc;box-shadow:0 0 0 2px rgba(168,85,247,.08)}.order-list img,.cover-fallback{width:68px;height:68px;border-radius:9px;object-fit:cover}.cover-fallback{display:grid;place-items:center;color:#86198f;background:#fae8ff;font-size:10px;font-weight:800}.order-list article>div:nth-child(2){display:flex;min-width:0;flex-direction:column;gap:4px}.order-list span,.order-list small{color:var(--cpu-text-secondary);font-size:9px}.order-list b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.order-detail{display:flex;flex-direction:column;gap:22px;padding:24px}.order-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.order-summary span{color:#a21caf;font-size:10px;font-weight:700}.order-summary h2{margin:6px 0}.order-summary p{margin:0;color:var(--cpu-text-secondary);font-size:11px}.amount{display:flex;align-items:flex-end;flex-direction:column;gap:4px}.amount small{color:var(--cpu-text-secondary)}.amount strong{color:#be185d;font-size:28px}.payment-panel,.evidence-panel{display:grid;grid-template-columns:1fr 230px;gap:24px;padding:20px;border:1px solid #f0abfc;border-radius:14px;background:color-mix(in srgb,#fdf4ff 70%,var(--cpu-card))}.payment-panel h3,.evidence-panel h3,.files-panel h3,.issues-panel h3,.timeline h3{margin:0 0 6px}.payment-panel p,.evidence-panel p,.files-panel p{margin:0;color:var(--cpu-text-secondary);font-size:11px}.payment-panel>img,.evidence-panel>img{width:230px;height:230px;border-radius:12px;object-fit:contain;background:#fff}.payment-panel dl,.evidence-panel dl{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}.payment-panel dl div,.evidence-panel dl div{display:flex;flex-direction:column;gap:4px}.payment-panel dt,.evidence-panel dt{color:var(--cpu-text-secondary);font-size:9px}.payment-panel dd,.evidence-panel dd{margin:0;font-size:12px;font-weight:700}.files-panel header{display:flex;align-items:flex-start;justify-content:space-between}.files-panel>div{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}.files-panel a{display:grid;grid-template-columns:1fr auto;gap:3px 9px;padding:11px;border:1px solid var(--cpu-border-soft);border-radius:9px;color:inherit;text-decoration:none}.files-panel a b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.files-panel a span{color:var(--cpu-text-secondary);font-size:9px}.files-panel a em{grid-column:2;grid-row:1/3;align-self:center;color:#a21caf;font-size:10px;font-style:normal}.issues-panel article{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--cpu-border-soft)}.issues-panel article div{display:flex;flex-direction:column;gap:3px}.issues-panel p{margin:0;color:var(--cpu-text-secondary);font-size:11px}.issues-panel small{color:#a21caf}.order-actions{display:flex;flex-wrap:wrap;gap:8px;padding-top:18px;border-top:1px solid var(--cpu-border-soft)}.timeline{padding-top:5px}.detail-empty{min-height:400px}.evidence-picker{display:grid;place-items:center;min-height:220px;border:1px dashed #c084fc;border-radius:12px;background:#fdf4ff;cursor:pointer}.evidence-picker input{display:none}.evidence-picker img{max-width:210px;max-height:210px;object-fit:contain}.evidence-picker span{color:#86198f;font-size:12px}@media(max-width:900px){.order-layout{grid-template-columns:1fr}.order-list{display:grid;grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.page-head,.order-summary,.files-panel header{flex-direction:column}.page-head>div:last-child{width:100%}.page-head .el-button{flex:1}.order-list{grid-template-columns:1fr}.order-detail{padding:16px}.payment-panel,.evidence-panel{grid-template-columns:1fr}.payment-panel>img,.evidence-panel>img{width:100%;height:auto;max-height:320px}.payment-panel dl,.evidence-panel dl,.files-panel>div{grid-template-columns:1fr}.amount{align-items:flex-start}}
+.files-panel>div>article{display:grid;grid-template-columns:1fr auto;gap:3px 9px;padding:11px;border:1px solid var(--cpu-border-soft);border-radius:9px}.files-panel>div>article>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.files-panel>div>article>span{color:var(--cpu-text-secondary);font-size:9px}.files-panel>div>article>div{grid-column:2;grid-row:1/3;display:flex;align-items:center;gap:8px}.files-panel>div>article a{padding:0;border:0;color:#a21caf;font-size:10px}.issue-thread{margin:8px 0;padding:8px;border-radius:8px;background:var(--cpu-surface-soft)}.issue-thread p{margin:3px 0!important}.issue-thread a{margin-left:5px;color:#a21caf}.issue-file-picker{display:block;margin-top:12px;padding:14px;border:1px dashed #c084fc;border-radius:10px;color:#86198f;cursor:pointer}.issue-file-picker input{display:none}
 </style>

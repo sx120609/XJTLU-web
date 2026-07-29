@@ -42,6 +42,7 @@ export function verifyFileCollectCompletionToken(
   }
   if (
     received.length !== expected.length
+    || received.toString("base64url") !== signature
     || !timingSafeEqual(received, expected)
   ) {
     return false;

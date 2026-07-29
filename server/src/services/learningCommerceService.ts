@@ -16,6 +16,8 @@ import { MARKET_PUBLIC_USER_SELECT } from "./marketPublicUser";
 import { notifyMarketUser } from "./marketNotificationService";
 import {
   LEARNING_COMPLETION_DUE_MS,
+  LEARNING_ISSUE_SLA_MS,
+  LEARNING_REVIEW_SLA_MS,
   LEARNING_MATERIAL_MAX_PRICE_CENTS,
   LEARNING_MATERIAL_MIN_PRICE_CENTS,
   LEARNING_PAYMENT_DUE_MS,
@@ -33,6 +35,10 @@ import {
   parseDeclaredFormats,
   publishedMaterialProfileErrors,
 } from "./learningMaterials";
+import {
+  reconcileLearningCreatorGovernance,
+  refreshLearningCreatorMetrics,
+} from "./learningTrustService";
 
 const CATEGORY = "digital_goods";
 const COMMAND_TTL_MS = 24 * 60 * 60 * 1000;
@@ -83,6 +89,9 @@ const commerceOrderInclude = Prisma.validator<Prisma.LearningCommerceOrderInclud
           fileSize: true,
           format: true,
           pageCount: true,
+          previewEnabled: true,
+          previewPageStart: true,
+          previewPageEnd: true,
           status: true,
           createdAt: true,
         },
@@ -142,10 +151,26 @@ const commerceOrderInclude = Prisma.validator<Prisma.LearningCommerceOrderInclud
       resolvedAt: true,
       requestedById: true,
       resolvedById: true,
+      responsibility: true,
+      slaDueAt: true,
+      assignedToId: true,
+      assignedAt: true,
+      firstRespondedAt: true,
+      refundEvidenceUnavailable: true,
       createdAt: true,
       updatedAt: true,
+      assignedTo: { select: publicUserSelect },
+      messages: {
+        include: {
+          sender: { select: publicUserSelect },
+          attachment: { select: { id: true, kind: true, originalName: true, mimeType: true, fileSize: true } },
+        },
+        orderBy: { createdAt: "asc" as const },
+        take: 300,
+      },
     },
   },
+  rating: true,
 });
 
 function stableJson(value: unknown): string {
@@ -366,7 +391,23 @@ function serializeCommerceOrder(row: any, actor: LearningCommerceActor) {
         : undefined,
     })),
     events: row.events,
-    issues: row.issues,
+    issues: row.issues.map((issue: any) => ({
+      ...issue,
+      overdue: Boolean(
+        issue.slaDueAt
+        && new Date(issue.slaDueAt).getTime() < Date.now()
+        && !issue.firstRespondedAt
+        && ACTIVE_ISSUE_STATUSES.includes(issue.status),
+      ),
+      messages: issue.messages?.map((message: any) => ({
+        ...message,
+        attachment: message.attachment ? {
+          ...message.attachment,
+          imageUrl: `/api/market/materials/commerce/private-assets/${message.attachment.id}`,
+        } : null,
+      })) || [],
+    })),
+    rating: row.rating || null,
     mine: {
       buyer: row.order.buyerId === actor.userId,
       seller: row.order.sellerId === actor.userId,
@@ -412,6 +453,12 @@ export function learningCommercePublicStatus() {
 
 export async function getLearningCreatorContext(actor: LearningCommerceActor) {
   await requireVerifiedMarketUser(actor.userId, actor.role, "publish");
+  await reconcileLearningCreatorGovernance(actor.userId);
+  const existingProfile = await prisma.learningCreatorProfile.findUnique({
+    where: { userId: actor.userId },
+    select: { id: true },
+  });
+  if (existingProfile) await refreshLearningCreatorMetrics(actor.userId);
   const [profile, application] = await Promise.all([
     prisma.learningCreatorProfile.findUnique({
       where: { userId: actor.userId },
@@ -459,6 +506,7 @@ export async function submitLearningCreatorApplication(
   },
 ) {
   await requireVerifiedMarketUser(actor.userId, actor.role, "publish");
+  await reconcileLearningCreatorGovernance(actor.userId);
   return prisma.$transaction(async (tx) => {
     const lockKey = BigInt(9_136) * 4_294_967_296n + BigInt(actor.userId);
     await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(${lockKey})`;
@@ -466,6 +514,9 @@ export async function submitLearningCreatorApplication(
       where: { userId: actor.userId },
     });
     if (activeProfile?.status === "active") throw Errors.conflict("你已经是认证创作者");
+    if (activeProfile) {
+      throw Errors.forbidden("当前创作者资格处于治理限制中，请先在创作者中心查看记录并发起申诉");
+    }
     const pending = await tx.learningCreatorApplication.findFirst({
       where: { userId: actor.userId, status: { in: ["submitted", "reviewing"] } },
     });
@@ -678,6 +729,17 @@ export async function submitMaterialVersionReview(
     });
     if (!version || version.profileId !== item.learningMaterial.id) throw Errors.notFound("资料版本不存在");
     if (!version.files.some((file) => file.status === "active")) throw Errors.badRequest("该版本没有可交付文件");
+    const activePdfFiles = version.files.filter((file) => file.status === "active" && file.format === "PDF");
+    if (!activePdfFiles.length) {
+      throw Errors.badRequest("V1 付费资料须至少包含一份可在线阅读的 PDF");
+    }
+    if (!activePdfFiles.some((file) => (
+      file.previewEnabled
+      && file.previewPageStart
+      && file.previewPageEnd
+    ))) {
+      throw Errors.badRequest("提交审核前须为至少一份 PDF 配置真实试读页");
+    }
     const pending = await tx.learningMaterialReview.findFirst({
       where: { versionId, status: { in: ["submitted", "reviewing"] } },
     });
@@ -723,6 +785,9 @@ export async function listMaterialReviews(status?: string) {
               format: true,
               fileSize: true,
               pageCount: true,
+              previewEnabled: true,
+              previewPageStart: true,
+              previewPageEnd: true,
               status: true,
             },
           },
@@ -1335,6 +1400,8 @@ export async function completeLearningCommerceOrder(
       return serializeCommerceOrder(updated, actor);
     },
   );
+  const completed: any = command.value;
+  await refreshLearningCreatorMetrics(completed.order.sellerId);
   return command.value;
 }
 
@@ -1428,6 +1495,15 @@ export async function openLearningOrderIssue(
         reason: input.reason,
         detail: input.detail,
         status: input.type === "refund" ? "refund_requested" : "open",
+        slaDueAt: new Date(Date.now() + LEARNING_ISSUE_SLA_MS),
+      },
+    });
+    await tx.learningOrderIssueMessage.create({
+      data: {
+        issueId: created.id,
+        senderId: actor.userId,
+        kind: ["admin", "mod"].includes(actor.role) ? "staff" : "user",
+        content: input.detail,
       },
     });
     const shouldDispute = row.status === "awaiting_seller_confirmation"
@@ -1467,6 +1543,111 @@ export async function openLearningOrderIssue(
   return issue;
 }
 
+export async function addLearningOrderIssueMessage(
+  actor: LearningCommerceActor,
+  commerceOrderId: number,
+  issueId: number,
+  input: { content: string },
+  prepared?: PreparedLearningPrivateAsset,
+) {
+  try {
+    await requireVerifiedMarketUser(actor.userId, actor.role);
+    const current = await findCommerceOrderOrThrow(prisma, commerceOrderId);
+    ensureOrderParty(current, actor);
+    const isStaff = ["admin", "mod"].includes(actor.role);
+    const isSeller = current.order.sellerId === actor.userId;
+    if (prepared?.data.kind === "refund_evidence" && !isStaff && !isSeller) {
+      throw Errors.forbidden("只有卖家或运营人员可以上传退款凭证");
+    }
+    const message = await prisma.$transaction(async (tx) => {
+      await acquireMarketOrderLock(tx, current.orderId);
+      const row = await findCommerceOrderOrThrow(tx, commerceOrderId);
+      ensureOrderParty(row, actor);
+      const issue = await tx.learningOrderIssue.findFirst({
+        where: { id: issueId, commerceOrderId, status: { in: [...ACTIVE_ISSUE_STATUSES] } },
+      });
+      if (!issue) throw Errors.conflict("售后记录不存在或已经关闭");
+      const asset = prepared
+        ? await tx.learningPrivateAsset.create({ data: prepared.data })
+        : null;
+      const now = new Date();
+      const created = await tx.learningOrderIssueMessage.create({
+        data: {
+          issueId,
+          senderId: actor.userId,
+          kind: isStaff ? "staff" : "user",
+          content: input.content,
+          attachmentAssetId: asset?.id || null,
+        },
+        include: {
+          sender: { select: publicUserSelect },
+          attachment: { select: { id: true, kind: true, originalName: true, mimeType: true, fileSize: true } },
+        },
+      });
+      await tx.learningOrderIssue.update({
+        where: { id: issueId },
+        data: isStaff
+          ? {
+            assignedToId: issue.assignedToId || actor.userId,
+            assignedAt: issue.assignedAt || now,
+            firstRespondedAt: issue.firstRespondedAt || now,
+          }
+          : {
+            status: issue.type === "refund"
+              ? "refund_requested"
+              : row.order.buyerId === actor.userId ? "waiting_seller" : "waiting_buyer",
+          },
+      });
+      await appendOrderEvents(tx, commerceOrderId, [{
+        type: "ISSUE_MESSAGE_ADDED",
+        actorId: actor.userId,
+        fromStatus: row.status,
+        toStatus: row.status,
+        requestId: actor.requestId,
+        detail: {
+          issueId,
+          messageId: created.id,
+          attachmentKind: asset?.kind || null,
+        },
+      }]);
+      return created;
+    });
+    return {
+      ...message,
+      attachment: message.attachment ? {
+        ...message.attachment,
+        imageUrl: `/api/market/materials/commerce/private-assets/${message.attachment.id}`,
+      } : null,
+    };
+  } catch (error) {
+    if (prepared) await prepared.cleanup();
+    throw error;
+  }
+}
+
+export async function claimLearningOrderIssue(
+  actor: LearningCommerceActor,
+  commerceOrderId: number,
+  issueId: number,
+) {
+  if (!["admin", "mod"].includes(actor.role)) throw Errors.forbidden("仅运营人员可以认领售后");
+  const current = await findCommerceOrderOrThrow(prisma, commerceOrderId);
+  const updated = await prisma.learningOrderIssue.updateMany({
+    where: {
+      id: issueId,
+      commerceOrderId,
+      status: { in: [...ACTIVE_ISSUE_STATUSES] },
+      OR: [{ assignedToId: null }, { assignedToId: actor.userId }],
+    },
+    data: {
+      assignedToId: actor.userId,
+      assignedAt: new Date(),
+    },
+  });
+  if (!updated.count) throw Errors.conflict("该售后已被其他运营人员认领或已经关闭");
+  return getLearningCommerceOrder(actor, current.id);
+}
+
 export async function listLearningOrderIssues(
   actor: LearningCommerceActor,
   status: "active" | "resolved" | "all" = "active",
@@ -1482,6 +1663,14 @@ export async function listLearningOrderIssues(
     include: {
       requestedBy: { select: publicUserSelect },
       resolvedBy: { select: publicUserSelect },
+      assignedTo: { select: publicUserSelect },
+      messages: {
+        include: {
+          sender: { select: publicUserSelect },
+          attachment: { select: { id: true, kind: true, originalName: true, mimeType: true, fileSize: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
       commerceOrder: { include: commerceOrderInclude },
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -1493,6 +1682,8 @@ export async function listLearningOrderIssues(
     requestedById: row.requestedById,
     requestedBy: row.requestedBy,
     resolvedBy: row.resolvedBy,
+    assignedTo: row.assignedTo,
+    assignedToId: row.assignedToId,
     type: row.type,
     status: row.status,
     reason: row.reason,
@@ -1500,11 +1691,120 @@ export async function listLearningOrderIssues(
     refundAmountCents: row.refundAmountCents,
     refundAmount: row.refundAmountCents == null ? null : amountCentsToMoney(row.refundAmountCents),
     resolution: row.resolution,
+    responsibility: row.responsibility,
+    slaDueAt: row.slaDueAt,
+    overdue: Boolean(
+      row.slaDueAt
+      && row.slaDueAt.getTime() < Date.now()
+      && !row.firstRespondedAt
+      && ACTIVE_ISSUE_STATUSES.includes(row.status),
+    ),
+    assignedAt: row.assignedAt,
+    firstRespondedAt: row.firstRespondedAt,
+    refundEvidenceUnavailable: row.refundEvidenceUnavailable,
+    messages: row.messages.map((message) => ({
+      ...message,
+      attachment: message.attachment ? {
+        ...message.attachment,
+        imageUrl: `/api/market/materials/commerce/private-assets/${message.attachment.id}`,
+      } : null,
+    })),
     resolvedAt: row.resolvedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     order: serializeCommerceOrder(row.commerceOrder, actor),
   }));
+}
+
+export async function getLearningOperationsOverview(actor: LearningCommerceActor) {
+  if (!["admin", "mod"].includes(actor.role)) throw Errors.forbidden("仅运营人员可以查看资料运营工作台");
+  const now = new Date();
+  const reviewOverdueBefore = new Date(now.getTime() - LEARNING_REVIEW_SLA_MS);
+  const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const [
+    creatorPending,
+    creatorOverdue,
+    reviewPending,
+    reviewOverdue,
+    issuesActive,
+    issuesOverdue,
+    sellerPending,
+    sellerOverdue,
+    activeItems,
+    sampleEvents,
+    accessEvents,
+    orderGroups,
+    ratingCount,
+  ] = await Promise.all([
+    prisma.learningCreatorApplication.count({ where: { status: { in: ["submitted", "reviewing"] } } }),
+    prisma.learningCreatorApplication.count({
+      where: { status: { in: ["submitted", "reviewing"] }, submittedAt: { lt: reviewOverdueBefore } },
+    }),
+    prisma.learningMaterialReview.count({ where: { status: { in: ["submitted", "reviewing"] } } }),
+    prisma.learningMaterialReview.count({
+      where: { status: { in: ["submitted", "reviewing"] }, submittedAt: { lt: reviewOverdueBefore } },
+    }),
+    prisma.learningOrderIssue.count({ where: { status: { in: ACTIVE_ISSUE_STATUSES } } }),
+    prisma.learningOrderIssue.count({
+      where: {
+        status: { in: ACTIVE_ISSUE_STATUSES },
+        slaDueAt: { lt: now },
+        firstRespondedAt: null,
+      },
+    }),
+    prisma.learningCommerceOrder.count({ where: { status: "awaiting_seller_confirmation" } }),
+    prisma.learningCommerceOrder.count({
+      where: { status: "awaiting_seller_confirmation", sellerResponseDueAt: { lt: now } },
+    }),
+    prisma.marketItem.count({ where: { category: CATEGORY, status: "active" } }),
+    prisma.learningMaterialAccessEvent.count({ where: { action: "sample_preview", createdAt: { gte: since } } }),
+    prisma.learningMaterialAccessEvent.groupBy({
+      by: ["action"],
+      where: { createdAt: { gte: since }, action: { in: ["online_preview", "download"] } },
+      _count: { _all: true },
+    }),
+    prisma.learningCommerceOrder.groupBy({
+      by: ["status"],
+      where: { createdAt: { gte: since } },
+      _count: { _all: true },
+    }),
+    prisma.learningMaterialRating.count({ where: { status: "published", createdAt: { gte: since } } }),
+  ]);
+  const orderCount = orderGroups.reduce((total, row) => total + row._count._all, 0);
+  const byStatus = Object.fromEntries(orderGroups.map((row) => [row.status, row._count._all]));
+  const accessByAction = Object.fromEntries(accessEvents.map((row) => [row.action, row._count._all]));
+  return {
+    generatedAt: now,
+    slaHours: {
+      creatorReview: LEARNING_REVIEW_SLA_MS / 3_600_000,
+      materialReview: LEARNING_REVIEW_SLA_MS / 3_600_000,
+      issueFirstResponse: LEARNING_ISSUE_SLA_MS / 3_600_000,
+    },
+    queues: {
+      creatorApplications: { pending: creatorPending, overdue: creatorOverdue },
+      materialReviews: { pending: reviewPending, overdue: reviewOverdue },
+      orderIssues: { pending: issuesActive, overdue: issuesOverdue },
+      sellerConfirmations: { pending: sellerPending, overdue: sellerOverdue },
+    },
+    funnel30d: {
+      activeItems,
+      samplePreviews: sampleEvents,
+      orders: orderCount,
+      awaitingSellerConfirmation: byStatus.awaiting_seller_confirmation || 0,
+      delivered: byStatus.delivered || 0,
+      completed: byStatus.completed || 0,
+      refunded: byStatus.refunded || 0,
+      onlinePreviews: accessByAction.online_preview || 0,
+      downloads: accessByAction.download || 0,
+      ratings: ratingCount,
+      completionRate: orderCount
+        ? Number((((byStatus.completed || 0) / orderCount) * 100).toFixed(2))
+        : 0,
+      refundRate: orderCount
+        ? Number((((byStatus.refunded || 0) / orderCount) * 100).toFixed(2))
+        : 0,
+    },
+  };
 }
 
 export async function decideLearningOrderIssue(
@@ -1515,6 +1815,8 @@ export async function decideLearningOrderIssue(
     action: "resolve" | "close" | "record_refund";
     resolution: string;
     refundAmountCents?: number;
+    responsibility: "buyer" | "creator" | "platform" | "shared" | "no_fault";
+    refundEvidenceUnavailable?: string;
   },
 ) {
   if (!["admin", "mod"].includes(actor.role)) throw Errors.forbidden("仅审核人员可以处理学习资料售后");
@@ -1528,6 +1830,11 @@ export async function decideLearningOrderIssue(
         commerceOrderId,
         status: { in: [...ACTIVE_ISSUE_STATUSES] },
       },
+      include: {
+        messages: {
+          include: { attachment: { select: { kind: true } } },
+        },
+      },
     });
     if (!issue) throw Errors.conflict("该售后记录已处理或不存在");
     const now = new Date();
@@ -1540,6 +1847,12 @@ export async function decideLearningOrderIssue(
       if (!["awaiting_seller_confirmation", "disputed", "delivered", "completed"].includes(row.status)) {
         throw Errors.conflict("当前订单状态不能登记退款");
       }
+      const hasRefundEvidence = Boolean(issue.refundAssetId)
+        || issue.messages.some((message) => message.attachment?.kind === "refund_evidence");
+      const evidenceUnavailable = String(input.refundEvidenceUnavailable || "").trim();
+      if (!hasRefundEvidence && evidenceUnavailable.length < 10) {
+        throw Errors.badRequest("登记退款前须上传退款凭证；确实无法取得时须填写不少于 10 字的缺失说明");
+      }
       assertTransition(row.status, "refunded");
       await tx.learningOrderIssue.update({
         where: { id: issueId },
@@ -1547,6 +1860,11 @@ export async function decideLearningOrderIssue(
           status: "refund_recorded",
           refundAmountCents,
           resolution: input.resolution,
+          responsibility: input.responsibility,
+          refundEvidenceUnavailable: hasRefundEvidence ? "" : evidenceUnavailable,
+          assignedToId: issue.assignedToId || actor.userId,
+          assignedAt: issue.assignedAt || now,
+          firstRespondedAt: issue.firstRespondedAt || now,
           resolvedById: actor.userId,
           resolvedAt: now,
         },
@@ -1567,6 +1885,10 @@ export async function decideLearningOrderIssue(
       await tx.learningMaterialAccess.updateMany({
         where: { orderId: row.orderId, revokedAt: null },
         data: { revokedAt: now },
+      });
+      await tx.learningMaterialRating.updateMany({
+        where: { commerceOrderId, status: { in: ["published", "hidden"] } },
+        data: { status: "excluded", moderationReason: "订单已退款，评价不再计入创作者质量分" },
       });
       await tx.learningCommerceOrder.update({
         where: { id: commerceOrderId },
@@ -1605,6 +1927,10 @@ export async function decideLearningOrderIssue(
         data: {
           status: input.action === "resolve" ? "resolved" : "closed",
           resolution: input.resolution,
+          responsibility: input.responsibility,
+          assignedToId: issue.assignedToId || actor.userId,
+          assignedAt: issue.assignedAt || now,
+          firstRespondedAt: issue.firstRespondedAt || now,
           resolvedById: actor.userId,
           resolvedAt: now,
         },
@@ -1615,7 +1941,7 @@ export async function decideLearningOrderIssue(
         fromStatus: row.status,
         toStatus: row.status,
         requestId: actor.requestId,
-        detail: { issueId, resolution: input.resolution },
+        detail: { issueId, resolution: input.resolution, responsibility: input.responsibility },
       }]);
     }
     return serializeCommerceOrder(
@@ -1639,6 +1965,7 @@ export async function decideLearningOrderIssue(
       { type: "learning-order-issue-resolved", commerceOrderId, issueId, action: input.action },
     ),
   ]);
+  await refreshLearningCreatorMetrics(result.order.sellerId);
   return result;
 }
 
@@ -1664,6 +1991,17 @@ export async function getAuthorizedLearningPrivateAsset(
         include: {
           commerceOrder: {
             include: { order: { select: { buyerId: true, sellerId: true } } },
+          },
+        },
+      },
+      issueMessage: {
+        include: {
+          issue: {
+            include: {
+              commerceOrder: {
+                include: { order: { select: { buyerId: true, sellerId: true } } },
+              },
+            },
           },
         },
       },
@@ -1697,7 +2035,12 @@ export async function getAuthorizedLearningPrivateAsset(
       asset.refundIssue.commerceOrder.order.buyerId === actor.userId
       || asset.refundIssue.commerceOrder.order.sellerId === actor.userId
     );
-  if (!staff && !owner && !collectionParty && !evidenceParty && !issueParty) {
+  const messageIssueParty = asset.issueMessage
+    && (
+      asset.issueMessage.issue.commerceOrder.order.buyerId === actor.userId
+      || asset.issueMessage.issue.commerceOrder.order.sellerId === actor.userId
+    );
+  if (!staff && !owner && !collectionParty && !evidenceParty && !issueParty && !messageIssueParty) {
     throw Errors.forbidden("无权查看该私密文件");
   }
   if (staff && !owner) {

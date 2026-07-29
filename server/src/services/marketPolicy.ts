@@ -56,6 +56,20 @@ export const LEARNING_COMPLETION_DUE_MS = integerSetting(
   30 * 24 * 60 * 60 * 1000,
 );
 
+export const LEARNING_REVIEW_SLA_MS = integerSetting(
+  process.env.LEARNING_REVIEW_SLA_MS,
+  24 * 60 * 60 * 1000,
+  60 * 60 * 1000,
+  7 * 24 * 60 * 60 * 1000,
+);
+
+export const LEARNING_ISSUE_SLA_MS = integerSetting(
+  process.env.LEARNING_ISSUE_SLA_MS,
+  24 * 60 * 60 * 1000,
+  60 * 60 * 1000,
+  7 * 24 * 60 * 60 * 1000,
+);
+
 export const DIRECT_TRADE_NOTICE = "靠浦只提供校内交易撮合，不代收学生商品款。请当面验货，并直接向卖家付款。";
 export const MARKET_PAYMENT_DISABLED_MESSAGE = "靠浦不经手学生商品款，请与卖家约定校内见面交易并直接付款";
 export const PAID_MATERIAL_DISABLED_MESSAGE = "付费学习资料当前处于上线前灰度阶段，请稍后再试";

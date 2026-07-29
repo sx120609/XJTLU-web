@@ -65,15 +65,18 @@ test("creator, review, payment and issue inputs fail closed", () => {
     action: "record_refund",
     resolution: "已核验线下退款流水",
     refundAmountCents: 990,
+    responsibility: "creator",
   }).success, true);
   assert.equal(learningOrderIssueDecisionSchema.safeParse({
     action: "record_refund",
     resolution: "未填写金额",
+    responsibility: "creator",
   }).success, false);
   assert.equal(learningOrderIssueDecisionSchema.safeParse({
     action: "resolve",
     resolution: "问题已处理",
     refundAmountCents: 990,
+    responsibility: "no_fault",
   }).success, false);
   assert.equal(IDEMPOTENCY_KEY_PATTERN.test("learning-order-12345678"), true);
   assert.equal(IDEMPOTENCY_KEY_PATTERN.test("short"), false);

@@ -1,5 +1,6 @@
 import { acquireMarketItemLock } from "./marketItemLockService";
 import { acquireMarketOrderLock } from "./marketOrderLockService";
+import { LEARNING_ISSUE_SLA_MS } from "./marketPolicy";
 
 export const WANTED_LIFETIME_DAYS = 21;
 export const INTENT_LIFETIME_DAYS = 7;
@@ -254,6 +255,13 @@ export async function sweepMarketLifecycle(prisma: any, now = new Date()) {
             type: "seller_confirmation_timeout",
             reason: "卖家未在规定时间内核对付款凭证",
             detail: "系统已将订单转入争议处理，请管理员核验付款凭证与双方说明。",
+            slaDueAt: new Date(now.getTime() + LEARNING_ISSUE_SLA_MS),
+            messages: {
+              create: {
+                kind: "system",
+                content: "卖家确认已超时，系统自动转入争议处理并等待运营核验。",
+              },
+            },
           },
         });
       }

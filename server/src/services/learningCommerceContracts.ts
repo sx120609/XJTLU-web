@@ -108,6 +108,8 @@ export const learningOrderIssueDecisionSchema = z.object({
   action: z.enum(["resolve", "close", "record_refund"]),
   resolution: z.string().trim().min(2).max(2000),
   refundAmountCents: z.number().int().positive().optional(),
+  responsibility: z.enum(["buyer", "creator", "platform", "shared", "no_fault"]),
+  refundEvidenceUnavailable: z.string().trim().max(1000).optional().default(""),
 }).strict().superRefine((input, context) => {
   if (input.action === "record_refund" && !input.refundAmountCents) {
     context.addIssue({
@@ -124,6 +126,47 @@ export const learningOrderIssueDecisionSchema = z.object({
     });
   }
 });
+
+export const learningOrderIssueMessageSchema = z.object({
+  content: z.string().trim().max(2000).optional().default(""),
+  attachmentKind: z.enum(["dispute_attachment", "refund_evidence"]).optional().default("dispute_attachment"),
+}).strict();
+
+export const learningMaterialRatingSchema = z.object({
+  accuracy: z.number().int().min(1).max(5),
+  usefulness: z.number().int().min(1).max(5),
+  descriptionMatch: z.number().int().min(1).max(5),
+  fileQuality: z.number().int().min(1).max(5),
+  content: z.string().trim().max(2000).optional().default(""),
+}).strict();
+
+export const learningCreatorViolationSchema = z.object({
+  creatorId: z.number().int().positive(),
+  itemId: z.number().int().positive().optional(),
+  commerceOrderId: z.number().int().positive().optional(),
+  type: z.enum(["copyright", "misleading", "file_safety", "delivery", "service", "fraud", "other"]),
+  severity: z.enum(["low", "medium", "high", "critical"]),
+  action: z.enum(["warn", "hide_material", "suspend_7d", "suspend_30d", "revoke"]),
+  reason: z.string().trim().min(2).max(1000),
+  evidence: z.string().trim().max(3000).optional().default(""),
+}).strict().superRefine((input, context) => {
+  if (input.action === "hide_material" && !input.itemId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["itemId"],
+      message: "隐藏资料时必须关联资料 ID",
+    });
+  }
+});
+
+export const learningCreatorAppealSchema = z.object({
+  content: z.string().trim().min(10).max(3000),
+}).strict();
+
+export const learningCreatorAppealDecisionSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  note: z.string().trim().min(2).max(2000),
+}).strict();
 
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
