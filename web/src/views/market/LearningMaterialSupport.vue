@@ -5,7 +5,7 @@
       <div><el-button @click="router.push({ name: 'market-learning-material-library' })">我的资料库</el-button><el-button @click="load">刷新</el-button></div>
     </header>
 
-    <el-alert type="info" show-icon :closable="false" title="免费领取后可在这里反馈文件、内容、版本或版权问题；请勿填写手机号、微信、QQ 或其他私下联系方式。" />
+    <el-alert type="info" show-icon :closable="false" title="资料交付后可在这里反馈文件、内容、版本或版权问题；请勿填写手机号、微信、QQ 或其他私下联系方式。" />
 
     <div class="support-layout" v-loading="loading">
       <aside class="ticket-list cpu-card">

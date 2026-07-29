@@ -67,6 +67,8 @@ type PortalConnectionStage = "idle" | "connecting" | "ready" | "failed";
 export interface XjtluPortalConnectionStatus {
   ehall: PortalConnectionStage;
   ebridge: PortalConnectionStage;
+  ehallError?: string;
+  ebridgeError?: string;
   startedAt?: string;
   updatedAt?: string;
 }
@@ -93,6 +95,8 @@ export async function getXjtluPortalConnectionStatus(userId: number): Promise<Xj
     return {
       ehall: parsed.ehall || "idle",
       ebridge: parsed.ebridge || "idle",
+      ehallError: typeof parsed.ehallError === "string" ? parsed.ehallError : undefined,
+      ebridgeError: typeof parsed.ebridgeError === "string" ? parsed.ebridgeError : undefined,
       startedAt: parsed.startedAt,
       updatedAt: parsed.updatedAt,
     };
@@ -175,6 +179,71 @@ async function markAuthenticated(pendingId: string, pending: PendingXjtluLogin, 
   await savePending(pendingId, pending);
 }
 
+type PortalSessionResult = PromiseSettledResult<unknown>;
+
+interface PortalSessionDependencies {
+  getEhallStatus: typeof getXjtluEhallStatus;
+  getEbridgeStatus: typeof getXjtluEbridgeStatus;
+  establishEhall: typeof establishXjtluEhallSession;
+  establishEbridge: typeof establishXjtluEbridgeSession;
+}
+
+const portalSessionDependencies: PortalSessionDependencies = {
+  getEhallStatus: getXjtluEhallStatus,
+  getEbridgeStatus: getXjtluEbridgeStatus,
+  establishEhall: establishXjtluEhallSession,
+  establishEbridge: establishXjtluEbridgeSession,
+};
+
+async function settlePortalSession(task: () => Promise<unknown>): Promise<PortalSessionResult> {
+  try {
+    return { status: "fulfilled", value: await task() };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
+}
+
+/**
+ * UIM may rotate its authentication cookie while issuing OAuth/OIDC grants.
+ * Establishing eHall and eBridge concurrently with cloned cookie jars can make
+ * the second exchange use an obsolete cookie. Keep both handshakes sequential
+ * and share the same jar so every Set-Cookie is visible to the next portal.
+ */
+export async function establishXjtluPortalSessions(
+  args: {
+    userId: number;
+    username: string;
+    uimCookies: CookieMap;
+  },
+  dependencies: PortalSessionDependencies = portalSessionDependencies,
+) {
+  const [existingEhall, existingEbridge] = await Promise.all([
+    dependencies.getEhallStatus(args.userId),
+    dependencies.getEbridgeStatus(args.userId, true),
+  ]);
+  const ehall = existingEhall.active
+    ? { status: "fulfilled", value: existingEhall } as const
+    : await settlePortalSession(() => dependencies.establishEhall(
+      args.userId,
+      args.username,
+      args.uimCookies,
+    ));
+  const ebridge = existingEbridge.active
+    ? { status: "fulfilled", value: existingEbridge } as const
+    : await settlePortalSession(() => dependencies.establishEbridge(
+      args.userId,
+      args.username,
+      args.uimCookies,
+    ));
+  return { ehall, ebridge };
+}
+
+function portalSessionError(result: PortalSessionResult) {
+  if (result.status === "fulfilled") return undefined;
+  const message = result.reason instanceof Error ? result.reason.message : "学校服务连接失败";
+  return message.replace(/[\r\n\t]+/g, " ").trim().slice(0, 180) || "学校服务连接失败";
+}
+
 export async function finalizeXjtluLoginSession(args: {
   pendingId: string;
   userId: number;
@@ -194,30 +263,28 @@ export async function finalizeXjtluLoginSession(args: {
       ebridge: "connecting",
       startedAt,
     });
-    const [existingEhall, existingEbridge] = await Promise.all([
-      getXjtluEhallStatus(args.userId),
-      getXjtluEbridgeStatus(args.userId, true),
-    ]);
-    const results = await Promise.allSettled([
-      existingEhall.active
-        ? Promise.resolve(existingEhall)
-        : establishXjtluEhallSession(args.userId, pending.authenticatedUsername, { ...pending.cookies }),
-      existingEbridge.active
-        ? Promise.resolve(existingEbridge)
-        : establishXjtluEbridgeSession(args.userId, pending.authenticatedUsername, { ...pending.cookies }),
-    ]);
-    const labels = ["xjtlu-ehall", "xjtlu-ebridge"];
-    results.forEach((result, index) => {
+    const results = await establishXjtluPortalSessions({
+      userId: args.userId,
+      username: pending.authenticatedUsername,
+      uimCookies: pending.cookies,
+    });
+    const entries = [
+      ["xjtlu-ehall", results.ehall],
+      ["xjtlu-ebridge", results.ebridge],
+    ] as const;
+    entries.forEach(([label, result]) => {
       if (result.status === "rejected") {
-        console.warn(`[${labels[index]}] unable to establish portal session`, result.reason instanceof Error ? result.reason.message : "unknown error");
+        console.warn(`[${label}] unable to establish portal session`, portalSessionError(result));
       }
     });
     await savePortalConnectionStatus(args.userId, {
-      ehall: results[0]?.status === "fulfilled" ? "ready" : "failed",
-      ebridge: results[1]?.status === "fulfilled" ? "ready" : "failed",
+      ehall: results.ehall.status === "fulfilled" ? "ready" : "failed",
+      ebridge: results.ebridge.status === "fulfilled" ? "ready" : "failed",
+      ehallError: portalSessionError(results.ehall),
+      ebridgeError: portalSessionError(results.ebridge),
       startedAt,
     });
-    return results.some((result) => result.status === "fulfilled");
+    return results.ehall.status === "fulfilled" || results.ebridge.status === "fulfilled";
   } finally {
     await deleteEphemeralValue(pendingKey(pendingId));
   }

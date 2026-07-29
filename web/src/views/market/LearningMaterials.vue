@@ -7,11 +7,11 @@
         <span>KAOPU FEATURED LEARNING</span>
         <h1>靠浦特色学习资料商城</h1>
         <p>按课程代码、学习阶段和资料类型，查找同学原创或已获授权的课程笔记、备考资料与学习工具。</p>
-        <div><em>课程维度检索</em><em>原创授权确认</em><em>免费安全获取</em></div>
+        <div><em>课程维度检索</em><em>创作者认证</em><em>人工审核交付</em></div>
       </div>
       <div class="hero-side">
         <strong>{{ total }}</strong><small>份在架资料</small>
-        <el-button v-if="auth.isLoggedIn" type="primary" size="large" @click="router.push({name:'market-learning-materials-publish'})"><el-icon><Plus /></el-icon> 发布学习资料</el-button>
+        <el-button v-if="auth.isLoggedIn" type="primary" size="large" @click="router.push({name:'market-learning-creator'})"><el-icon><Plus /></el-icon> 创作者中心</el-button>
         <el-button v-else type="primary" size="large" @click="login">登录后发布</el-button>
       </div>
     </section>
@@ -49,7 +49,7 @@
           <div class="meta-tags"><em>{{ typeLabel(item) }}</em><em>{{ semesterLabel(item.material?.applicableSemester) }}</em></div>
           <h3>{{ item.title }}</h3><p>{{ item.description }}</p>
           <div class="format-line"><span v-for="format in item.material?.fileFormats?.slice(0,3)" :key="format">{{ format }}</span><small v-if="item.material?.pageCount">{{ item.material.pageCount }}页</small></div>
-          <div class="free-line"><strong>免费获取</strong><span>原创 / 授权内容</span></div>
+          <div class="price-line"><small>¥</small><strong>{{ item.price }}</strong><del v-if="item.originalPrice">¥{{ item.originalPrice }}</del></div>
           <footer><UserAvatar :size="30" :src="item.seller.avatar" :name="item.seller.nickname" /><div><b>{{ item.seller.nickname||item.seller.username }}</b><span>XJTLU认证创作者</span></div><em>{{ item.favoriteCount }} 收藏</em></footer>
         </div>
       </article>

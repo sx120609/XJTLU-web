@@ -101,7 +101,12 @@ test("shared cards do not apply sibling margins inside grids", () => {
 });
 
 test("market campus controls are SIP and TC selects backed by the API contract", () => {
-  const marketRoute = source("../src/routes/market.ts");
+  const marketRoute = [
+    source("../src/routes/market.ts"),
+    source("../src/routes/marketCatalog.ts"),
+    source("../src/services/marketCatalogService.ts"),
+    source("../src/services/marketItemWriteService.ts"),
+  ].join("\n");
   const marketApi = source("../../web/src/api/market.ts");
   for (const view of ["Index.vue", "WantedList.vue", "Publish.vue", "WantedPublish.vue"]) {
     const contents = source(`../../web/src/views/market/${view}`);
@@ -147,12 +152,12 @@ test("current market keeps product categories but removes the retired section st
   assert.match(market, /class="category-strip"/);
   assert.match(market, /class="materials-feature"/);
   assert.match(market, /靠浦特色学习资料商城/);
-  assert.match(market, /免费安全获取/);
+  assert.match(market, /审核交付/);
 
   assert.match(learning, /KAOPU FEATURED LEARNING/);
   assert.match(learning, /<h1>靠浦特色学习资料商城<\/h1>/);
-  assert.match(learning, /<div class="free-line"><strong>免费获取<\/strong>/);
-  assert.doesNotMatch(learning, /<div class="price-line">/);
+  assert.match(learning, /<div class="price-line">/);
+  assert.doesNotMatch(learning, /免费获取/);
 });
 
 test("tools hub exposes exactly the three planned entries and preserves campus resources", () => {

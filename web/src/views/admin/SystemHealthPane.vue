@@ -94,10 +94,19 @@ async function load() {
   try {
     snapshot.value = await adminApi.systemHealth({ suppressErrorMessage: true });
   } catch (reason) {
-    error.value = (reason as any)?.response?.data?.message || "运行状态加载失败，请稍后重试";
+    error.value = requestMessage(reason) || "运行状态加载失败，请稍后重试";
   } finally {
     loading.value = false;
   }
+}
+
+function requestMessage(error: unknown) {
+  if (typeof error !== "object" || error === null) return "";
+  const message = (
+    error as { response?: { data?: { message?: unknown } } }
+  ).response?.data?.message;
+  if (typeof message === "string") return message;
+  return error instanceof Error ? error.message : "";
 }
 
 function statusLabel(status: SystemHealthSnapshot["jobs"][number]["status"]) {

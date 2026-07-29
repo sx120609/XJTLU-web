@@ -1,6 +1,6 @@
 <template>
   <div class="material-detail-page">
-    <nav class="crumb"><router-link to="/learning">学习中心</router-link><span>/</span><router-link :to="{name:'market-learning-materials'}">免费原创</router-link><span>/</span><b>{{ item?.material?.courseCode||"内容详情" }}</b></nav>
+    <nav class="crumb"><router-link to="/learning">学习中心</router-link><span>/</span><router-link :to="{name:'market-learning-materials'}">付费学习资料</router-link><span>/</span><b>{{ item?.material?.courseCode||"内容详情" }}</b></nav>
     <template v-if="item">
       <el-alert v-if="!item.material?.metadataComplete" type="warning" :closable="false" show-icon title="这是升级前发布的资料，课程代码、适用学期或资料类型尚未补充。创作者再次编辑时必须完善。" />
       <section class="detail-shell cpu-card">
@@ -11,29 +11,29 @@
         <div class="summary">
           <div class="summary-tags"><span>{{ item.material?.courseCode||"课程代码待补充" }}</span><span>{{ typeLabel }}</span><span>{{ semesterLabel }}</span></div>
           <h1>{{ item.title }}</h1><p class="description-brief">{{ item.description }}</p>
-          <div class="price"><strong>免费获取</strong></div>
+          <div class="price"><small>¥</small><strong>{{ item.price }}</strong><del v-if="item.originalPrice">¥{{ item.originalPrice }}</del></div>
           <dl><div><dt>资料版本</dt><dd>{{ item.material?.versionLabel||item.material?.activeVersion?.label||"未标注" }}</dd></div><div><dt>文件格式</dt><dd>{{ item.material?.fileFormats?.join(" / ")||actualFormats||"未标注" }}</dd></div><div><dt>资料页数</dt><dd>{{ item.material?.pageCount ? `${item.material.pageCount} 页` : "未标注" }}</dd></div><div><dt>已收藏</dt><dd>{{ item.favoriteCount }}</dd></div></dl>
-          <div v-if="!item.mine" class="buy-actions"><el-button :icon="item.favorited?StarFilled:Star" @click="favorite">{{ item.favorited?"已收藏":"收藏" }}</el-button><el-button type="primary" size="large" :disabled="item.status!=='active'" @click="buy">免费领取</el-button></div>
+          <div v-if="!item.mine" class="buy-actions"><el-button :icon="item.favorited?StarFilled:Star" @click="favorite">{{ item.favorited?"已收藏":"收藏" }}</el-button><el-button type="primary" size="large" :loading="submitting" :disabled="item.status!=='active'" @click="buy">立即购买</el-button></div>
           <div v-else class="buy-actions"><el-button type="primary" @click="router.push({name:'market-learning-materials-edit',params:{id:item.id}})">编辑内容</el-button><el-button @click="router.push({name:'market-learning-material-library'})">我的资料库</el-button></div>
-          <p v-if="!auth.isLoggedIn" class="login-tip">登录 XJTLU 账号后可以收藏和免费领取。</p>
-          <div class="protection"><b>免费原创说明</b><span>内容应为本人原创、已获授权或基于公开资料整理；领取记录仅用于安全访问和问题反馈。</span></div>
+          <p v-if="!auth.isLoggedIn" class="login-tip">登录并完成 XJTLU 认证后可以购买、收藏和下载资料。</p>
+          <div class="protection"><b>付款与交付说明</b><span>资料款由你直接支付给创作者，平台不代收。上传付款凭证后，创作者确认到账，系统才会自动解锁完整文件。</span></div>
         </div>
       </section>
 
       <section class="content-grid">
         <article class="cpu-card content-card"><h2>资料介绍</h2><p>{{ item.description }}</p><div class="public-actions"><el-button plain @click="router.push({path:'/post',query:{board:'study',itemId:item.id}})">发起关联讨论</el-button><el-button plain @click="share">分享资料</el-button><el-button v-if="auth.isLoggedIn&&!item.mine" text type="danger" @click="reportOpen=true">举报资料</el-button></div></article>
-        <aside class="cpu-card creator-card"><div><UserAvatar :size="52" :src="item.seller.avatar" :name="item.seller.nickname" /><span><strong>{{ item.seller.nickname||item.seller.username }}</strong><small>✓ XJTLU 校园认证创作者</small></span></div><dl><div><b>{{ item.favoriteCount }}</b><span>内容收藏</span></div><div><b>{{ item.material?.activeVersion?.files?.length || 0 }}</b><span>资料文件</span></div></dl><p>资料是独立内容商品，不会自动生成广场帖子；领取后的文件问题请通过订单售后反馈。</p></aside>
+        <aside class="cpu-card creator-card"><div><UserAvatar :size="52" :src="item.seller.avatar" :name="item.seller.nickname" /><span><strong>{{ item.seller.nickname||item.seller.username }}</strong><small>{{ item.seller.creatorCertified ? "✓ 已通过创作者认证" : "创作者认证状态待确认" }}</small></span></div><dl><div><b>{{ item.favoriteCount }}</b><span>内容收藏</span></div><div><b>{{ item.material?.activeVersion?.files?.length || 0 }}</b><span>资料文件</span></div></dl><p>资料已经过人工审核。付款、凭证核对、文件解锁和售后问题均保留订单记录。</p></aside>
       </section>
 
       <section class="metadata cpu-card"><header><span>STRUCTURED INFORMATION</span><h2>资料信息</h2></header><div class="metadata-grid"><div><span>课程代码</span><b>{{ item.material?.courseCode||"待补充" }}</b></div><div><span>适用学期</span><b>{{ semesterLabel }}</b></div><div><span>资料类型</span><b>{{ typeLabel }}</b></div><div><span>学院</span><b>{{ item.material?.college||"未标注" }}</b></div><div><span>专业</span><b>{{ item.material?.major||"未标注" }}</b></div><div><span>语言</span><b>{{ optionLabel(meta.languages,item.material?.language)||"未标注" }}</b></div><div><span>文件格式</span><b>{{ item.material?.fileFormats?.join(" / ")||actualFormats||"未标注" }}</b></div><div><span>页数</span><b>{{ item.material?.pageCount ? `${item.material.pageCount} 页` : "未标注" }}</b></div><div><span>原创声明</span><b>{{ optionLabel(meta.originalityOptions,item.material?.originalityKind)||"未声明" }}</b></div></div><p v-if="item.material?.originalityStatement" class="statement">{{ item.material.originalityStatement }}</p></section>
 
-      <section v-if="item.material?.activeVersion?.files?.length" class="file-manifest cpu-card"><header><span>FILE MANIFEST</span><h2>文件清单</h2><p>领取前展示文件名称、格式与大小，完成免费领取后即可在资料库下载。</p></header><div><article v-for="file in item.material.activeVersion.files" :key="file.id"><span>{{ file.format }}</span><div><b>{{ file.originalName }}</b><small>{{ formatBytes(file.fileSize) }}<template v-if="file.pageCount"> · {{ file.pageCount }}页</template></small></div></article></div></section>
+      <section v-if="item.material?.activeVersion?.files?.length" class="file-manifest cpu-card"><header><span>FILE MANIFEST</span><h2>购买前文件清单</h2><p>购买前展示文件名称、格式与大小；卖家确认到账后才开放下载。</p></header><div><article v-for="file in item.material.activeVersion.files" :key="file.id"><span>{{ file.format }}</span><div><b>{{ file.originalName }}</b><small>{{ formatBytes(file.fileSize) }}<template v-if="file.pageCount"> · {{ file.pageCount }}页</template></small></div></article></div></section>
 
-      <section v-if="related.length" class="related"><header><h2>相关免费原创</h2><router-link :to="{name:'market-learning-materials'}">查看更多</router-link></header><div><article v-for="row in related" :key="row.id" @click="router.push({name:'market-learning-material-item',params:{id:row.id}})"><div><img v-if="row.cover" :src="row.cover" :alt="row.title" /><img v-else src="/brand/kaopu-cloud.svg" alt="" /></div><span>{{ row.material?.courseCode||"资料" }}</span><h3>{{ row.title }}</h3><b>免费获取</b></article></div></section>
+      <section v-if="related.length" class="related"><header><h2>相关付费资料</h2><router-link :to="{name:'market-learning-materials'}">查看更多</router-link></header><div><article v-for="row in related" :key="row.id" @click="router.push({name:'market-learning-material-item',params:{id:row.id}})"><div><img v-if="row.cover" :src="row.cover" :alt="row.title" /><img v-else src="/brand/kaopu-cloud.svg" alt="" /></div><span>{{ row.material?.courseCode||"资料" }}</span><h3>{{ row.title }}</h3><b>¥{{ row.price }}</b></article></div></section>
     </template>
     <el-empty v-else-if="!loading" description="资料不存在或已下架"><el-button @click="router.push({name:'market-learning-materials'})">返回资料专区</el-button></el-empty>
     <div v-if="loading" class="loading"><el-skeleton animated :rows="10" /></div>
-    <MarketShareDialog v-model="shareOpen" :title="item?.title || '免费原创资料'" :summary="item ? `${item.material?.courseCode || '学习资料'} · 免费获取` : ''" />
+    <MarketShareDialog v-model="shareOpen" :title="item?.title || '付费学习资料'" :summary="item ? `${item.material?.courseCode || '学习资料'} · ¥${item.price}` : ''" />
     <el-dialog v-model="reportOpen" title="举报学习资料" width="460px"><el-select v-model="report.reason" placeholder="选择原因" style="width:100%"><el-option v-for="reason in reportReasons" :key="reason" :label="reason" :value="reason" /></el-select><el-input v-model="report.detail" type="textarea" :rows="4" maxlength="1000" show-word-limit placeholder="补充证据或说明" style="margin-top:12px" /><template #footer><el-button @click="reportOpen=false">取消</el-button><el-button type="danger" :loading="submitting" @click="submitReport">提交举报</el-button></template></el-dialog>
   </div>
 </template>
@@ -45,7 +45,7 @@ const meta=reactive<LearningMaterialMeta>({category:{id:0,slug:"digital_goods",n
 onMounted(load);watch(()=>route.params.id,load);async function load(){const id=Number(route.params.id);if(!id)return;loading.value=true;try{const [nextItem,nextMeta]=await Promise.all([learningMaterialsApi.item(id,{suppressErrorMessage:true}),learningMaterialsApi.meta({suppressErrorMessage:true})]);item.value=nextItem;Object.assign(meta,nextMeta);activeImage.value=nextItem.cover;const result=await learningMaterialsApi.items({courseCode:nextItem.material?.courseCode||undefined,semester:nextItem.material?.applicableSemester||undefined,size:5},{suppressErrorMessage:true});related.value=result.list.filter(row=>row.id!==id).slice(0,4)}catch{item.value=null;related.value=[]}finally{loading.value=false}}
 function optionLabel(options:Array<{value:string;label:string}>,value?:string){return options.find(row=>row.value===value)?.label||""}function formatBytes(value:number){if(value<1024*1024)return `${Math.max(1,Math.round(value/1024))} KB`;return `${(value/1024/1024).toFixed(1)} MB`}
 function requireLogin(){if(auth.isLoggedIn)return true;router.push({name:"login",query:{redirect:route.fullPath}});return false}async function favorite(){if(!item.value||!requireLogin())return;const result=await marketApi.favorite(item.value.id);item.value.favorited=result.favorited;item.value.favoriteCount=result.favoriteCount}
-async function buy(){if(!item.value||!requireLogin())return;submitting.value=true;try{await learningMaterialsApi.purchase(item.value.id);ElMessage.success("资料已加入我的资料库");router.push({name:"market-learning-material-library"})}finally{submitting.value=false}}
+async function buy(){if(!item.value||!requireLogin())return;submitting.value=true;try{const order=await learningMaterialsApi.createOrder(item.value.id);ElMessage.success("订单已创建，请向创作者付款并上传凭证");router.push({name:"market-learning-order-detail",params:{id:order.id},query:{side:"buyer"}})}finally{submitting.value=false}}
 async function submitReport(){if(!item.value||!report.reason)return ElMessage.warning("请选择举报原因");submitting.value=true;try{await marketApi.report(item.value.id,report);reportOpen.value=false;ElMessage.success("举报已提交，平台将核查资料和版本记录")}finally{submitting.value=false}}function share(){shareOpen.value=true}
 </script>
 

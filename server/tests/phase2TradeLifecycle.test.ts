@@ -26,7 +26,20 @@ test("lifecycle sweep closes reservations and expires wants and intentions witho
   const calls: Array<{ model: string; data: any; where: any }> = [];
   const record = (model: string) => async ({ where, data }: any) => { calls.push({ model, where, data }); return { count: 1 }; };
   const tx: any = {
-    marketOrder: { update: record("marketOrder") },
+    $queryRaw: async () => [{ locked: 1 }],
+    marketOrder: {
+      findUnique: async () => ({
+        id: 1,
+        itemId: 2,
+        offerId: null,
+        tradeIntentId: 3,
+        wantedPostId: null,
+        wantedResponseId: null,
+        status: "reserved",
+        expiresAt: new Date("2026-07-17T00:00:00.000Z"),
+      }),
+      updateMany: record("marketOrder"),
+    },
     marketOffer: { updateMany: record("marketOffer") },
     tradeIntent: { updateMany: record("tradeIntent") },
     wantedResponse: { updateMany: record("wantedResponse") },
@@ -37,7 +50,7 @@ test("lifecycle sweep closes reservations and expires wants and intentions witho
     },
   };
   const prisma: any = {
-    marketOrder: { findMany: async () => [{ id: 1, itemId: 2, offerId: null, tradeIntentId: 3, wantedPostId: null, wantedResponseId: null }] },
+    marketOrder: { findMany: async () => [{ id: 1 }] },
     marketItem: {
       updateMany: record("marketItem"),
     },
@@ -58,19 +71,67 @@ test("lifecycle sweep closes reservations and expires wants and intentions witho
   assert.ok(calls.filter((call) => call.model === "tradeIntent" && call.data.status === "expired").length >= 2);
 });
 
+test("lifecycle sweep rechecks a reservation after locking before expiring it", async () => {
+  let orderWrites = 0;
+  const tx: any = {
+    $queryRaw: async () => [{ locked: 1 }],
+    marketOrder: {
+      findUnique: async () => ({
+        id: 1,
+        itemId: 2,
+        offerId: null,
+        tradeIntentId: null,
+        wantedPostId: null,
+        wantedResponseId: null,
+        status: "reserved",
+        expiresAt: new Date("2026-07-20T00:00:00.000Z"),
+      }),
+      updateMany: async () => {
+        orderWrites += 1;
+        return { count: 1 };
+      },
+    },
+  };
+  const prisma: any = {
+    marketOrder: { findMany: async () => [{ id: 1 }] },
+    wantedPost: { findMany: async () => [] },
+    tradeIntent: { updateMany: async () => ({ count: 0 }) },
+    $transaction: async (operation: any) => operation(tx),
+  };
+  const result = await sweepMarketLifecycle(
+    prisma,
+    new Date("2026-07-18T00:00:00.000Z"),
+  );
+  assert.equal(orderWrites, 0);
+  assert.equal(result.reservations, 0);
+});
+
 test("stage 2 exposes separate wanted, intent, reservation and moderation routes", () => {
-  const market = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
+  const market = [
+    readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketItemWrite.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketWantedWrite.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketWantedResponse.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketTrade.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketOrder.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketAdmin.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketTradeService.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketItemWriteService.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketOrderFulfillmentService.ts", import.meta.url), "utf8"),
+  ].join("\n");
   const router = readFileSync(new URL("../../web/src/router/index.ts", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../../web/src/views/market/Detail.vue", import.meta.url), "utf8");
   const mine = readFileSync(new URL("../../web/src/views/market/Mine.vue", import.meta.url), "utf8");
-  assert.match(market, /marketRouter\.post\("\/wanted"/);
-  assert.match(market, /marketRouter\.post\("\/wanted\/:id\/responses"/);
-  assert.match(market, /marketRouter\.post\("\/items\/:id\/intents"/);
+  assert.match(market, /\w+Router\.post\(\s*"\/wanted"/);
+  assert.match(market, /\w+Router\.post\(\s*"\/wanted\/:id\/responses"/);
+  assert.match(market, /\w+Router\.post\(\s*"\/items\/:id\/intents"/);
   assert.match(market, /status: "reserved"/);
-  assert.match(market, /action: z\.enum\(\["set_meetup", "buyer_confirm", "seller_confirm", "cancel", "report_no_show"/);
+  assert.match(market, /\w+Router\.patch\(\s*"\/orders\/:id"/);
+  assert.match(market, /"set_meetup",[\s\S]*"buyer_confirm",[\s\S]*"seller_confirm",[\s\S]*"cancel",[\s\S]*"report_no_show"/);
   assert.match(market, /buyerConfirmedAt && updated\.sellerConfirmedAt/);
-  assert.match(market, /marketRouter\.patch\("\/admin\/wanted\/:id"/);
-  assert.match(market, /\["active", "expired", "withdrawn", "sold"\]\.includes\(item\.status\)/);
+  assert.match(market, /acquireMarketOrderLock\(tx, orderId\)/);
+  assert.match(market, /\w+Router\.patch\(\s*"\/admin\/wanted\/:id"/);
+  assert.match(market, /\["active", "expired", "withdrawn", "sold"\]\.includes\(current\.status\)/);
   assert.match(detail, /\['expired', 'withdrawn', 'sold'\]\.includes\(item\.status\)[^\n]+重新上架/);
   assert.match(mine, /\['expired','withdrawn','sold'\]\.includes\(item\.status\)[^\n]+重新上架/);
   assert.match(router, /path: "market\/wanted\/:id"/);

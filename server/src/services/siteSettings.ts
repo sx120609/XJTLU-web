@@ -6,6 +6,7 @@
  * 用途："言论敏感时一键关闭论坛 / 二手 / 课评"。
  * 默认值：全部为 on（即不破坏现有上线体验）。
  */
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { broadcastSiteSettingsReload } from "./runtimeBroadcast";
 import { normalizeFallbackModelList } from "./modelFallback";
@@ -112,6 +113,7 @@ export const DEFAULT_REPUTATION_LEVELS: ReputationLevelConfig[] = [
 ];
 
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
+const GLOBAL_PINNED_TOPICS_LOCK_KEY = 1_205_051n * 4_294_967_296n + 1n;
 const SITE_NAME_KEY = "site.name";
 const SITE_SUBTITLE_KEY = "site.subtitle";
 const SITE_LOGO_URL_KEY = "site.logoUrl";
@@ -380,7 +382,12 @@ export function normalizeSiteOrigin(input: string | null | undefined): string {
   } catch {
     throw new Error("网站域名格式不正确");
   }
-  if (!["http:", "https:"].includes(url.protocol) || !url.hostname) {
+  if (
+    !["http:", "https:"].includes(url.protocol)
+    || !url.hostname
+    || url.username
+    || url.password
+  ) {
     throw new Error("网站域名仅支持 http 或 https");
   }
   return url.origin.replace(/\/+$/, "");
@@ -408,7 +415,13 @@ export function normalizeSiteLogoUrl(input: string | null | undefined): string {
   if (value.startsWith("/") && !value.startsWith("//")) return value.slice(0, 2048);
   try {
     const url = new URL(value);
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+    if (
+      !["http:", "https:"].includes(url.protocol)
+      || url.username
+      || url.password
+    ) {
+      throw new Error();
+    }
     return url.toString().slice(0, 2048);
   } catch {
     throw new Error("Logo 地址格式不正确");
@@ -884,24 +897,85 @@ export async function setFeature(f: FeatureKey, on: boolean): Promise<void> {
 
 export async function setGlobalPinnedTopicIds(ids: number[]): Promise<number[]> {
   const normalized = normalizeTopicIdList(JSON.stringify(ids));
-  await prisma.siteSetting.upsert({
-    where: { key: GLOBAL_PINNED_TOPICS_KEY },
-    update: { value: JSON.stringify(normalized) },
-    create: { key: GLOBAL_PINNED_TOPICS_KEY, value: JSON.stringify(normalized) },
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT 1 AS "locked"
+      FROM pg_advisory_xact_lock(${GLOBAL_PINNED_TOPICS_LOCK_KEY})
+    `;
+    await tx.siteSetting.upsert({
+      where: { key: GLOBAL_PINNED_TOPICS_KEY },
+      update: { value: JSON.stringify(normalized) },
+      create: { key: GLOBAL_PINNED_TOPICS_KEY, value: JSON.stringify(normalized) },
+    });
   });
-  globalPinnedTopicIdsCache = normalized;
-  await broadcastSiteSettingsReload();
+  await publishGlobalPinnedTopicIds(normalized);
   return getGlobalPinnedTopicIds();
 }
 
 export async function setTopicGlobalPinned(topicId: number, pinned: boolean): Promise<number[]> {
-  const current = getGlobalPinnedTopicIds().filter((id) => id !== topicId);
-  if (pinned) current.unshift(topicId);
-  return setGlobalPinnedTopicIds(current);
+  const ids = await prisma.$transaction((tx) => mutateTopicGlobalPin(tx, topicId, pinned));
+  await publishGlobalPinnedTopicIds(ids);
+  return getGlobalPinnedTopicIds();
 }
 
 export async function removeTopicFromGlobalPins(topicId: number): Promise<number[]> {
-  return setGlobalPinnedTopicIds(globalPinnedTopicIdsCache.filter((id) => id !== topicId));
+  return setTopicGlobalPinned(topicId, false);
+}
+
+export async function mutateTopicGlobalPin(
+  tx: Prisma.TransactionClient,
+  topicId: number,
+  pinned: boolean,
+): Promise<number[]> {
+  await tx.$queryRaw`
+    SELECT 1 AS "locked"
+    FROM pg_advisory_xact_lock(${GLOBAL_PINNED_TOPICS_LOCK_KEY})
+  `;
+  const stored = await tx.siteSetting.findUnique({
+    where: { key: GLOBAL_PINNED_TOPICS_KEY },
+    select: { value: true },
+  });
+  const current = normalizeTopicIdList(stored?.value ?? "[]")
+    .filter((id) => id !== topicId);
+  if (pinned) current.unshift(topicId);
+  const normalized = normalizeTopicIdList(JSON.stringify(current));
+  await tx.siteSetting.upsert({
+    where: { key: GLOBAL_PINNED_TOPICS_KEY },
+    update: { value: JSON.stringify(normalized) },
+    create: { key: GLOBAL_PINNED_TOPICS_KEY, value: JSON.stringify(normalized) },
+  });
+  return normalized;
+}
+
+export async function publishGlobalPinnedTopicIds(ids: number[]) {
+  globalPinnedTopicIdsCache = normalizeTopicIdList(JSON.stringify(ids));
+  await broadcastSiteSettingsReload();
+}
+
+export async function setFeatures(
+  patch: Partial<Record<FeatureKey, boolean>>,
+) {
+  const entries = ALL_FEATURES
+    .filter((feature) => typeof patch[feature] === "boolean")
+    .map((feature) => [feature, Boolean(patch[feature])] as const);
+  if (!entries.length) return getFeatures();
+  await prisma.$transaction(
+    entries.map(([feature, enabled]) => (
+      prisma.siteSetting.upsert({
+        where: { key: keyOf(feature) },
+        update: { value: enabled ? "on" : "off" },
+        create: {
+          key: keyOf(feature),
+          value: enabled ? "on" : "off",
+        },
+      })
+    )),
+  );
+  for (const [feature, enabled] of entries) {
+    cache[feature] = enabled;
+  }
+  await broadcastSiteSettingsReload();
+  return getFeatures();
 }
 
 export async function setSiteOrigin(input: string | null | undefined): Promise<SiteConfig> {
@@ -960,6 +1034,69 @@ export async function setSiteFilingNumber(input: string | null | undefined): Pro
     create: { key: SITE_FILING_NUMBER_KEY, value: siteFilingNumber },
   });
   configCache.siteFilingNumber = siteFilingNumber;
+  await broadcastSiteSettingsReload();
+  return getSiteConfig();
+}
+
+export type SiteIdentityInput = {
+  siteName?: string;
+  siteSubtitle?: string;
+  siteLogoUrl?: string;
+  siteOrigin?: string;
+  siteFilingNumber?: string;
+};
+
+export async function setSiteIdentityConfig(
+  input: SiteIdentityInput,
+): Promise<SiteConfig> {
+  const next = {
+    siteName: input.siteName === undefined
+      ? configCache.siteName
+      : normalizeSiteName(input.siteName),
+    siteSubtitle: input.siteSubtitle === undefined
+      ? configCache.siteSubtitle
+      : normalizeSiteSubtitle(input.siteSubtitle),
+    siteLogoUrl: input.siteLogoUrl === undefined
+      ? configCache.siteLogoUrl
+      : normalizeSiteLogoUrl(input.siteLogoUrl),
+    siteOrigin: input.siteOrigin === undefined
+      ? configCache.siteOrigin
+      : normalizeSiteOrigin(input.siteOrigin),
+    siteFilingNumber: input.siteFilingNumber === undefined
+      ? configCache.siteFilingNumber
+      : normalizeSiteFilingNumber(input.siteFilingNumber),
+  };
+  await prisma.$transaction([
+    prisma.siteSetting.upsert({
+      where: { key: SITE_NAME_KEY },
+      update: { value: next.siteName },
+      create: { key: SITE_NAME_KEY, value: next.siteName },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SITE_SUBTITLE_KEY },
+      update: { value: next.siteSubtitle },
+      create: { key: SITE_SUBTITLE_KEY, value: next.siteSubtitle },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SITE_LOGO_URL_KEY },
+      update: { value: next.siteLogoUrl },
+      create: { key: SITE_LOGO_URL_KEY, value: next.siteLogoUrl },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SITE_ORIGIN_KEY },
+      update: { value: next.siteOrigin },
+      create: { key: SITE_ORIGIN_KEY, value: next.siteOrigin },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SITE_FILING_NUMBER_KEY },
+      update: { value: next.siteFilingNumber },
+      create: {
+        key: SITE_FILING_NUMBER_KEY,
+        value: next.siteFilingNumber,
+      },
+    }),
+  ]);
+  Object.assign(configCache, next);
   await broadcastSiteSettingsReload();
   return getSiteConfig();
 }
@@ -1159,22 +1296,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     videoReviewUserPrompt: resolvePromptTemplate(input.videoReviewUserPrompt, configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user),
     videoReviewConcurrency: normalizeSmallInt(input.videoReviewConcurrency, configCache.videoReviewConcurrency, 1, 2),
     aiReviewThreshold: normalizeAiScore(
-      (input as Partial<SiteConfig> & { aiReviewAutoPassScore?: number; aiReviewBlockScore?: number }).aiReviewThreshold
-        ?? (input as any).aiReviewAutoPassScore
-        ?? (input as any).aiReviewBlockScore,
+      input.aiReviewThreshold,
       configCache.aiReviewThreshold,
     ),
     qqGroupAdReviewThreshold: normalizeAiScore(input.qqGroupAdReviewThreshold, configCache.qqGroupAdReviewThreshold),
     imageReviewThreshold: normalizeAiScore(
-      (input as Partial<SiteConfig> & { imageReviewAutoPassScore?: number; imageReviewBlockScore?: number }).imageReviewThreshold
-        ?? (input as any).imageReviewAutoPassScore
-        ?? (input as any).imageReviewBlockScore,
+      input.imageReviewThreshold,
       configCache.imageReviewThreshold,
     ),
     videoReviewThreshold: normalizeAiScore(
-      (input as Partial<SiteConfig> & { videoReviewAutoPassScore?: number; videoReviewBlockScore?: number }).videoReviewThreshold
-        ?? (input as any).videoReviewAutoPassScore
-        ?? (input as any).videoReviewBlockScore,
+      input.videoReviewThreshold,
       configCache.videoReviewThreshold,
     ),
     aiEditSimilarityThreshold: normalizeAiRatio(input.aiEditSimilarityThreshold, configCache.aiEditSimilarityThreshold),

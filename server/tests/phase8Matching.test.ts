@@ -43,8 +43,14 @@ test("phase 8 weak matches do not receive an unexplained score", () => {
 });
 
 test("phase 8 routes and mobile pages expose matching, preferences and fulfillment guidance", () => {
-  const routes = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../src/app.ts", import.meta.url), "utf8");
+  const routes = [
+    readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketCatalog.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketWantedCatalog.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketWorkspace.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketOrderFulfillmentService.ts", import.meta.url), "utf8"),
+  ].join("\n");
+  const workers = readFileSync(new URL("../src/runtime/backgroundWorkers.ts", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../../web/src/views/market/Detail.vue", import.meta.url), "utf8");
   const wanted = readFileSync(new URL("../../web/src/views/market/WantedDetail.vue", import.meta.url), "utf8");
   const mine = readFileSync(new URL("../../web/src/views/market/Mine.vue", import.meta.url), "utf8");
@@ -52,7 +58,7 @@ test("phase 8 routes and mobile pages expose matching, preferences and fulfillme
   assert.match(routes, /\/wanted\/:id\/matches/);
   assert.match(routes, /\/preferences/);
   assert.match(routes, /meetupReminderSentAt: null/);
-  assert.match(app, /startMarketReminderPoller/);
+  assert.match(workers, /startMarketReminderPoller/);
   assert.match(detail, /matchingWanted/);
   assert.match(wanted, /matchingItems/);
   assert.match(mine, /求购与闲置匹配/);

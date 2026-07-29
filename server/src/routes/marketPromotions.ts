@@ -233,7 +233,7 @@ marketPromotionsRouter.get("/promotions/orders", authRequired, async (req, res, 
 
 marketPromotionsRouter.post("/promotions/orders", authRequired, validate(promotionOrderSchema), async (req, res, next) => {
   try {
-    if (!isFeatureOn("promotion")) throw Errors.badRequest("推广服务当前已暂停，学生交易、求购和免费学习内容不受影响");
+    if (!isFeatureOn("promotion")) throw Errors.badRequest("推广服务当前已暂停，学生交易、求购和付费学习资料不受影响");
     const user = await ensureVerifiedUser(req);
     await refreshExpiredPromotions();
     const plan = await prisma.promotionPlan.findUnique({ where: { code: req.body.planCode } });

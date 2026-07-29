@@ -31,10 +31,14 @@
 
 <script setup lang="ts">
 import { ArrowRight } from "@element-plus/icons-vue";
+import type { MessageNotification } from "@/api/message";
 import { fmtRelative } from "@/utils/format";
 
-const emit = defineEmits<{ (e: "read", id: number): void; (e: "open", item: any): void }>();
-defineProps<{ list: any[] }>();
+const emit = defineEmits<{
+  (e: "read", id: number): void;
+  (e: "open", item: MessageNotification): void;
+}>();
+defineProps<{ list: MessageNotification[] }>();
 
 const platformLabels: Record<string, string> = {
   ios: "iOS",
@@ -43,7 +47,7 @@ const platformLabels: Record<string, string> = {
   web: "网页版",
 };
 
-function onClick(n: any) {
+function onClick(n: MessageNotification) {
   if (!n.readAt) emit("read", n.id);
   emit("open", n);
 }

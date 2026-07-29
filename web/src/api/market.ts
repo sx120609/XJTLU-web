@@ -5,6 +5,18 @@ export type MarketCategory = string;
 export type MarketCondition = "new" | "like_new" | "good" | "fair" | "wanted";
 export type MarketTradeMode = "meetup" | "shipping" | "online" | "any";
 export type MarketListingType = "sell" | "wanted";
+export type MarketItemStatus =
+  | "draft"
+  | "reviewing"
+  | "active"
+  | "negotiating"
+  | "reserved"
+  | "sold"
+  | "withdrawn"
+  | "expired"
+  | "hidden"
+  | "targeted";
+export type MarketItemLifecycleAction = "renew" | "withdraw" | "mark_sold" | "relist";
 export const MARKET_CAMPUSES = ["SIP", "TC"] as const;
 export type MarketCampus = typeof MARKET_CAMPUSES[number];
 
@@ -54,6 +66,22 @@ export interface MarketCategoryOption {
   enabled: boolean;
   sort: number;
   itemCount?: number;
+}
+
+export interface MarketMeta {
+  categories: MarketCategoryOption[];
+  campuses: MarketCampus[];
+  featuredLearningMaterials: MarketCategoryOption | null;
+  conditions: Array<Exclude<MarketCondition, "wanted">>;
+  tradeModes: MarketTradeMode[];
+  listingTypes: MarketListingType[];
+  payTypes: PayType[];
+  paymentEnabled: boolean;
+  commissionBps: number;
+  commissionRate: number;
+  learningMaterialCommissionBps: number;
+  learningMaterialCommissionRate: number;
+  updatedAt: string;
 }
 
 export interface MarketUser {
@@ -222,7 +250,7 @@ export interface MarketItem {
   expiresAt?: string | null;
   renewedAt?: string | null;
   visibility: "public" | "targeted";
-  status: string;
+  status: MarketItemStatus;
   viewCount: number;
   favoriteCount: number;
   offerCount: number;
@@ -238,6 +266,61 @@ export interface MarketItem {
   soldAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MarketRefund {
+  id: number;
+  orderId: number;
+  requestedById: number;
+  amountCents: number;
+  reason: string;
+  status: "pending" | "approved" | "completed" | "rejected" | "failed";
+  providerRefundNo?: string | null;
+  handledById?: number | null;
+  handledNote?: string;
+  handledAt?: string | null;
+  createdAt: string;
+}
+
+export interface MarketSettlement {
+  id: number;
+  orderId: number;
+  sellerId: number;
+  amountCents: number;
+  amount: string;
+  status: "pending" | "available" | "held" | "settled";
+  availableAt?: string | null;
+  settledAt?: string | null;
+  reference: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+  order?: MarketOrder;
+}
+
+export interface MarketPayoutProfile {
+  method: "alipay" | "wxpay" | "bank";
+  accountMasked: string;
+  realNameMasked: string;
+  verified: boolean;
+  updatedAt: string;
+}
+
+export type MarketOrderAction =
+  | "set_meetup"
+  | "buyer_confirm"
+  | "seller_confirm"
+  | "cancel"
+  | "report_no_show"
+  | "request_refund"
+  | "dispute";
+
+export interface MarketOrderUpdateInput {
+  action: MarketOrderAction;
+  meetupTime?: string;
+  meetupLocation?: string;
+  note?: string;
+  reason?: string;
 }
 
 export interface MarketOrder {
@@ -275,12 +358,33 @@ export interface MarketOrder {
   item?: MarketItem;
   buyer?: MarketUser;
   seller?: MarketUser;
-  refunds?: any[];
-  reviews?: any[];
-  settlement?: any;
+  refunds?: MarketRefund[];
+  reviews?: MarketReview[];
+  settlement?: MarketSettlement | null;
   conversation?: { id: number } | null;
   conversationId?: number | null;
 }
+
+export const MARKET_PRIVATE_TRADE_STATUSES = [
+  "reserved",
+  "paid",
+  "delivering",
+  "completed",
+  "disputed",
+  "no_show",
+] as const;
+
+export function canOpenMarketOrderContacts(
+  order: Pick<MarketOrder, "deliveryType" | "status">,
+) {
+  return order.deliveryType === "physical"
+    && (MARKET_PRIVATE_TRADE_STATUSES as readonly string[]).includes(order.status);
+}
+
+export type MarketOrderActionResult =
+  | MarketOrder
+  | MarketRefund
+  | { refund: MarketRefund; order: MarketOrder };
 
 export interface MarketSellerDashboard {
   config: { commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number; updatedAt: string };
@@ -301,7 +405,7 @@ export interface MarketSellerDashboard {
   };
   items: MarketItem[];
   orders: MarketOrder[];
-  settlements: any[];
+  settlements: MarketSettlement[];
   timeline: Array<{
     key: string;
     orderId: number;
@@ -315,7 +419,23 @@ export interface MarketSellerDashboard {
     occurredAt: string;
     reference?: string;
   }>;
-  payoutProfile?: any;
+  payoutProfile: MarketPayoutProfile | null;
+}
+
+export interface MarketConversationItem {
+  id: number;
+  sellerId: number;
+  listingType: MarketListingType;
+  title: string;
+  category: MarketCategory;
+  deliveryType: "physical";
+  price: string;
+  priceCents: number;
+  status: MarketItemStatus;
+  images: Array<{ id: number; url: string; sort: number }>;
+  cover: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MarketConversation {
@@ -324,7 +444,7 @@ export interface MarketConversation {
   orderId?: number | null;
   buyerId: number;
   sellerId: number;
-  item: MarketItem;
+  item: MarketConversationItem;
   buyer: MarketUser;
   seller: MarketUser;
   counterpart: MarketUser;
@@ -341,6 +461,15 @@ export interface MarketMessage {
   readAt?: string | null;
   createdAt: string;
   sender?: MarketUser;
+}
+
+export type MarketContactMethod = "wechat" | "qq" | "phone" | "email" | "other";
+
+export interface MarketContactCard {
+  method: MarketContactMethod;
+  value: string | null;
+  valueMasked: string;
+  updatedAt: string;
 }
 
 export interface MarketItemInput {
@@ -367,8 +496,11 @@ export interface MarketItemInput {
   images?: string[];
   digitalDelivery?: string;
   draft?: boolean;
-  status?: string;
 }
+
+export type MarketItemPatchInput = Partial<MarketItemInput> & {
+  status?: MarketItemStatus;
+};
 
 export type MarketListParams = {
   page?: number;
@@ -404,6 +536,35 @@ export interface TradeIntent {
   conversationId?: number | null;
 }
 
+export interface MarketOffer {
+  id: number;
+  itemId: number;
+  buyerId: number;
+  priceCents: number;
+  price: string;
+  message: string;
+  status: "pending" | "accepted" | "rejected" | "cancelled" | "expired";
+  item?: MarketItem;
+  buyer?: MarketUser;
+  order?: MarketOrder | null;
+  conversationId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketTradeIntentInput {
+  price: string | number;
+  message?: string;
+  availableTime: string;
+}
+
+export interface MarketOfferInput {
+  price: string | number;
+  message?: string;
+}
+
+export type MarketTradeAction = "accept" | "reject" | "cancel";
+
 export interface WantedPost {
   id: number;
   authorId: number | null;
@@ -435,6 +596,15 @@ export interface WantedPost {
   updatedAt: string;
 }
 
+export interface WantedListParams extends Record<string, unknown> {
+  page?: number;
+  size?: number;
+  q?: string;
+  category?: string;
+  campus?: MarketCampus | "";
+  status?: Extract<WantedPost["status"], "active" | "responded">;
+}
+
 export interface WantedResponse {
   id: number;
   wantedPostId: number;
@@ -453,6 +623,21 @@ export interface WantedResponse {
   updatedAt: string;
 }
 
+export interface WantedResponseInput {
+  itemId?: number;
+  title?: string;
+  price: string | number;
+  description: string;
+  images?: string[];
+  condition?: MarketCondition;
+  brand?: string;
+  model?: string;
+  availableTime: string;
+}
+
+export type WantedResponseAction = "accept" | "reject" | "cancel";
+export type WantedResponseActionResult = WantedResponse | MarketOrder;
+
 export interface WantedPostInput {
   title: string;
   category: string;
@@ -460,14 +645,16 @@ export interface WantedPostInput {
   budgetMax: string | number;
   brandModel?: string;
   condition?: string;
-  expectedTradeTime?: string;
-  campus?: string;
-  location?: string;
+  expectedTradeTime: string;
+  campus: MarketCampus;
+  location: string;
   description: string;
   allowSellerOffers?: boolean;
   anonymous?: boolean;
   expiryDays?: number;
 }
+
+export type WantedPostPatch = Partial<Omit<WantedPostInput, "anonymous">>;
 
 export interface MarketMatchReason {
   key: "category" | "budget" | "campus" | "keyword" | "condition";
@@ -495,6 +682,44 @@ export interface MarketPreference {
   updatedAt: string;
 }
 
+export interface MarketMineWorkspace {
+  selling: MarketItem[];
+  favorites: MarketItem[];
+  offers: MarketOffer[];
+  sellerOffers: MarketOffer[];
+  orders: MarketOrder[];
+  wantedPosts: WantedPost[];
+  wantedResponses: WantedResponse[];
+  tradeIntents: TradeIntent[];
+  sellerTradeIntents: TradeIntent[];
+  conversationCount: number;
+  payoutProfile: MarketPayoutProfile | null;
+}
+
+export interface MarketPublicUserProfile {
+  user: MarketUser;
+  stats: {
+    listingCount: number;
+    completedTrades: number;
+    rating: number;
+    reviewCount: number;
+    positiveRate: number;
+    noShowCount: number;
+  };
+  recentItems: MarketItem[];
+  merchant: {
+    id: number;
+    slug: string;
+    name: string;
+    category: string;
+    activeUntil: string;
+    promotion: {
+      homepage: PromotionBadge | null;
+      promoted: boolean;
+    };
+  } | null;
+}
+
 export interface MarketOperationsDashboard {
   generatedAt: string;
   window: { days: number; since: string; until: string };
@@ -510,8 +735,14 @@ export interface MarketAppeal {
   userId: number;
   content: string;
   status: "pending" | "approved" | "rejected";
+  handledById?: number | null;
   handledNote?: string;
+  handledAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
+  user?: MarketUser;
+  violation?: MarketViolation;
+  handledBy?: MarketUser | null;
 }
 
 export interface MarketViolation {
@@ -523,9 +754,116 @@ export interface MarketViolation {
   reason: string;
   status: "active" | "revoked" | "expired";
   expiresAt?: string | null;
+  revokedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
   appeals?: MarketAppeal[];
   user?: MarketUser;
+}
+
+export interface MarketReview {
+  id: number;
+  orderId: number;
+  authorId: number;
+  targetUserId: number;
+  rating: number;
+  content: string;
+  createdAt: string;
+  author?: MarketUser;
+  order?: { id: number; item: { id: number; title: string } };
+}
+
+export interface MarketReviewInput {
+  rating: number;
+  content?: string;
+}
+
+export interface MarketReportInput {
+  reason: string;
+  detail?: string;
+}
+
+export interface MarketReport {
+  id: number;
+  itemId?: number | null;
+  wantedPostId?: number | null;
+  orderId?: number | null;
+  reportedUserId?: number | null;
+  reporterId: number;
+  type: "listing" | "wanted" | "user" | "trade";
+  reason: string;
+  detail: string;
+  status: "pending" | "resolved" | "rejected";
+  handledById?: number | null;
+  handledNote: string;
+  handledAt?: string | null;
+  createdAt: string;
+  item?: { id: number; title: string; status: string } | null;
+  wantedPost?: { id: number; title: string; status: string } | null;
+  order?: { id: number; outTradeNo: string; status: string } | null;
+  reportedUser?: MarketUser | null;
+  reporter?: MarketUser;
+}
+
+export interface MarketViolationCreateInput {
+  userId: number;
+  itemId?: number | null;
+  wantedPostId?: number | null;
+  orderId?: number | null;
+  type: string;
+  level: MarketViolation["level"];
+  action: MarketViolation["action"];
+  reason: string;
+  expiresAt?: string | null;
+}
+
+export interface MarketAdminActionLog {
+  id: number;
+  actorId?: number | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  summary: string;
+  detail: string;
+  ip: string;
+  createdAt: string;
+  actor?: MarketUser | null;
+}
+
+export interface MarketAdminConfig {
+  commissionBps: number;
+  commissionRate: number;
+  learningMaterialCommissionBps: number;
+  learningMaterialCommissionRate: number;
+  updatedAt: string;
+}
+
+export interface MarketAdminRefund extends MarketRefund {
+  amount: string;
+  order: MarketOrder;
+  requestedBy?: MarketUser;
+}
+
+export interface MarketAdminPayoutProfile {
+  method: "alipay" | "wxpay" | "bank";
+  account: string;
+  realName: string;
+  verified: boolean;
+}
+
+export interface MarketAdminOverview {
+  counts: Partial<Record<MarketItemStatus, number>>;
+  reports: MarketReport[];
+  refunds: MarketAdminRefund[];
+  settlements: MarketSettlement[];
+  orders: MarketOrder[];
+  reviewItems: MarketItem[];
+  expiredItems: MarketItem[];
+  wantedModeration: WantedPost[];
+  safetyRules: MarketSafetyRule[];
+  violations: MarketViolation[];
+  appeals: MarketAppeal[];
+  actionLogs: MarketAdminActionLog[];
 }
 
 export interface MarketTrustProfile {
@@ -546,8 +884,8 @@ export interface MarketTrustProfile {
 
 export interface MarketContactCardResult {
   orderId: number;
-  own: { user: MarketUser; contact: { method: string; value: string | null; valueMasked: string; updatedAt: string } | null };
-  counterpart: { user: MarketUser; contact: { method: string; value: string | null; valueMasked: string; updatedAt: string } | null };
+  own: { user: MarketUser; contact: MarketContactCard | null };
+  counterpart: { user: MarketUser; contact: MarketContactCard | null };
 }
 
 export interface MarketSafetyRule {
@@ -563,70 +901,70 @@ export interface MarketSafetyRule {
 }
 
 export const marketApi = {
-  meta: (options?: RequestOptions) => request.get<{ categories: MarketCategoryOption[]; campuses: MarketCampus[]; featuredLearningMaterials: MarketCategoryOption | null; conditions: Array<Exclude<MarketCondition, "wanted">>; tradeModes: MarketTradeMode[]; listingTypes: string[]; payTypes: PayType[]; paymentEnabled: boolean; commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number }>("/market/meta", undefined, options),
+  meta: (options?: RequestOptions) => request.get<MarketMeta>("/market/meta", undefined, options),
   items: (params?: MarketListParams, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: MarketItem[] }>("/market/items", params, options),
   item: (id: number, options?: RequestOptions) => request.get<MarketItem>(`/market/items/${id}`, undefined, options),
   itemMatches: (id: number, options?: RequestOptions) => request.get<MarketWantedMatch[]>(`/market/items/${id}/matches`, undefined, options),
   createItem: (payload: MarketItemInput) => request.post<MarketItem>("/market/items", payload),
-  updateItem: (id: number, payload: Partial<MarketItemInput>) => request.patch<MarketItem>(`/market/items/${id}`, payload),
+  updateItem: (id: number, payload: MarketItemPatchInput) => request.patch<MarketItem>(`/market/items/${id}`, payload),
   removeItem: (id: number) => request.delete<{ ok: true }>(`/market/items/${id}`),
-  updateItemLifecycle: (id: number, action: "renew" | "withdraw" | "mark_sold" | "relist") => request.post<MarketItem>(`/market/items/${id}/lifecycle`, { action }),
+  updateItemLifecycle: (id: number, action: MarketItemLifecycleAction) => request.post<MarketItem>(`/market/items/${id}/lifecycle`, { action }),
   favorite: (id: number) => request.post<{ favorited: boolean; favoriteCount: number }>(`/market/items/${id}/favorite`),
-  createOffer: (id: number, payload: { price: string | number; message?: string }) => request.post<any>(`/market/items/${id}/offers`, payload),
-  updateOffer: (id: number, action: "accept" | "reject" | "cancel") => request.patch<any>(`/market/offers/${id}`, { action }),
-  createTradeIntent: (id: number, payload: { price: string | number; message?: string; availableTime: string }) => request.post<TradeIntent>(`/market/items/${id}/intents`, payload),
-  updateTradeIntent: (id: number, action: "accept" | "reject" | "cancel") => request.patch<TradeIntent | MarketOrder>(`/market/trade-intents/${id}`, { action }),
-  wanted: (params?: { page?: number; size?: number; q?: string; category?: string; campus?: string; status?: string }, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: WantedPost[] }>("/market/wanted", params, options),
+  createOffer: (id: number, payload: MarketOfferInput) => request.post<MarketOffer>(`/market/items/${id}/offers`, payload),
+  updateOffer: (id: number, action: MarketTradeAction) => request.patch<MarketOffer | MarketOrder>(`/market/offers/${id}`, { action }),
+  createTradeIntent: (id: number, payload: MarketTradeIntentInput) => request.post<TradeIntent>(`/market/items/${id}/intents`, payload),
+  updateTradeIntent: (id: number, action: MarketTradeAction) => request.patch<TradeIntent | MarketOrder>(`/market/trade-intents/${id}`, { action }),
+  wanted: (params?: WantedListParams, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: WantedPost[] }>("/market/wanted", params, options),
   wantedPost: (id: number, options?: RequestOptions) => request.get<WantedPost>(`/market/wanted/${id}`, undefined, options),
   wantedMatches: (id: number, options?: RequestOptions) => request.get<MarketItemMatch[]>(`/market/wanted/${id}/matches`, undefined, options),
   createWantedPost: (payload: WantedPostInput) => request.post<WantedPost>("/market/wanted", payload),
-  updateWantedPost: (id: number, payload: Partial<WantedPostInput>) => request.patch<WantedPost>(`/market/wanted/${id}`, payload),
+  updateWantedPost: (id: number, payload: WantedPostPatch) => request.patch<WantedPost>(`/market/wanted/${id}`, payload),
   updateWantedLifecycle: (id: number, action: "renew" | "cancel" | "complete") => request.post<WantedPost>(`/market/wanted/${id}/lifecycle`, { action }),
-  respondToWanted: (id: number, payload: { itemId?: number; title?: string; price: string | number; description: string; images?: string[]; condition?: string; brand?: string; model?: string; availableTime: string }) => request.post<WantedResponse>(`/market/wanted/${id}/responses`, payload),
-  updateWantedResponse: (id: number, action: "accept" | "reject" | "cancel") => request.patch<WantedResponse | MarketOrder>(`/market/wanted-responses/${id}`, { action }),
+  respondToWanted: (id: number, payload: WantedResponseInput) => request.post<WantedResponse>(`/market/wanted/${id}/responses`, payload),
+  updateWantedResponse: (id: number, action: WantedResponseAction) => request.patch<WantedResponseActionResult>(`/market/wanted-responses/${id}`, { action }),
   payOrder: (id: number, payType: PayType) => request.post<{ order: MarketOrder; epay: EpaySubmit }>(`/market/orders/${id}/pay`, { payType }),
-  updateOrder: (id: number, payload: { action: string; meetupTime?: string; meetupLocation?: string; note?: string; reason?: string }) => request.patch<any>(`/market/orders/${id}`, payload),
-  reviewOrder: (id: number, payload: { rating: number; content?: string }) => request.post<any>(`/market/orders/${id}/reviews`, payload),
-  createConversation: (itemId: number, message = "") => request.post<MarketConversation>(`/market/items/${itemId}/conversations`, { message }),
+  updateOrder: (id: number, payload: MarketOrderUpdateInput) => request.patch<MarketOrderActionResult>(`/market/orders/${id}`, payload),
+  reviewOrder: (id: number, payload: MarketReviewInput) => request.post<MarketReview>(`/market/orders/${id}/reviews`, payload),
+  createConversation: (itemId: number, message = "") => request.post<Pick<MarketConversation, "id" | "itemId" | "orderId" | "buyerId" | "sellerId" | "lastMessageAt">>(`/market/items/${itemId}/conversations`, { message }),
   conversations: (options?: RequestOptions) => request.get<MarketConversation[]>("/market/conversations", undefined, options),
   messages: (id: number, options?: RequestOptions) => request.get<MarketMessage[]>(`/market/conversations/${id}/messages`, undefined, options),
   sendMessage: (id: number, content: string) => request.post<MarketMessage>(`/market/conversations/${id}/messages`, { content }),
-  mine: (options?: RequestOptions) => request.get<{ selling: MarketItem[]; favorites: MarketItem[]; offers: any[]; sellerOffers: any[]; orders: MarketOrder[]; wantedPosts: WantedPost[]; wantedResponses: WantedResponse[]; tradeIntents: TradeIntent[]; sellerTradeIntents: TradeIntent[]; conversationCount: number; payoutProfile?: any }>("/market/mine", undefined, options),
+  mine: (options?: RequestOptions) => request.get<MarketMineWorkspace>("/market/mine", undefined, options),
   sellerDashboard: (options?: RequestOptions) => request.get<MarketSellerDashboard>("/market/seller/dashboard", undefined, options),
-  reviews: (userId: number, options?: RequestOptions) => request.get<{ list: any[]; average: number; total: number }>(`/market/users/${userId}/reviews`, undefined, options),
-  userMarketProfile: (userId: number, options?: RequestOptions) => request.get<{ user: MarketUser; stats: { listingCount: number; completedTrades: number; rating: number; reviewCount: number; positiveRate: number; noShowCount: number }; recentItems: MarketItem[]; merchant?: { id: number; slug: string; name: string; category: string; activeUntil: string; promotion: { homepage: PromotionBadge | null; promoted: boolean } } | null }>(`/market/users/${userId}/profile`, undefined, options),
+  reviews: (userId: number, options?: RequestOptions) => request.get<{ list: MarketReview[]; average: number; total: number }>(`/market/users/${userId}/reviews`, undefined, options),
+  userMarketProfile: (userId: number, options?: RequestOptions) => request.get<MarketPublicUserProfile>(`/market/users/${userId}/profile`, undefined, options),
   userTrust: (userId: number, options?: RequestOptions) => request.get<MarketTrustProfile>(`/market/users/${userId}/trust`, undefined, options),
   myTrust: (options?: RequestOptions) => request.get<MarketTrustProfile>("/market/trust/me", undefined, options),
   preferences: (options?: RequestOptions) => request.get<MarketPreference>("/market/preferences", undefined, options),
   updatePreferences: (payload: Pick<MarketPreference, "matchNotificationsEnabled" | "meetupRemindersEnabled">) => request.patch<MarketPreference>("/market/preferences", payload),
-  saveContactCard: (payload: { method: "wechat" | "qq" | "phone" | "email" | "other"; value: string }) => request.patch<{ method: string; valueMasked: string; updatedAt: string }>("/market/contact-card", payload),
+  saveContactCard: (payload: { method: MarketContactMethod; value: string }) => request.patch<Omit<MarketContactCard, "value">>("/market/contact-card", payload),
   orderContactCards: (orderId: number, options?: RequestOptions) => request.get<MarketContactCardResult>(`/market/orders/${orderId}/contact-cards`, undefined, options),
   appealViolation: (violationId: number, content: string) => request.post<MarketAppeal>(`/market/violations/${violationId}/appeals`, { content }),
-  report: (itemId: number, payload: { reason: string; detail?: string }) => request.post<any>(`/market/items/${itemId}/reports`, payload),
-  reportWanted: (wantedPostId: number, payload: { reason: string; detail?: string }) => request.post<any>(`/market/wanted/${wantedPostId}/reports`, payload),
-  reportUser: (userId: number, payload: { reason: string; detail?: string }) => request.post<any>(`/market/users/${userId}/reports`, payload),
-  reportOrder: (orderId: number, payload: { reason: string; detail?: string }) => request.post<any>(`/market/orders/${orderId}/report`, payload),
-  savePayoutProfile: (payload: { method: "alipay" | "wxpay" | "bank"; account: string; realName: string }) => request.patch<any>("/market/payout-profile", payload),
-  adminOverview: (options?: RequestOptions) => request.get<any>("/market/admin/overview", undefined, options),
-  adminConfig: (options?: RequestOptions) => request.get<{ commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number; updatedAt: string }>("/market/admin/config", undefined, options),
-  adminUpdateConfig: (learningMaterialCommissionRate: number) => request.patch<{ commissionBps: number; commissionRate: number; learningMaterialCommissionBps: number; learningMaterialCommissionRate: number; updatedAt: string }>("/market/admin/config", { learningMaterialCommissionRate }),
+  report: (itemId: number, payload: MarketReportInput) => request.post<MarketReport>(`/market/items/${itemId}/reports`, payload),
+  reportWanted: (wantedPostId: number, payload: MarketReportInput) => request.post<MarketReport>(`/market/wanted/${wantedPostId}/reports`, payload),
+  reportUser: (userId: number, payload: MarketReportInput) => request.post<MarketReport>(`/market/users/${userId}/reports`, payload),
+  reportOrder: (orderId: number, payload: MarketReportInput) => request.post<MarketReport>(`/market/orders/${orderId}/report`, payload),
+  savePayoutProfile: (payload: { method: "alipay" | "wxpay" | "bank"; account: string; realName: string }) => request.patch<MarketPayoutProfile>("/market/payout-profile", payload),
+  adminOverview: (options?: RequestOptions) => request.get<MarketAdminOverview>("/market/admin/overview", undefined, options),
+  adminConfig: (options?: RequestOptions) => request.get<MarketAdminConfig>("/market/admin/config", undefined, options),
+  adminUpdateConfig: (learningMaterialCommissionRate: number) => request.patch<MarketAdminConfig>("/market/admin/config", { learningMaterialCommissionRate }),
   adminCategories: (options?: RequestOptions) => request.get<MarketCategoryOption[]>("/market/admin/categories", undefined, options),
   adminCreateCategory: (payload: Omit<MarketCategoryOption, "id" | "itemCount">) => request.post<MarketCategoryOption>("/market/admin/categories", payload),
   adminUpdateCategory: (id: number, payload: Partial<Omit<MarketCategoryOption, "id" | "slug" | "itemCount">>) => request.patch<MarketCategoryOption>(`/market/admin/categories/${id}`, payload),
   adminDeleteCategory: (id: number) => request.delete<{ ok: true }>(`/market/admin/categories/${id}`),
-  adminUpdateItem: (id: number, payload: { status: string; note?: string }) => request.patch<any>(`/market/admin/items/${id}`, payload),
-  adminUpdateWanted: (id: number, payload: { status: "reviewing" | "active" | "expired" | "removed"; note?: string }) => request.patch<any>(`/market/admin/wanted/${id}`, payload),
-  adminHandleReport: (id: number, payload: { status: "resolved" | "rejected"; note?: string; hideItem?: boolean }) => request.patch<any>(`/market/admin/reports/${id}`, payload),
+  adminUpdateItem: (id: number, payload: { status: MarketItemStatus; note?: string }) => request.patch<MarketItem>(`/market/admin/items/${id}`, payload),
+  adminUpdateWanted: (id: number, payload: { status: "reviewing" | "active" | "expired" | "removed"; note?: string }) => request.patch<WantedPost>(`/market/admin/wanted/${id}`, payload),
+  adminHandleReport: (id: number, payload: { status: "resolved" | "rejected"; note?: string; hideItem?: boolean }) => request.patch<MarketReport>(`/market/admin/reports/${id}`, payload),
   adminCreateSafetyRule: (payload: Omit<MarketSafetyRule, "id" | "createdAt" | "updatedAt">) => request.post<MarketSafetyRule>("/market/admin/safety-rules", payload),
   adminUpdateSafetyRule: (id: number, payload: Partial<Omit<MarketSafetyRule, "id" | "createdAt" | "updatedAt">>) => request.patch<MarketSafetyRule>(`/market/admin/safety-rules/${id}`, payload),
   adminDeleteSafetyRule: (id: number) => request.delete<{ ok: true }>(`/market/admin/safety-rules/${id}`),
-  adminCreateViolation: (payload: { userId: number; itemId?: number | null; wantedPostId?: number | null; orderId?: number | null; type: string; level: "warning" | "moderate" | "serious"; action: "warning" | "restrict_publish" | "restrict_trade"; reason: string; expiresAt?: string | null }) => request.post<MarketViolation>("/market/admin/violations", payload),
+  adminCreateViolation: (payload: MarketViolationCreateInput) => request.post<MarketViolation>("/market/admin/violations", payload),
   adminRevokeViolation: (id: number, note = "") => request.patch<MarketViolation>(`/market/admin/violations/${id}`, { status: "revoked", note }),
   adminHandleAppeal: (id: number, payload: { status: "approved" | "rejected"; note: string }) => request.patch<MarketAppeal>(`/market/admin/appeals/${id}`, payload),
-  adminActionLogs: (params?: { page?: number; size?: number }, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: any[] }>("/market/admin/action-logs", params, options),
-  adminHandleRefund: (id: number, payload: { status: "approved" | "completed" | "rejected" | "failed"; providerRefundNo?: string; note?: string }) => request.patch<any>(`/market/admin/refunds/${id}`, payload),
-  adminHandleSettlement: (id: number, payload: { status: "available" | "held" | "settled"; reference?: string; note?: string }) => request.patch<any>(`/market/admin/settlements/${id}`, payload),
-  adminPayoutProfile: (id: number) => request.get<any>(`/market/admin/settlements/${id}/payout-profile`),
+  adminActionLogs: (params?: { page?: number; size?: number }, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: MarketAdminActionLog[] }>("/market/admin/action-logs", params, options),
+  adminHandleRefund: (id: number, payload: { status: "approved" | "completed" | "rejected" | "failed"; providerRefundNo?: string; note?: string }) => request.patch<MarketRefund>(`/market/admin/refunds/${id}`, payload),
+  adminHandleSettlement: (id: number, payload: { status: "available" | "held" | "settled"; reference?: string; note?: string }) => request.patch<MarketSettlement>(`/market/admin/settlements/${id}`, payload),
+  adminPayoutProfile: (id: number) => request.get<MarketAdminPayoutProfile>(`/market/admin/settlements/${id}/payout-profile`),
   promotionPlans: (params?: { scope?: PromotionScope }, options?: RequestOptions) => request.get<PromotionPlan[]>("/market/promotions/plans", params, options),
   promotionOrders: (params?: { page?: number; size?: number; status?: PromotionOrder["status"]; scope?: PromotionScope }, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: PromotionOrder[] }>("/market/promotions/orders", params, options),
   createPromotionOrder: (payload: { planCode: string; targetId: number; note?: string }, options?: RequestOptions) => request.post<PromotionOrder>("/market/promotions/orders", payload, options),

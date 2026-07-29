@@ -48,6 +48,9 @@ const PG_DUMP_COMMANDS = postgresCommandCandidates("pg_dump", process.env.PG_DUM
 const PG_RESTORE_COMMANDS = postgresCommandCandidates("pg_restore", process.env.PG_RESTORE_BIN);
 const DATABASE_RESTORE_UPLOAD_ACCEPT = ".dump,.backup,.tar";
 const DATABASE_RESTORE_UPLOAD_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
+const DATABASE_RESTORE_UPLOAD_EXTENSIONS = new Set(
+  DATABASE_RESTORE_UPLOAD_ACCEPT.split(","),
+);
 
 export type DatabaseBackupStatus = {
   supported: boolean;
@@ -76,12 +79,36 @@ export type DatabaseRestoreResult = {
   provider: "postgresql";
 };
 
-export type DatabaseRestoreFailureCode = "invalid-backup" | "restore-failed" | "database-unavailable";
+export type DatabaseBackupFailureCode =
+  | "unsupported"
+  | "tool-unavailable"
+  | "backup-failed";
+
+export class DatabaseBackupFailure extends Error {
+  constructor(public readonly failureCode: DatabaseBackupFailureCode, message: string) {
+    super(message);
+    this.name = "DatabaseBackupFailure";
+  }
+}
+
+export type DatabaseRestoreFailureCode =
+  | "unsupported"
+  | "restore-unavailable"
+  | "invalid-backup"
+  | "restore-failed"
+  | "database-unavailable";
 
 export class DatabaseRestoreFailure extends Error {
   constructor(public readonly failureCode: DatabaseRestoreFailureCode, message: string) {
     super(message);
     this.name = "DatabaseRestoreFailure";
+  }
+}
+
+export class DatabaseRestoreBusy extends Error {
+  constructor(message = "数据库当前正在维护中，请稍后再试") {
+    super(message);
+    this.name = "DatabaseRestoreBusy";
   }
 }
 
@@ -132,6 +159,15 @@ function postgresBackupFileName(date = new Date()) {
 
 export function databaseRestoreUploadLimitBytes() {
   return DATABASE_RESTORE_UPLOAD_LIMIT_BYTES;
+}
+
+export function databaseRestoreUploadAccept() {
+  return DATABASE_RESTORE_UPLOAD_ACCEPT;
+}
+
+export function isAcceptedDatabaseRestoreFileName(fileName: string) {
+  const extension = path.extname(path.basename(fileName || "")).toLowerCase();
+  return DATABASE_RESTORE_UPLOAD_EXTENSIONS.has(extension);
 }
 
 async function removeIfExists(filePath: string) {
@@ -250,7 +286,10 @@ async function resolvePgRestoreForArchive(sourcePath: string) {
     }
   }
   if (!foundAvailableCommand) {
-    throw new Error("当前环境未找到 pg_restore，无法恢复 PostgreSQL 备份");
+    throw new DatabaseRestoreFailure(
+      "restore-unavailable",
+      "当前环境未找到 pg_restore，无法恢复 PostgreSQL 备份",
+    );
   }
   throw lastValidationError;
 }
@@ -389,20 +428,39 @@ export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
 
 export async function createDatabaseBackupSnapshot() {
   if (detectProvider() !== "postgresql") {
-    throw new Error("当前服务端只支持 PostgreSQL 在线备份");
+    throw new DatabaseBackupFailure(
+      "unsupported",
+      "当前服务端只支持 PostgreSQL 在线备份",
+    );
   }
   const pgDumpCommand = await firstAvailableCommand(PG_DUMP_COMMANDS);
-  if (!pgDumpCommand) throw new Error("当前环境未找到 pg_dump，无法导出 PostgreSQL 备份");
+  if (!pgDumpCommand) {
+    throw new DatabaseBackupFailure(
+      "tool-unavailable",
+      "当前环境未找到 pg_dump，无法导出 PostgreSQL 备份",
+    );
+  }
 
   const tempDir = await mkdtemp(path.join(tmpdir(), "xjtlu-web-db-backup-"));
   const snapshotPath = path.join(tempDir, `postgres-${randomUUID()}.dump`);
-  await runPgDump(pgDumpCommand, snapshotPath);
-  return {
-    filePath: snapshotPath,
-    tempDir,
-    fileName: postgresBackupFileName(),
-    contentType: "application/octet-stream",
-  };
+  try {
+    await runPgDump(pgDumpCommand, snapshotPath);
+    return {
+      filePath: snapshotPath,
+      tempDir,
+      fileName: postgresBackupFileName(),
+      contentType: "application/octet-stream",
+    };
+  } catch (error) {
+    await cleanupDatabaseBackupSnapshot({
+      filePath: snapshotPath,
+      tempDir,
+    });
+    throw new DatabaseBackupFailure(
+      "backup-failed",
+      `PostgreSQL 备份失败：${errorMessage(error, "未知错误")}`,
+    );
+  }
 }
 
 export async function cleanupDatabaseBackupSnapshot(snapshot: { filePath: string; tempDir: string }) {
@@ -416,48 +474,69 @@ export async function restoreDatabaseBackupSnapshot(input: {
   fileSizeBytes: number;
 }): Promise<DatabaseRestoreResult> {
   if (detectProvider() !== "postgresql") {
-    throw new Error("当前服务端只支持 PostgreSQL 在线恢复");
+    throw new DatabaseRestoreFailure(
+      "unsupported",
+      "当前服务端只支持 PostgreSQL 在线恢复",
+    );
+  }
+  if (
+    !Number.isSafeInteger(input.fileSizeBytes)
+    || input.fileSizeBytes <= 0
+    || input.fileSizeBytes > DATABASE_RESTORE_UPLOAD_LIMIT_BYTES
+  ) {
+    throw new DatabaseRestoreFailure(
+      "invalid-backup",
+      "备份文件大小不合法",
+    );
+  }
+  if (!isAcceptedDatabaseRestoreFileName(input.fileName)) {
+    throw new DatabaseRestoreFailure(
+      "invalid-backup",
+      `备份文件扩展名不受支持，请选择 ${DATABASE_RESTORE_UPLOAD_ACCEPT}`,
+    );
   }
   const pgRestoreCommand = await resolvePgRestoreForArchive(input.filePath);
   if (!beginDatabaseMaintenance("数据库恢复中，请稍后再试")) {
-    throw new Error("数据库当前正在维护中，请稍后再试");
+    throw new DatabaseRestoreBusy();
   }
 
   const startedAt = Date.now();
   let restoreError: unknown = null;
 
   try {
-    await prisma.$disconnect().catch(() => undefined);
-    await runPgRestore(pgRestoreCommand, input.filePath);
-  } catch (error) {
-    restoreError = error;
-  }
-
-  try {
-    await prisma.$connect();
-    await prisma.$queryRawUnsafe("SELECT 1");
-    await Promise.all([
-      loadFeatures().catch(() => undefined),
-      loadStorageConfig().catch(() => undefined),
-    ]);
-  } catch (error) {
-    if (!restoreError) {
-      restoreError = new DatabaseRestoreFailure(
-        "database-unavailable",
-        `恢复后无法重新连接数据库：${errorMessage(error, "未知错误")}`,
-      );
+    try {
+      await prisma.$disconnect().catch(() => undefined);
+      await runPgRestore(pgRestoreCommand, input.filePath);
+    } catch (error) {
+      restoreError = error;
     }
+
+    try {
+      await prisma.$connect();
+      await prisma.$queryRawUnsafe("SELECT 1");
+      await Promise.all([
+        loadFeatures().catch(() => undefined),
+        loadStorageConfig().catch(() => undefined),
+      ]);
+    } catch (error) {
+      if (!restoreError) {
+        restoreError = new DatabaseRestoreFailure(
+          "database-unavailable",
+          `恢复后无法重新连接数据库：${errorMessage(error, "未知错误")}`,
+        );
+      }
+    }
+
+    if (restoreError) throw restoreError;
+
+    return {
+      restoredAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      fileName: path.basename(input.fileName).slice(0, 255),
+      fileSizeBytes: input.fileSizeBytes,
+      provider: "postgresql",
+    };
+  } finally {
+    endDatabaseMaintenance();
   }
-
-  endDatabaseMaintenance();
-
-  if (restoreError) throw restoreError;
-
-  return {
-    restoredAt: new Date().toISOString(),
-    durationMs: Date.now() - startedAt,
-    fileName: input.fileName,
-    fileSizeBytes: input.fileSizeBytes,
-    provider: "postgresql",
-  };
 }

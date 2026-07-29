@@ -298,6 +298,11 @@ function onRestoreFileChange(event: Event) {
   if (restoreBusy.value) return;
   const input = event.target as HTMLInputElement | null;
   const file = input?.files?.[0] || null;
+  if (file && !/\.(dump|backup|tar)$/i.test(file.name)) {
+    ElMessage.warning("请选择 .dump、.backup 或 .tar 数据库备份文件");
+    clearRestoreFile(true);
+    return;
+  }
   const maxBytes = status.value?.maxRestoreUploadBytes;
   if (file && maxBytes && file.size > maxBytes) {
     ElMessage.warning(`备份文件超过上传限制：${formatBytes(maxBytes)}`);
@@ -324,8 +329,10 @@ async function downloadBackup() {
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     ElMessage.success("数据库备份已开始下载");
-  } catch (error: any) {
-    if (!disposed && seq === downloadSeq) ElMessage.error(error?.message || "数据库备份下载失败");
+  } catch (error) {
+    if (!disposed && seq === downloadSeq) {
+      ElMessage.error(requestMessage(error) || "数据库备份下载失败");
+    }
   } finally {
     if (!disposed && seq === downloadSeq) downloading.value = false;
   }
@@ -369,9 +376,9 @@ async function uploadAndRestore(seq = ++restoreSeq) {
     handleRestoreSuccess(result);
     clearRestoreFile(true);
     await loadStatus();
-  } catch (error: any) {
+  } catch (error) {
     if (!disposed && seq === restoreSeq) {
-      ElMessage.error(error?.response?.data?.message || error?.message || "数据库恢复失败");
+      ElMessage.error(requestMessage(error) || "数据库恢复失败");
       await loadStatus().catch(() => undefined);
     }
   } finally {

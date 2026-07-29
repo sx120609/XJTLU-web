@@ -1,6 +1,7 @@
 import path from "node:path";
 import { prisma } from "../prisma";
 import { uploadOriginalNameRepairCandidate } from "../utils/uploadFilename";
+import { acquireFileCollectTaskLock } from "./fileCollectLockService";
 
 export type FileCollectFilenameRepairResult = {
   total: number;
@@ -58,61 +59,64 @@ function renderStoredName(template: string, data: Record<string, string>, origin
 }
 
 export async function repairFileCollectTaskFilenames(taskId: number): Promise<FileCollectFilenameRepairResult> {
-  const task = await prisma.fileCollectTask.findUnique({
-    where: { id: taskId },
-    include: {
-      submissions: {
-        where: { status: "submitted" },
-        orderBy: { id: "asc" },
-        include: { files: { orderBy: { id: "asc" } } },
-      },
-    },
-  });
-  if (!task) {
-    return { total: 0, updated: 0, unchanged: 0, unrecoverable: 0, samples: [] };
-  }
-
-  const result: FileCollectFilenameRepairResult = {
-    total: 0,
-    updated: 0,
-    unchanged: 0,
-    unrecoverable: 0,
-    samples: [],
-  };
-
-  for (const submission of task.submissions) {
-    const data = parseJsonObject(submission.data);
-    const total = submission.files.length;
-    for (let index = 0; index < submission.files.length; index += 1) {
-      const file = submission.files[index];
-      result.total += 1;
-      const candidate = uploadOriginalNameRepairCandidate(file.originalName);
-      if (!candidate.changed) {
-        if (candidate.probablyLost) result.unrecoverable += 1;
-        else result.unchanged += 1;
-        continue;
-      }
-
-      const storedName = renderStoredName(task.renameTemplate, data, candidate.repaired, index + 1, total);
-      await prisma.fileCollectFile.update({
-        where: { id: file.id },
-        data: {
-          originalName: candidate.repaired,
-          storedName,
+  return prisma.$transaction(async (tx) => {
+    await acquireFileCollectTaskLock(tx, taskId);
+    const task = await tx.fileCollectTask.findUnique({
+      where: { id: taskId },
+      include: {
+        submissions: {
+          where: { status: "submitted" },
+          orderBy: { id: "asc" },
+          include: { files: { orderBy: { id: "asc" } } },
         },
-      });
-      result.updated += 1;
-      if (result.samples.length < 20) {
-        result.samples.push({
-          id: file.id,
-          beforeOriginalName: file.originalName,
-          afterOriginalName: candidate.repaired,
-          beforeStoredName: file.storedName,
-          afterStoredName: storedName,
+      },
+    });
+    if (!task) {
+      return { total: 0, updated: 0, unchanged: 0, unrecoverable: 0, samples: [] };
+    }
+
+    const result: FileCollectFilenameRepairResult = {
+      total: 0,
+      updated: 0,
+      unchanged: 0,
+      unrecoverable: 0,
+      samples: [],
+    };
+
+    for (const submission of task.submissions) {
+      const data = parseJsonObject(submission.data);
+      const total = submission.files.length;
+      for (let index = 0; index < submission.files.length; index += 1) {
+        const file = submission.files[index];
+        result.total += 1;
+        const candidate = uploadOriginalNameRepairCandidate(file.originalName);
+        if (!candidate.changed) {
+          if (candidate.probablyLost) result.unrecoverable += 1;
+          else result.unchanged += 1;
+          continue;
+        }
+
+        const storedName = renderStoredName(task.renameTemplate, data, candidate.repaired, index + 1, total);
+        await tx.fileCollectFile.update({
+          where: { id: file.id },
+          data: {
+            originalName: candidate.repaired,
+            storedName,
+          },
         });
+        result.updated += 1;
+        if (result.samples.length < 20) {
+          result.samples.push({
+            id: file.id,
+            beforeOriginalName: file.originalName,
+            afterOriginalName: candidate.repaired,
+            beforeStoredName: file.storedName,
+            afterStoredName: storedName,
+          });
+        }
       }
     }
-  }
 
-  return result;
+    return result;
+  }, { timeout: 120_000 });
 }

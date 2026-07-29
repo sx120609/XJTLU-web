@@ -236,7 +236,7 @@ Vite 已代理以下路径到后端：
 | 命令 | 说明 |
 |---|---|
 | `npm run dev --prefix server` | 后端热重载 |
-| `npm run build --prefix server` | `prisma generate` + TypeScript 编译 |
+| `npm run build --prefix server` | TypeScript 编译（首次安装或 Schema 变更后先运行 `prisma:generate`） |
 | `npm test --prefix server` | 运行后端认证自动化测试 |
 | `npm run start --prefix server` | 启动主服务 |
 | `npm run proxy:dev --prefix server` | 教务代理开发模式 |
@@ -412,7 +412,7 @@ chmod +x deploy.sh
 ## 安全与边界
 
 - 项目不代表学校官方立场。
-- 当前版本不读取教务数据；XJTLU 密码仅在一次认证请求中使用，服务器不写入数据库、缓存或日志。
+- 当前版本会在用户主动请求时通过学校系统读取其学业数据；XJTLU 密码仅用于当次认证请求，服务器不写入数据库、缓存或日志。
 - 用户内容仅代表发布者本人观点；管理后台可对违规内容执行隐藏、锁帖、人工复核等操作。
 - 外部系统的交易、支付、对账与结果正确性由对应服务提供方负责。
 

@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { SERVICE_TOOL_META, type ServiceToolCode } from "./serviceTools";
+import { acquireQuestionnaireLock } from "./questionnaireLockService";
 
 export type QuestionnaireFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
 export type QuestionnaireBranchAction = "end" | "jump";
@@ -88,7 +89,20 @@ export function normalizeResponse(row: any) {
   };
 }
 
-export async function ensureSystemQuestionnaires() {
+let ensureSystemQuestionnairesPromise: Promise<void> | null = null;
+
+export function ensureSystemQuestionnaires() {
+  if (!ensureSystemQuestionnairesPromise) {
+    ensureSystemQuestionnairesPromise = initializeSystemQuestionnaires()
+      .catch((error) => {
+        ensureSystemQuestionnairesPromise = null;
+        throw error;
+      });
+  }
+  return ensureSystemQuestionnairesPromise;
+}
+
+async function initializeSystemQuestionnaires() {
   await ensureSystemQuestionnaire("feedback", {
     slug: "system-feedback",
     title: "需求反馈",
@@ -125,33 +139,92 @@ async function ensureSystemQuestionnaire(toolCode: ServiceToolCode, input: {
   description: string;
   fields: QuestionnaireField[];
 }) {
-  await prisma.questionnaire.upsert({
+  const fields = JSON.stringify(input.fields);
+  const current = await prisma.questionnaire.findUnique({
     where: { slug: input.slug },
-    update: {
-      title: input.title,
-      description: input.description,
-      toolCode,
-      status: "open",
-      visibility: "public",
-      allowAnonymous: true,
-      oneResponsePerUser: false,
-      isSystem: true,
-      fields: JSON.stringify(input.fields),
-    },
-    create: {
-      slug: input.slug,
-      title: input.title,
-      description: input.description,
-      toolCode,
-      status: "open",
-      visibility: "public",
-      allowAnonymous: true,
-      oneResponsePerUser: false,
-      isSystem: true,
-      fields: JSON.stringify(input.fields),
-      publishedAt: new Date(),
-    },
   });
+  if (!current) {
+    try {
+      await prisma.questionnaire.create({
+        data: {
+          slug: input.slug,
+          title: input.title,
+          description: input.description,
+          toolCode,
+          status: "open",
+          visibility: "public",
+          allowAnonymous: true,
+          oneResponsePerUser: false,
+          isSystem: true,
+          fields,
+          publishedAt: new Date(),
+        },
+      });
+      return;
+    } catch (error) {
+      if ((error as { code?: string })?.code === "P2002") {
+        await ensureSystemQuestionnaire(toolCode, input);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  if (systemQuestionnaireMatches(current, toolCode, input, fields)) return;
+
+  await prisma.$transaction(async (tx) => {
+    await acquireQuestionnaireLock(tx, current.id);
+    const locked = await tx.questionnaire.findUnique({ where: { id: current.id } });
+    if (!locked || systemQuestionnaireMatches(locked, toolCode, input, fields)) return;
+    await tx.questionnaire.update({
+      where: { id: locked.id },
+      data: {
+        slug: input.slug,
+        title: input.title,
+        description: input.description,
+        toolCode,
+        status: "open",
+        visibility: "public",
+        allowAnonymous: true,
+        oneResponsePerUser: false,
+        isSystem: true,
+        fields,
+        publishedAt: locked.publishedAt ?? new Date(),
+        closedAt: null,
+      },
+    });
+  });
+}
+
+function systemQuestionnaireMatches(
+  current: {
+    title: string;
+    description: string | null;
+    toolCode: string;
+    status: string;
+    visibility: string;
+    allowAnonymous: boolean;
+    oneResponsePerUser: boolean;
+    isSystem: boolean;
+    fields: string;
+    publishedAt: Date | null;
+    closedAt: Date | null;
+  },
+  toolCode: ServiceToolCode,
+  input: { title: string; description: string },
+  fields: string,
+) {
+  return current.title === input.title
+    && current.description === input.description
+    && current.toolCode === toolCode
+    && current.status === "open"
+    && current.visibility === "public"
+    && current.allowAnonymous
+    && !current.oneResponsePerUser
+    && current.isSystem
+    && current.fields === fields
+    && Boolean(current.publishedAt)
+    && current.closedAt === null;
 }
 
 export function toolName(toolCode: string) {

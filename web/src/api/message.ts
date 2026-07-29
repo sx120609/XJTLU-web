@@ -1,9 +1,59 @@
 import { request, type RequestOptions } from "./request";
 
+export type MessageNotificationPayload = Record<string, unknown> & {
+  type?: string;
+  topicId?: number | string;
+  replyId?: number | string;
+  title?: string;
+  note?: string;
+  reason?: string;
+  riskScore?: number;
+};
+
+export type MessageNotification = {
+  id: number;
+  userId: number | null;
+  category: string;
+  targetClient: string | null;
+  level: string;
+  title: string;
+  content: string;
+  payload: MessageNotificationPayload;
+  link: string | null;
+  source: string | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type MessageSettings = {
+  id: number;
+  userId: number;
+  quietStart: string;
+  quietEnd: string;
+  qqBotNotifyEnabled: boolean;
+  subscribeReply: boolean;
+  subscribeLike: boolean;
+  subscribeSchool: boolean;
+  subscribeSystem: boolean;
+};
+
+export type MessageSettingsPatch = Omit<MessageSettings, "id" | "userId">;
+
 export const messageApi = {
-  list: (category?: string, options?: RequestOptions) => request.get<any[]>("/messages", category ? { category } : {}, options),
-  read: (id: number, options?: RequestOptions) => request.post<any>(`/messages/${id}/read`, undefined, options),
-  readAll: (options?: RequestOptions) => request.post<any>("/messages/read-all", undefined, options),
-  settings: (options?: RequestOptions) => request.get<any>("/messages/settings", undefined, options),
-  updateSettings: (payload: Record<string, unknown>, options?: RequestOptions) => request.patch<any>("/messages/settings", payload, options),
+  list: (category?: string, options?: RequestOptions) =>
+    request.get<MessageNotification[]>(
+      "/messages",
+      category ? { category } : {},
+      options,
+    ),
+  read: (id: number, options?: RequestOptions) =>
+    request.post<MessageNotification>(`/messages/${id}/read`, undefined, options),
+  readAll: (options?: RequestOptions) =>
+    request.post<{ ok: true }>("/messages/read-all", undefined, options),
+  settings: (options?: RequestOptions) =>
+    request.get<MessageSettings>("/messages/settings", undefined, options),
+  updateSettings: (
+    payload: MessageSettingsPatch,
+    options?: RequestOptions,
+  ) => request.patch<MessageSettings>("/messages/settings", payload, options),
 };

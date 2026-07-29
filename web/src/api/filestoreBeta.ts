@@ -1,7 +1,7 @@
 import { COOKIE_SESSION_MARKER, getCsrfToken, getToken } from "@/api/request";
 import type { QuestionnaireField } from "@/api/tools";
 
-export type FilestoreBetaStatus = "open" | "closed";
+export type FilestoreBetaStatus = "draft" | "open" | "closed";
 
 export interface FilestoreBetaField {
   id: string;
@@ -203,6 +203,7 @@ export interface FilestoreBetaPrepareRemoteResult {
   ok: true;
   directUpload: true;
   submissionId: number;
+  completionToken: string;
   files: FilestoreBetaPreparedRemoteFile[];
   localFiles: FilestoreBetaPreparedLocalFile[];
 }
@@ -396,7 +397,7 @@ export const filestoreBetaApi = {
       method: "POST",
       json: payload,
     }),
-  completeRemote: (slug: string, payload: { submissionId: number; remoteFileIds: number[]; overwrite: boolean }) =>
+  completeRemote: (slug: string, payload: { submissionId: number; completionToken: string; remoteFileIds: number[]; overwrite: boolean }) =>
     filestoreBetaFetch<FilestoreBetaSubmitResult>(`/api/submit/${encodeURIComponent(slug)}/complete-remote`, {
       method: "POST",
       json: payload,

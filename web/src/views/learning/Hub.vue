@@ -4,7 +4,7 @@
       <div>
         <span>KAOPU LEARNING</span>
         <h1>学习中心</h1>
-        <p>把学习用品、同学交流、免费原创内容和学校官方资源放在一个清晰入口里。</p>
+        <p>把学习用品、同学交流、优质付费资料和学校官方资源放在一个清晰入口里。</p>
       </div>
       <img src="/brand/kaopu-cloud.svg" alt="靠浦" />
     </section>
@@ -39,15 +39,15 @@
 
       <div>
         <header>
-          <div><span>FREE ORIGINALS</span><h2>免费原创</h2><p>仅收录本人原创、已获授权或基于公开资料整理的免费内容。</p></div>
-          <router-link to="/learning/free">浏览全部 →</router-link>
+          <div><span>PAID LEARNING</span><h2>付费学习资料</h2><p>收录通过创作者认证与人工审核的原创、已获授权或依法可使用内容。</p></div>
+          <router-link to="/learning/materials">浏览全部 →</router-link>
         </header>
         <div v-if="originals.length" class="original-list cpu-card">
-          <router-link v-for="item in originals" :key="item.id" :to="`/learning/free/item/${item.id}`">
-            <span>{{ item.material?.courseCode || '原创资料' }}</span><div><b>{{ item.title }}</b><small>{{ item.material?.type?.name || '学习内容' }} · 免费获取</small></div>
+          <router-link v-for="item in originals" :key="item.id" :to="`/learning/materials/item/${item.id}`">
+            <span>{{ item.material?.courseCode || '学习资料' }}</span><div><b>{{ item.title }}</b><small>{{ item.material?.type?.name || '学习内容' }} · ¥{{ item.price }}</small></div>
           </router-link>
         </div>
-        <el-empty v-else :image-size="64" description="暂无免费原创内容" />
+        <el-empty v-else :image-size="64" description="暂无已审核付费资料" />
       </div>
     </section>
 

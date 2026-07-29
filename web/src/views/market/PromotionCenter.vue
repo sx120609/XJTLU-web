@@ -5,7 +5,7 @@
       <div><el-button @click="load">刷新</el-button></div>
     </header>
 
-    <el-alert :type="site.features.promotion ? 'info' : 'warning'" show-icon :closable="false" :title="site.features.promotion ? '推广费用通过收款码支付并由管理员逐单人工核验；系统不会自动扣款，也不会从商品成交金额中抽佣。' : '商业展示当前已暂停；历史订单与售后记录仍可查看，学生交易、求购和免费学习内容不受影响。'" />
+    <el-alert :type="site.features.promotion ? 'info' : 'warning'" show-icon :closable="false" :title="site.features.promotion ? '推广费用通过收款码支付并由管理员逐单人工核验；系统不会自动扣款，也不会从商品成交金额中抽佣。' : '商业展示当前已暂停；历史订单与售后记录仍可查看，学生交易、求购和付费学习资料不受影响。'" />
 
     <section v-if="site.features.promotion" class="plan-section">
       <div class="section-head"><div><span>AVAILABLE PLANS</span><h2>可用方案</h2></div><small>价格和时长由后台配置，以当前页面显示为准</small></div>

@@ -29,9 +29,9 @@
       <div class="materials-copy">
         <span>KAOPU FEATURED · 独立学习资料馆</span>
         <h2>靠浦特色学习资料商城</h2>
-        <p>课程笔记、备考资料与原创学习工具，在独立专区浏览、发布和免费安全获取。</p>
+        <p>课程笔记、备考资料与原创学习工具，经创作者认证和人工审核后在独立专区付费交付。</p>
       </div>
-      <div class="materials-meta"><strong>免费</strong><span>安全获取</span></div>
+      <div class="materials-meta"><strong>付费</strong><span>审核交付</span></div>
       <div class="materials-enter">进入专区 <b>→</b></div>
     </section>
 

@@ -47,11 +47,12 @@
           </div>
 
           <div class="storage-meta">
-            <div><b>回调地址：</b><code>{{ oneDriveCallbackUrl }}</code></div>
+            <div v-if="oneDriveCallbackUrl"><b>回调地址：</b><code>{{ oneDriveCallbackUrl }}</code></div>
+            <div v-else class="storage-error"><b>回调地址：</b>{{ oneDriveCallbackError || "请先配置网站域名" }}</div>
             <div v-if="oneDriveChinaSharepointHost"><b>已解析站点：</b>{{ oneDriveChinaSharepointHost }}{{ oneDriveChinaSharepointPath }}</div>
             <div v-if="oneDriveChinaSiteName"><b>站点名称：</b>{{ oneDriveChinaSiteName }}</div>
             <div v-if="oneDriveChinaLastError" class="storage-error"><b>最近错误：</b>{{ oneDriveChinaLastError }}</div>
-            <div class="storage-hint">“网站域名”仍在功能开关页维护；未设置时，这里的回调地址会回退到当前访问域名。</div>
+            <div class="storage-hint">“网站域名”在功能开关页维护。OAuth 回调只使用该固定域名，不读取当前请求的 Host。</div>
           </div>
         </div>
 
@@ -61,14 +62,14 @@
               <span class="field-label">图片后端</span>
               <el-select v-model="mediaStorageImageProvider">
                 <el-option label="本地磁盘" value="local" />
-                <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" />
+                <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" :disabled="!remoteReady" />
               </el-select>
             </div>
             <div class="storage-field">
               <span class="field-label">视频后端</span>
               <el-select v-model="mediaStorageVideoProvider">
                 <el-option label="本地磁盘" value="local" />
-                <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" />
+                <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" :disabled="!remoteReady" />
               </el-select>
             </div>
             <div class="storage-field">
@@ -86,7 +87,15 @@
                 maxlength="240"
                 show-password
                 :placeholder="oneDriveChinaClientSecretConfigured ? '留空表示继续使用已保存密钥' : 'Client Secret'"
+                @input="clearOneDriveChinaClientSecret = false"
               />
+              <el-checkbox
+                v-if="oneDriveChinaClientSecretConfigured"
+                v-model="clearOneDriveChinaClientSecret"
+                :disabled="Boolean(oneDriveChinaClientSecretInput)"
+              >
+                清除已保存密钥
+              </el-checkbox>
             </div>
             <div class="storage-field storage-field-wide">
               <span class="field-label">SharePoint 地址</span>
@@ -101,7 +110,7 @@
           <div class="storage-actions">
             <el-button type="primary" :loading="savingMediaStorage" :disabled="savingMediaStorage || Boolean(configLoadError)" @click="saveMediaStorageConfig">保存媒体存储配置</el-button>
             <el-button :loading="validatingOneDriveChinaClient" :disabled="validatingOneDriveChinaClient || Boolean(configLoadError)" @click="validateOneDriveChinaClient">校验密钥</el-button>
-            <el-button :loading="authorizingOneDriveChina" :disabled="authorizingOneDriveChina || Boolean(configLoadError)" @click="startOneDriveChinaAuth">登录授权</el-button>
+            <el-button :loading="authorizingOneDriveChina" :disabled="authorizingOneDriveChina || Boolean(configLoadError) || !oneDriveCallbackUrl" @click="startOneDriveChinaAuth">登录授权</el-button>
             <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || loadingOneDriveChinaDrives || Boolean(configLoadError)" :loading="loadingOneDriveChinaDrives" @click="loadOneDriveChinaDrives">刷新文档库</el-button>
             <el-button :disabled="!oneDriveChinaRefreshTokenConfigured || clearingOneDriveChinaAuth || Boolean(configLoadError)" :loading="clearingOneDriveChinaAuth" @click="clearOneDriveChinaAuth">清除授权</el-button>
           </div>
@@ -347,14 +356,14 @@ const inventoryLoadError = ref("");
 let configLoadSeq = 0;
 let inventoryLoadSeq = 0;
 
-const siteOrigin = ref("");
-const mediaStorageProvider = ref<"local" | "onedrive-cn">("local");
 const mediaStorageImageProvider = ref<"local" | "onedrive-cn">("local");
 const mediaStorageVideoProvider = ref<"local" | "onedrive-cn">("local");
+const remoteReady = ref(false);
 const mediaStorageRemotePrefixesInput = ref("forum");
 const oneDriveChinaClientId = ref("");
 const oneDriveChinaClientSecretInput = ref("");
 const oneDriveChinaClientSecretConfigured = ref(false);
+const clearOneDriveChinaClientSecret = ref(false);
 const oneDriveChinaSharepointUrl = ref("");
 const oneDriveChinaSharepointHost = ref("");
 const oneDriveChinaSharepointPath = ref("/");
@@ -366,6 +375,8 @@ const oneDriveChinaRootPath = ref("");
 const oneDriveChinaRefreshTokenConfigured = ref(false);
 const oneDriveChinaAuthorizedAt = ref("");
 const oneDriveChinaLastError = ref("");
+const oneDriveCallbackUrl = ref("");
+const oneDriveCallbackError = ref("");
 const oneDriveChinaDriveOptions = ref<OneDriveChinaDriveOption[]>([]);
 
 const inventory = ref<MediaStorageAdminInventory | null>(null);
@@ -376,7 +387,6 @@ const fileFilter = ref<FileFilterKey>("all");
 const migrationProgressText = ref("");
 const migrationBatchLimit = 3;
 
-const oneDriveCallbackUrl = computed(() => `${(siteOrigin.value || window.location.origin).replace(/\/+$/, "")}/api/storage/onedrive-cn/callback`);
 const migrationCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => needsMigration(row)));
 const migrationNeedsRemote = computed(() => migrationCandidates.value.some((row) => (
   row.configuredBackend === "onedrive-cn"
@@ -385,17 +395,14 @@ const migrationNeedsRemote = computed(() => migrationCandidates.value.some((row)
 const migrationDisabled = computed(() =>
   migratingFiles.value
   || !migrationCandidates.value.length
-  || (migrationNeedsRemote.value && (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value))
+  || (migrationNeedsRemote.value && !remoteReady.value)
 );
 const cleanupCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => hasRedundantCopies(row)));
-const cleanupNeedsRemote = computed(() => cleanupCandidates.value.some((row) => (
-  row.configuredBackend === "local" && row.remoteExists
-)));
 const cleanupEligibleCount = computed(() => cleanupCandidates.value.length);
 const cleanupDisabled = computed(() =>
   cleaningLocalFiles.value
   || !cleanupEligibleCount.value
-  || (cleanupNeedsRemote.value && (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value))
+  || !remoteReady.value
 );
 const failedMigrationItems = computed(() => (lastMigrationResult.value?.list ?? []).filter((item) => item.status === "failed"));
 const failedCleanupItems = computed(() => (lastCleanupResult.value?.list ?? []).filter((item) => item.status === "failed"));
@@ -420,13 +427,11 @@ async function reloadConfig() {
   loadingConfig.value = true;
   configLoadError.value = "";
   try {
-    const [config, siteConfig] = await Promise.all([
-      adminApi.mediaStorageConfig({ suppressErrorMessage: true }),
-      adminApi.siteConfig({ suppressErrorMessage: true }),
-    ]);
+    const config = await adminApi.mediaStorageConfig({
+      suppressErrorMessage: true,
+    });
     if (seq !== configLoadSeq) return;
     applyMediaStorageConfig(config);
-    siteOrigin.value = siteConfig.siteOrigin;
   } catch (error) {
     if (seq === configLoadSeq) {
       configLoadError.value = requestMessage(error) || "媒体存储配置加载失败，请稍后重试";
@@ -437,13 +442,14 @@ async function reloadConfig() {
 }
 
 function applyMediaStorageConfig(config: MediaStorageConfig) {
-  mediaStorageProvider.value = config.mediaStorageProvider;
   mediaStorageImageProvider.value = config.mediaStorageImageProvider;
   mediaStorageVideoProvider.value = config.mediaStorageVideoProvider;
+  remoteReady.value = config.remoteReady;
   mediaStorageRemotePrefixesInput.value = (config.mediaStorageRemotePrefixes ?? []).join(", ");
   oneDriveChinaClientId.value = config.oneDriveChinaClientId;
   oneDriveChinaClientSecretInput.value = "";
   oneDriveChinaClientSecretConfigured.value = config.oneDriveChinaClientSecretConfigured;
+  clearOneDriveChinaClientSecret.value = false;
   oneDriveChinaSharepointUrl.value = config.oneDriveChinaSharepointUrl;
   oneDriveChinaSharepointHost.value = config.oneDriveChinaSharepointHost;
   oneDriveChinaSharepointPath.value = config.oneDriveChinaSharepointPath || "/";
@@ -455,6 +461,8 @@ function applyMediaStorageConfig(config: MediaStorageConfig) {
   oneDriveChinaRefreshTokenConfigured.value = config.oneDriveChinaRefreshTokenConfigured;
   oneDriveChinaAuthorizedAt.value = config.oneDriveChinaAuthorizedAt;
   oneDriveChinaLastError.value = config.oneDriveChinaLastError;
+  oneDriveCallbackUrl.value = config.oneDriveChinaCallbackUrl;
+  oneDriveCallbackError.value = config.oneDriveChinaCallbackError;
 }
 
 async function persistMediaStorageConfig(silent = false) {
@@ -469,7 +477,11 @@ async function persistMediaStorageConfig(silent = false) {
       mediaStorageVideoProvider: mediaStorageVideoProvider.value,
       mediaStorageRemotePrefixes: mediaStorageRemotePrefixesInput.value,
       oneDriveChinaClientId: oneDriveChinaClientId.value,
-      oneDriveChinaClientSecret: oneDriveChinaClientSecretInput.value || undefined,
+      oneDriveChinaClientSecret: clearOneDriveChinaClientSecret.value
+        ? undefined
+        : (oneDriveChinaClientSecretInput.value || undefined),
+      clearOneDriveChinaClientSecret:
+        clearOneDriveChinaClientSecret.value || undefined,
       oneDriveChinaSharepointUrl: oneDriveChinaSharepointUrl.value,
       oneDriveChinaRootPath: oneDriveChinaRootPath.value,
     });
@@ -526,6 +538,10 @@ async function fetchOneDriveChinaDrives(silent = false) {
     oneDriveChinaSharepointPath.value = result.sharepointPath || "/";
     oneDriveChinaDriveId.value = result.selectedDriveId;
     oneDriveChinaDriveName.value = result.selectedDriveName;
+    remoteReady.value = Boolean(
+      oneDriveChinaRefreshTokenConfigured.value
+      && result.selectedDriveId,
+    );
     oneDriveChinaDriveOptions.value = result.list;
     if (!silent) ElMessage.success(result.list.length ? "文档库已刷新" : "当前站点下没有可用文档库");
   } catch (error) {
@@ -549,6 +565,9 @@ async function saveOneDriveChinaDriveSelection() {
   try {
     const result = await adminApi.saveOneDriveChinaDrive(oneDriveChinaDriveId.value);
     oneDriveChinaDriveName.value = result.driveName;
+    remoteReady.value = Boolean(
+      oneDriveChinaRefreshTokenConfigured.value && result.driveId,
+    );
     await reloadInventory();
     ElMessage.success("文档库选择已保存");
   } finally {
@@ -572,6 +591,7 @@ async function clearOneDriveChinaAuth() {
   try {
     await adminApi.clearOneDriveChinaAuthorization();
     oneDriveChinaRefreshTokenConfigured.value = false;
+    remoteReady.value = false;
     oneDriveChinaAuthorizedAt.value = "";
     oneDriveChinaDriveId.value = "";
     oneDriveChinaDriveName.value = "";
@@ -618,7 +638,7 @@ async function handleStorageAuthQuery() {
     if (nextConfig) applyMediaStorageConfig(nextConfig);
     await reloadInventory();
   }
-  const nextQuery = { ...route.query } as Record<string, any>;
+  const nextQuery = { ...route.query };
   delete nextQuery.storageAuth;
   delete nextQuery.storageAuthMessage;
   router.replace({ query: nextQuery }).catch(() => null);
@@ -724,9 +744,18 @@ async function cleanupLocalFiles() {
     return;
   }
   cleaningLocalFiles.value = true;
+  let confirmationToken = "";
   try {
+    const preview = await adminApi.previewMediaStorageLocalCleanup();
+    if (!preview.eligible || !preview.confirmationToken) {
+      ElMessage.info("媒体状态已变化，当前没有可清理的本地副本");
+      await reloadInventory();
+      cleaningLocalFiles.value = false;
+      return;
+    }
+    confirmationToken = preview.confirmationToken;
     await ElMessageBox.confirm(
-      `确认删除这 ${cleanupEligibleCount.value} 个已完成远端落盘文件的本地/缓存副本吗？删除后仍会优先从世纪互联读取，后续如需审核会自动回源到缓存。当前配置为本地的媒体不会受影响。`,
+      `确认删除这 ${preview.eligible} 个已完成远端落盘文件的本地/缓存副本吗？服务端会在执行前再次核对文件快照；状态有变化时将拒绝清理。当前配置为本地的媒体和历史远端文件均不会被删除。`,
       "清理本地副本",
       { type: "warning", confirmButtonText: "开始清理", cancelButtonText: "取消" },
     );
@@ -736,7 +765,9 @@ async function cleanupLocalFiles() {
   }
 
   try {
-    const result = await adminApi.cleanupMediaStorageLocalFiles();
+    const result = await adminApi.cleanupMediaStorageLocalFiles(
+      confirmationToken,
+    );
     lastCleanupResult.value = result;
     await reloadInventory();
     if (result.failed) {
@@ -763,10 +794,10 @@ function needsMigration(row: MediaStorageAdminFileEntry) {
 }
 
 function hasRedundantCopies(row: MediaStorageAdminFileEntry) {
-  if (row.configuredBackend === "onedrive-cn") {
-    return row.remoteExists && (row.localExists || row.cacheExists);
-  }
-  return row.localExists && (row.cacheExists || row.remoteExists);
+  return row.configuredBackend === "onedrive-cn"
+    && row.inRemotePrefix
+    && row.remoteExists
+    && (row.localExists || row.cacheExists);
 }
 
 function resolveState(rowInput: unknown) {

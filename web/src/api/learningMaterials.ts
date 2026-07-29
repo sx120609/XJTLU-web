@@ -51,7 +51,25 @@ export interface LearningMaterialVersion {
   releaseNotes: string;
   status: string;
   publishedAt?: string | null;
+  review?: LearningMaterialReview | null;
   files: LearningMaterialFile[];
+}
+
+export interface LearningMaterialReview {
+  id: number;
+  versionId?: number;
+  submittedById?: number;
+  reviewedById?: number | null;
+  round: number;
+  status: "submitted" | "reviewing" | "approved" | "rejected";
+  reason: string;
+  submittedAt?: string;
+  reviewedAt?: string | null;
+  submittedBy?: MarketUser;
+  reviewedBy?: MarketUser | null;
+  version?: LearningMaterialVersion & {
+    profile: LearningMaterialProfile & { item: LearningMaterialItem };
+  };
 }
 
 export interface LearningMaterialProfile {
@@ -69,13 +87,19 @@ export interface LearningMaterialProfile {
   originalityKind: string;
   originalityStatement: string;
   rightsConfirmed: boolean;
+  commerceMode: "legacy_free" | "paid";
   metadataComplete: boolean;
   activeVersion?: LearningMaterialVersion | null;
+  draftVersion?: LearningMaterialVersion | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface LearningMaterialItem extends MarketItem {
+  seller: MarketUser & {
+    creatorCertified?: boolean;
+    creatorCertifiedAt?: string | null;
+  };
   material?: LearningMaterialProfile | null;
 }
 
@@ -100,6 +124,162 @@ export interface LearningMaterialMeta {
   types: LearningMaterialType[];
   contentRules?: Array<{ id: number; scope: string; category: string; action: "block" | "review"; note: string }>;
   legacyIncompleteCount: number;
+  commerce?: LearningCommerceStatus;
+}
+
+export interface LearningCommerceStatus {
+  paidEnabled: boolean;
+  minPriceCents: number;
+  maxPriceCents: number;
+  minPrice: string;
+  maxPrice: string;
+  paymentMode: "seller_direct";
+  platformFeeBps: 0;
+  notice?: string;
+}
+
+export type LearningCollectionProvider = "wechat" | "alipay";
+
+export interface LearningCollectionMethod {
+  id: number;
+  provider: LearningCollectionProvider;
+  label: string;
+  versionNumber: number;
+  status: "active" | "disabled";
+  assetId: number;
+  qrImageUrl: string;
+  createdAt: string;
+  disabledAt?: string | null;
+}
+
+export interface LearningCreatorApplication {
+  id: number;
+  userId: number;
+  status: "submitted" | "reviewing" | "approved" | "rejected" | "withdrawn";
+  expertise: string;
+  experience: string;
+  sampleDescription: string;
+  reviewReason: string;
+  submittedAt: string;
+  reviewedAt?: string | null;
+  user?: MarketUser;
+  reviewedBy?: MarketUser | null;
+}
+
+export interface LearningCreatorProfile {
+  id: number;
+  userId: number;
+  status: "active" | "suspended" | "revoked";
+  certifiedAt?: string | null;
+  statusReason: string;
+  collectionMethods: LearningCollectionMethod[];
+}
+
+export interface LearningCreatorContext {
+  profile: LearningCreatorProfile | null;
+  application: LearningCreatorApplication | null;
+}
+
+export type LearningCommerceOrderStatus =
+  | "pending_payment"
+  | "awaiting_seller_confirmation"
+  | "delivered"
+  | "completed"
+  | "refunded"
+  | "cancelled"
+  | "expired"
+  | "disputed";
+
+export interface LearningPaymentEvidence {
+  id: number;
+  attempt: number;
+  status: "submitted" | "accepted" | "rejected" | "superseded";
+  claimedPaidAt?: string | null;
+  buyerNote: string;
+  handledReason: string;
+  handledAt?: string | null;
+  createdAt: string;
+  imageUrl?: string;
+}
+
+export interface LearningOrderEvent {
+  id: number;
+  sequence: number;
+  type: string;
+  actorId?: number | null;
+  fromStatus?: LearningCommerceOrderStatus | null;
+  toStatus?: LearningCommerceOrderStatus | null;
+  createdAt: string;
+}
+
+export interface LearningOrderIssue {
+  id: number;
+  type: string;
+  status: "open" | "waiting_buyer" | "waiting_seller" | "refund_requested" | "refund_recorded" | "resolved" | "closed";
+  reason: string;
+  detail: string;
+  refundAmountCents?: number | null;
+  resolution: string;
+  createdAt: string;
+  resolvedAt?: string | null;
+}
+
+export interface LearningCommerceOrder {
+  id: number;
+  orderId: number;
+  mode: "paid" | "legacy_free";
+  status: LearningCommerceOrderStatus;
+  statusVersion: number;
+  priceCents: number;
+  amount: string;
+  currency: "CNY";
+  paymentDueAt?: string | null;
+  sellerResponseDueAt?: string | null;
+  deliveredAt?: string | null;
+  completionDueAt?: string | null;
+  completedAt?: string | null;
+  refundedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason: string;
+  createdAt: string;
+  updatedAt: string;
+  order: {
+    id: number;
+    itemId: number;
+    buyerId: number;
+    sellerId: number;
+    outTradeNo: string;
+    amountCents: number;
+    amount: string;
+    platformFeeCents: number;
+    status: string;
+    buyer: MarketUser;
+    seller: MarketUser;
+    item: {
+      id: number;
+      title: string;
+      description: string;
+      priceCents: number;
+      cover: string;
+      courseCode: string;
+    };
+  };
+  version: LearningMaterialVersion;
+  collectionMethod: LearningCollectionMethod | null;
+  paymentEvidence: LearningPaymentEvidence[];
+  events: LearningOrderEvent[];
+  issues: LearningOrderIssue[];
+  mine: { buyer: boolean; seller: boolean; staff: boolean };
+}
+
+export interface LearningAdminOrderIssue extends LearningOrderIssue {
+  commerceOrderId: number;
+  requestedById: number;
+  requestedBy: MarketUser;
+  resolvedBy?: MarketUser | null;
+  refundAmount?: string | null;
+  updatedAt: string;
+  order: LearningCommerceOrder;
 }
 
 export interface LearningMaterialProfileInput {
@@ -148,6 +328,11 @@ export interface LearningMaterialLibraryEntry {
   lastAccessedAt?: string | null;
   downloadCount: number;
   order: MarketOrder;
+  learningCommerceOrder?: {
+    id: number;
+    status: LearningCommerceOrderStatus;
+    priceCents: number;
+  } | null;
   version: LearningMaterialVersion & { profile: LearningMaterialProfile & { item: LearningMaterialItem } };
 }
 
@@ -178,6 +363,13 @@ export interface LearningMaterialSupportTicket {
   messages?: LearningMaterialSupportMessage[];
 }
 
+function idempotencyOptions(): RequestOptions {
+  const key = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return { headers: { "Idempotency-Key": key } };
+}
+
 export const learningMaterialsApi = {
   meta: (options?: RequestOptions) => request.get<LearningMaterialMeta>("/market/materials/meta", undefined, options),
   types: (options?: RequestOptions) => request.get<LearningMaterialType[]>("/market/materials/types", undefined, options),
@@ -186,7 +378,7 @@ export const learningMaterialsApi = {
   item: (id: number, options?: RequestOptions) => request.get<LearningMaterialItem>(`/market/materials/items/${id}`, undefined, options),
   createItem: (payload: LearningMaterialItemInput) => request.post<LearningMaterialItem>("/market/materials/items", payload),
   updateItem: (id: number, payload: Partial<LearningMaterialItemInput>) => request.patch<LearningMaterialItem>(`/market/materials/items/${id}`, payload),
-  purchase: (id: number) => request.post<MarketOrder & { free?: boolean; reused?: boolean }>(`/market/materials/items/${id}/purchase`),
+  purchase: (id: number) => request.post<LearningCommerceOrder>(`/market/materials/items/${id}/purchase`, undefined, idempotencyOptions()),
   uploadVersion: (id: number, files: File[], payload: { label?: string; releaseNotes?: string }, options?: RequestOptions) => {
     const data = new FormData();
     files.forEach((file) => data.append("files", file, file.name));
@@ -194,7 +386,8 @@ export const learningMaterialsApi = {
     data.append("releaseNotes", payload.releaseNotes || "");
     return request.post<LearningMaterialVersion>(`/market/materials/items/${id}/versions`, data, options);
   },
-  publishVersion: (itemId: number, versionId: number) => request.post<LearningMaterialVersion>(`/market/materials/items/${itemId}/versions/${versionId}/publish`),
+  publishVersion: (itemId: number, versionId: number) => request.post<LearningMaterialReview>(`/market/materials/items/${itemId}/versions/${versionId}/publish`),
+  submitVersionReview: (itemId: number, versionId: number) => request.post<LearningMaterialReview>(`/market/materials/commerce/items/${itemId}/versions/${versionId}/reviews`),
   library: (options?: RequestOptions) => request.get<LearningMaterialLibraryEntry[]>("/market/materials/library", undefined, options),
   downloadUrl: (fileId: number) => `/api/market/materials/files/${fileId}/download`,
   supportTickets: (options?: RequestOptions) => request.get<LearningMaterialSupportTicket[]>("/market/materials/support", undefined, options),
@@ -205,4 +398,58 @@ export const learningMaterialsApi = {
   adminOverview: (options?: RequestOptions) => request.get<LearningMaterialAdminOverview>("/market/materials/admin/overview", undefined, options),
   adminTypes: (options?: RequestOptions) => request.get<LearningMaterialType[]>("/market/materials/admin/types", undefined, options),
   adminUpdateType: (id: number, payload: { action: "approve" | "reject" | "enable" | "disable" | "merge"; targetTypeId?: number }) => request.patch<LearningMaterialType>(`/market/materials/admin/types/${id}`, payload),
+  commerceStatus: (options?: RequestOptions) => request.get<LearningCommerceStatus>("/market/materials/commerce/status", undefined, options),
+  creatorContext: (options?: RequestOptions) => request.get<LearningCreatorContext>("/market/materials/commerce/creator/me", undefined, options),
+  applyCreator: (payload: { expertise: string; experience: string; sampleDescription: string; rightsCommitted: true }) =>
+    request.post<LearningCreatorApplication>("/market/materials/commerce/creator/applications", payload),
+  createCollectionMethod: (provider: LearningCollectionProvider, label: string, image: File) => {
+    const data = new FormData();
+    data.append("provider", provider);
+    data.append("label", label);
+    data.append("image", image, image.name);
+    return request.post<LearningCollectionMethod>("/market/materials/commerce/creator/collection-methods", data);
+  },
+  disableCollectionMethod: (id: number) => request.delete<LearningCollectionMethod>(`/market/materials/commerce/creator/collection-methods/${id}`),
+  createOrder: (itemId: number, provider?: LearningCollectionProvider) =>
+    request.post<LearningCommerceOrder>(`/market/materials/commerce/items/${itemId}/orders`, provider ? { provider } : {}, idempotencyOptions()),
+  orders: (side: "buyer" | "seller" | "all" = "buyer", options?: RequestOptions) =>
+    request.get<LearningCommerceOrder[]>("/market/materials/commerce/orders", { side }, options),
+  order: (id: number, options?: RequestOptions) =>
+    request.get<LearningCommerceOrder>(`/market/materials/commerce/orders/${id}`, undefined, options),
+  submitPaymentEvidence: (id: number, image: File, payload: { claimedPaidAt?: string; buyerNote?: string }) => {
+    const data = new FormData();
+    data.append("image", image, image.name);
+    if (payload.claimedPaidAt) data.append("claimedPaidAt", payload.claimedPaidAt);
+    data.append("buyerNote", payload.buyerNote || "");
+    return request.post<LearningCommerceOrder>(`/market/materials/commerce/orders/${id}/payment-evidence`, data, idempotencyOptions());
+  },
+  confirmPaymentEvidence: (orderId: number, evidenceId: number) =>
+    request.post<LearningCommerceOrder>(`/market/materials/commerce/orders/${orderId}/payment-evidence/${evidenceId}/confirm`, undefined, idempotencyOptions()),
+  rejectPaymentEvidence: (orderId: number, evidenceId: number, reason: string) =>
+    request.post<LearningCommerceOrder>(`/market/materials/commerce/orders/${orderId}/payment-evidence/${evidenceId}/reject`, { reason }, idempotencyOptions()),
+  completeOrder: (id: number) =>
+    request.post<LearningCommerceOrder>(`/market/materials/commerce/orders/${id}/complete`, undefined, idempotencyOptions()),
+  cancelOrder: (id: number, reason: string) =>
+    request.post<LearningCommerceOrder>(`/market/materials/commerce/orders/${id}/cancel`, { reason }, idempotencyOptions()),
+  openOrderIssue: (id: number, payload: { type: string; reason: string; detail?: string }) =>
+    request.post<LearningOrderIssue>(`/market/materials/commerce/orders/${id}/issues`, payload),
+  adminCreatorApplications: (status = "submitted", options?: RequestOptions) =>
+    request.get<LearningCreatorApplication[]>("/market/materials/commerce/admin/creator-applications", { status }, options),
+  adminReviewCreator: (id: number, payload: { action: "approve" | "reject"; reason: string }) =>
+    request.patch<LearningCreatorApplication>(`/market/materials/commerce/admin/creator-applications/${id}`, payload),
+  adminMaterialReviews: (status = "submitted", options?: RequestOptions) =>
+    request.get<LearningMaterialReview[]>("/market/materials/commerce/admin/material-reviews", { status }, options),
+  adminReviewMaterial: (id: number, payload: { action: "approve" | "reject"; reason: string; checklist: { rights: boolean; quality: boolean; fileSafety: boolean } }) =>
+    request.patch<LearningMaterialReview & { itemId: number; versionId: number }>(`/market/materials/commerce/admin/material-reviews/${id}`, payload),
+  adminOrderIssues: (status: "active" | "resolved" | "all" = "active", options?: RequestOptions) =>
+    request.get<LearningAdminOrderIssue[]>("/market/materials/commerce/admin/issues", { status }, options),
+  adminDecideOrderIssue: (
+    orderId: number,
+    issueId: number,
+    payload: {
+      action: "resolve" | "close" | "record_refund";
+      resolution: string;
+      refundAmountCents?: number;
+    },
+  ) => request.patch<LearningCommerceOrder>(`/market/materials/commerce/admin/orders/${orderId}/issues/${issueId}`, payload),
 };

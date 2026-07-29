@@ -86,7 +86,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, type MarketCategoryOption, type MarketItem, type MarketItemMatch, type WantedPost } from "@/api/market";
+import { marketApi, type MarketCategoryOption, type MarketCondition, type MarketItem, type MarketItemMatch, type WantedPost, type WantedResponseAction } from "@/api/market";
 import { uploadApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { fmtRelative } from "@/utils/format";
@@ -106,7 +106,7 @@ const submitting = ref(false);
 const uploading = ref(false);
 const responseOpen = ref(false);
 const shareOpen = ref(route.query.published === "1");
-const response = reactive({ mode: "existing" as "existing" | "new", itemId: undefined as number | undefined, title: "", brand: "", model: "", condition: "good", images: [] as string[], price: 0, availableTime: "", description: "" });
+const response = reactive({ mode: "existing" as "existing" | "new", itemId: undefined as number | undefined, title: "", brand: "", model: "", condition: "good" as MarketCondition, images: [] as string[], price: 0, availableTime: "", description: "" });
 const category = computed(() => categories.value.find((entry) => entry.slug === post.value?.category));
 const categoryIcon = computed(() => category.value?.icon || "📦");
 const categoryName = computed(() => category.value?.name || post.value?.category || "其他");
@@ -175,7 +175,7 @@ async function submitResponse() {
   } finally { submitting.value = false; }
 }
 
-async function handleResponse(id: number, action: "accept" | "reject" | "cancel") {
+async function handleResponse(id: number, action: WantedResponseAction) {
   if (action === "accept") await ElMessageBox.confirm("接受后会锁定该物品并生成 72 小时预约。请先核对物品描述和价格。", "接受响应", { type: "warning" });
   await marketApi.updateWantedResponse(id, action);
   ElMessage.success(action === "accept" ? "已接受响应，预约已经创建" : "操作成功");

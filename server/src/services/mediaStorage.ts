@@ -528,12 +528,14 @@ export async function migrateLocalMediaAssetsToRemote(input: {
   };
 }
 
-export async function cleanupMigratedLocalMediaAssets(): Promise<MediaStorageCleanupResult> {
+export async function cleanupMigratedLocalMediaAssets(input: {
+  inventory?: MediaStorageAdminInventory;
+} = {}): Promise<MediaStorageCleanupResult> {
   const runtime = await getMediaStorageRuntimeConfig();
   const startedAt = new Date().toISOString();
-  const inventory = await listMediaStorageAdminInventory();
+  const inventory = input.inventory ?? await listMediaStorageAdminInventory();
   const eligibleFiles = inventory.list
-    .filter((item) => hasRedundantCopiesForConfiguredBackend(item))
+    .filter((item) => isLocalMediaCleanupCandidate(item))
     .map((item) => item.relativePath)
     .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
 
@@ -545,36 +547,23 @@ export async function cleanupMigratedLocalMediaAssets(): Promise<MediaStorageCle
     const cachePath = cachedAssetAbsolutePath(relativePath);
     try {
       let removedAny = false;
-      if (row.configuredBackend === "onedrive-cn") {
-        for (const targetPath of [localPath, cachePath]) {
-          const removed = await unlink(targetPath)
-            .then(() => true)
-            .catch((error: any) => {
-              if (error?.code === "ENOENT") return false;
-              throw error;
-            });
-          removedAny = removedAny || removed;
-        }
-      } else {
-        const cacheRemoved = await unlink(cachePath)
+      // This operation is intentionally local-only. Historical remote copies
+      // are never deleted by an endpoint named cleanup-local.
+      for (const targetPath of [localPath, cachePath]) {
+        const removed = await unlink(targetPath)
           .then(() => true)
           .catch((error: any) => {
             if (error?.code === "ENOENT") return false;
             throw error;
           });
-        removedAny = removedAny || cacheRemoved;
-        if (row.remoteExists) {
-          const deletedRemote = await deleteOneDriveChinaFile(relativePath).catch((error: any) => {
-            throw error;
-          });
-          removedAny = removedAny || deletedRemote;
-        }
+        removedAny = removedAny || removed;
       }
+      await syncMediaAssetLocalPath(relativePath, "");
       results.push({
         relativePath,
         status: "removed",
         message: removedAny
-          ? (row.configuredBackend === "onedrive-cn" ? "已删除非当前后端的本地/缓存副本" : "已删除非当前后端的远端/缓存副本")
+          ? "已删除远端已落盘媒体的本地/缓存副本"
           : "没有需要删除的旧副本",
       });
     } catch (error) {
@@ -770,6 +759,15 @@ function hasRedundantCopiesForConfiguredBackend(row: MediaStorageAdminFileEntry)
     return row.remoteExists && (row.localExists || row.cacheExists);
   }
   return row.localExists && (row.cacheExists || row.remoteExists);
+}
+
+export function isLocalMediaCleanupCandidate(
+  row: MediaStorageAdminFileEntry,
+) {
+  return row.configuredBackend === "onedrive-cn"
+    && row.inRemotePrefix
+    && row.remoteExists
+    && (row.localExists || row.cacheExists);
 }
 
 function isStoredOnConfiguredBackend(row: MediaStorageAdminFileEntry) {

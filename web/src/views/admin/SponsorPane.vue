@@ -169,18 +169,37 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { adminApi, type SponsorConfig } from "@/api/admin";
+import {
+  adminApi,
+  type AdminSponsorOrder,
+  type SponsorConfig,
+  type SponsorOrderPatch,
+  type SponsorOrderStatus,
+  type SponsorOverview,
+  type SponsorPaymentLog,
+} from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 
-const overview = ref<any>({});
+const overview = ref<SponsorOverview>({
+  totalAmount: "0.00",
+  totalPaidOrders: 0,
+  todayAmount: "0.00",
+  todayPaidOrders: 0,
+  monthAmount: "0.00",
+  monthPaidOrders: 0,
+  pendingOrders: 0,
+  closedOrders: 0,
+  sponsorCount: 0,
+  payTypes: [],
+});
 const overviewLoading = ref(false);
 const configLoading = ref(false);
 const savingConfig = ref(false);
 const ordersLoading = ref(false);
 const logsLoading = ref(false);
 const orderBusyId = ref<number | null>(null);
-const orders = ref<any[]>([]);
-const logs = ref<any[]>([]);
+const orders = ref<AdminSponsorOrder[]>([]);
+const logs = ref<SponsorPaymentLog[]>([]);
 const ordersTotal = ref(0);
 const presetAmountsText = ref("");
 const config = reactive<SponsorConfig>({
@@ -192,7 +211,12 @@ const config = reactive<SponsorConfig>({
   wallEnabled: true,
   allowMessage: true,
 });
-const filters = reactive({ q: "", status: "all", page: 1, size: 20 });
+const filters = reactive<{
+  q: string;
+  status: "all" | SponsorOrderStatus;
+  page: number;
+  size: number;
+}>({ q: "", status: "all", page: 1, size: 20 });
 let sponsorOrdersSeq = 0;
 
 onMounted(async () => {
@@ -215,9 +239,20 @@ async function reloadConfig() {
 
 async function saveConfig() {
   if (savingConfig.value) return;
+  const tokens = presetAmountsText.value
+    .split(/[,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (
+    !tokens.length
+    || tokens.some((item) => !/^\d+(?:\.\d{1,2})?$/.test(item) || Number(item) <= 0)
+  ) {
+    ElMessage.warning("预设金额必须是最多两位小数的正数");
+    return;
+  }
   savingConfig.value = true;
   try {
-    const amounts = presetAmountsText.value.split(/[,，\s]+/).map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0);
+    const amounts = tokens.map(Number);
     Object.assign(config, await adminApi.updateSponsorConfig({ ...config, presetAmounts: amounts }));
     presetAmountsText.value = config.presetAmounts.join(",");
     ElMessage.success("赞助配置已保存");
@@ -244,22 +279,25 @@ async function reloadLogs() {
   finally { logsLoading.value = false; }
 }
 
-function statusText(status: string) {
+function statusText(status: SponsorOrderStatus) {
   if (status === "paid") return "已支付";
   if (status === "closed") return "已关闭";
   return "待支付";
 }
 
-function statusType(status: string) {
+function statusType(status: SponsorOrderStatus) {
   if (status === "paid") return "success";
   if (status === "closed") return "info";
   return "warning";
 }
 
-async function saveOrder(row: any, patch: Record<string, unknown>) {
+async function saveOrder(
+  row: AdminSponsorOrder,
+  patch: SponsorOrderPatch,
+) {
   await runOrderAction(row, async () => {
     try {
-      const updated = await adminApi.updateSponsorOrder(row.id, patch as any);
+      const updated = await adminApi.updateSponsorOrder(row.id, patch);
       Object.assign(row, updated);
       await reloadOverview();
       ElMessage.success("订单已更新");
@@ -270,11 +308,14 @@ async function saveOrder(row: any, patch: Record<string, unknown>) {
   });
 }
 
-function isOrderBusy(row: any) {
+function isOrderBusy(row: AdminSponsorOrder) {
   return orderBusyId.value === row.id;
 }
 
-async function runOrderAction(row: any, action: () => Promise<void>) {
+async function runOrderAction(
+  row: AdminSponsorOrder,
+  action: () => Promise<void>,
+) {
   if (orderBusyId.value !== null) return;
   orderBusyId.value = row.id;
   try {
@@ -284,17 +325,32 @@ async function runOrderAction(row: any, action: () => Promise<void>) {
   }
 }
 
-async function markPaid(row: any) {
+async function markPaid(row: AdminSponsorOrder) {
   await runOrderAction(row, async () => {
     const snapshot = { ...row };
-    const confirmed = await ElMessageBox.confirm(
-      `确认将订单 ${row.outTradeNo} 标记为已支付？这会累计用户赞助金额。`,
-      "手动修复订单",
-      { type: "warning" }
-    ).then(() => true).catch(() => false);
-    if (!confirmed) return;
+    let adminNote = "";
     try {
-      const updated = await adminApi.updateSponsorOrder(row.id, { status: "paid" });
+      const result = await ElMessageBox.prompt(
+      `请填写订单 ${row.outTradeNo} 的人工对账依据。确认后会累计用户赞助金额。`,
+      "手动修复订单",
+        {
+          type: "warning",
+          inputPlaceholder: "例如：已核对网关流水号和到账记录",
+          inputValidator: (value) => (
+            String(value || "").trim().length > 0
+            || "必须填写对账说明"
+          ),
+        },
+      );
+      adminNote = result.value.trim();
+    } catch {
+      return;
+    }
+    try {
+      const updated = await adminApi.updateSponsorOrder(row.id, {
+        status: "paid",
+        adminNote,
+      });
       Object.assign(row, updated);
       await reloadOverview();
       ElMessage.success("订单已更新");
@@ -305,7 +361,7 @@ async function markPaid(row: any) {
   });
 }
 
-async function editMessage(row: any) {
+async function editMessage(row: AdminSponsorOrder) {
   await runOrderAction(row, async () => {
     let value: string | null = null;
     try {

@@ -345,12 +345,19 @@
 import { ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, Plus, MoreFilled } from "@element-plus/icons-vue";
-import { adminApi } from "@/api/admin";
+import {
+  adminApi,
+  type AdminLoginClient,
+  type AdminUser,
+  type AdminUserPatchResult,
+  type AdminUserRole,
+  type AdminUserStatus,
+} from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
 
 const auth = useAuthStore();
-const list = ref<any[]>([]);
+const list = ref<AdminUser[]>([]);
 const total = ref(0);
 const page = ref(1);
 const size = ref(30);
@@ -360,34 +367,34 @@ const userBusyId = ref<number | null>(null);
 let userLoadSeq = 0;
 
 const q = ref("");
-const role = ref("");
-const status = ref("");
-const forumEnabled = ref("");
-const usedClient = ref("");
-const sort = ref("login-desc");
+const role = ref<AdminUserRole | "">("");
+const status = ref<AdminUserStatus | "">("");
+const forumEnabled = ref<"0" | "1" | "">("");
+const usedClient = ref<"ios" | "android" | "harmony" | "">("");
+const sort = ref<"login-desc" | "id-desc" | "id-asc">("login-desc");
 const loginRange = ref<[string, string] | [] | null>([]);
 
 const createOpen = ref(false);
 const creating = ref(false);
 const roleDialogOpen = ref(false);
 const roleSaving = ref(false);
-const roleDialogTarget = ref<any | null>(null);
-const selectedRole = ref<"user" | "mod" | "admin" | "bot">("user");
+const roleDialogTarget = ref<AdminUser | null>(null);
+const selectedRole = ref<AdminUserRole>("user");
 const muteDialogOpen = ref(false);
 const muteSaving = ref(false);
-const muteTarget = ref<any | null>(null);
+const muteTarget = ref<AdminUser | null>(null);
 const muteDurationPreset = ref("1d");
 const muteUntil = ref<Date | null>(null);
 const anonymityDialogOpen = ref(false);
 const anonymitySaving = ref(false);
-const anonymityTarget = ref<any | null>(null);
+const anonymityTarget = ref<AdminUser | null>(null);
 const anonymityCredits = ref(0);
 const anonymityFrozen = ref(false);
 const createForm = reactive({
   username: "",
   password: "",
   nickname: "",
-  role: "user",
+  role: "user" as AdminUserRole,
   college: "",
   enrollYear: undefined as number | undefined,
 });
@@ -419,8 +426,8 @@ async function reload() {
   try {
     const r = await adminApi.users({
       q: q.value,
-      role: role.value,
-      status: status.value,
+      role: role.value || undefined,
+      status: status.value || undefined,
       forumEnabled: forumEnabled.value || undefined,
       usedClient: usedClient.value || undefined,
       loginFrom: Array.isArray(loginRange.value) && loginRange.value.length === 2 ? loginRange.value[0] : undefined,
@@ -505,18 +512,18 @@ async function submitCreate() {
   } finally { creating.value = false; }
 }
 
-function roleTag(r: string): "danger" | "warning" | "primary" | "info" {
+function roleTag(r: AdminUserRole): "danger" | "warning" | "primary" | "info" {
   if (r === "admin") return "danger";
   if (r === "mod") return "warning";
   if (r === "bot") return "info";
   return "primary";
 }
 
-function roleLabel(r: string) {
+function roleLabel(r: AdminUserRole) {
   return roleOptions.find((item) => item.value === r)?.label ?? r;
 }
 
-function clientLabel(client?: string | null) {
+function clientLabel(client?: AdminLoginClient | null) {
   if (client === "ios") return "iOS 客户端";
   if (client === "android") return "安卓客户端";
   if (client === "harmony") return "鸿蒙客户端";
@@ -525,7 +532,7 @@ function clientLabel(client?: string | null) {
   return "未登录";
 }
 
-function clientTagType(client?: string | null): "success" | "warning" | "info" | "danger" | "primary" {
+function clientTagType(client?: AdminLoginClient | null): "success" | "warning" | "info" | "danger" | "primary" {
   if (client === "ios") return "success";
   if (client === "android") return "warning";
   if (client === "harmony") return "success";
@@ -534,7 +541,7 @@ function clientTagType(client?: string | null): "success" | "warning" | "info" |
   return "info";
 }
 
-function handleUserCommand(command: string, row: any) {
+function handleUserCommand(command: string, row: AdminUser) {
   if (userBusyId.value !== null) return;
   if (command === "rename") return rename(row);
   if (command === "ban") return ban(row);
@@ -548,15 +555,15 @@ function handleUserCommand(command: string, row: any) {
   if (command === "delete") return deleteUser(row);
 }
 
-function applyUserUpdate(row: any, patch: Record<string, unknown>) {
+function applyUserUpdate(row: AdminUser, patch: AdminUserPatchResult) {
   Object.assign(row, patch);
 }
 
-function isUserBusy(row: any) {
+function isUserBusy(row: AdminUser) {
   return userBusyId.value === row.id;
 }
 
-async function runUserAction(row: any, action: () => Promise<void>) {
+async function runUserAction(row: AdminUser, action: () => Promise<void>) {
   if (userBusyId.value !== null) return;
   userBusyId.value = row.id;
   try {
@@ -566,7 +573,7 @@ async function runUserAction(row: any, action: () => Promise<void>) {
   }
 }
 
-async function rename(row: any) {
+async function rename(row: AdminUser) {
   await runUserAction(row, async () => {
     const { value } = await ElMessageBox.prompt(`修改 ${row.username} 的昵称`, "改昵称", {
       inputValue: row.nickname,
@@ -580,7 +587,7 @@ async function rename(row: any) {
   });
 }
 
-async function ban(row: any) {
+async function ban(row: AdminUser) {
   await runUserAction(row, async () => {
     const confirmed = await ElMessageBox.confirm(
       `封禁 ${row.nickname || row.username}？封禁后该用户将无法登录和发言。`,
@@ -595,7 +602,7 @@ async function ban(row: any) {
   });
 }
 
-async function unban(row: any) {
+async function unban(row: AdminUser) {
   await runUserAction(row, async () => {
     const patch = await adminApi.updateUser(row.id, { status: "active" });
     applyUserUpdate(row, patch);
@@ -626,7 +633,7 @@ function applyMutePreset(value: string) {
   muteUntil.value = buildMuteUntil(minutes);
 }
 
-function openMuteDialog(row: any) {
+function openMuteDialog(row: AdminUser) {
   if (userBusyId.value !== null) return;
   muteTarget.value = row;
   const existing = row.mutedUntil ? new Date(row.mutedUntil) : null;
@@ -668,7 +675,7 @@ async function submitMute() {
   }
 }
 
-async function unmute(row: any) {
+async function unmute(row: AdminUser) {
   await runUserAction(row, async () => {
     const patch = await adminApi.updateUser(row.id, { status: "active" });
     applyUserUpdate(row, patch);
@@ -677,14 +684,14 @@ async function unmute(row: any) {
   });
 }
 
-async function changeRole(row: any) {
+async function changeRole(row: AdminUser) {
   if (userBusyId.value !== null) return;
   roleDialogTarget.value = row;
   selectedRole.value = row.role;
   roleDialogOpen.value = true;
 }
 
-function changeAnonymity(row: any) {
+function changeAnonymity(row: AdminUser) {
   if (userBusyId.value !== null) return;
   anonymityTarget.value = row;
   anonymityCredits.value = row.anonymousState?.availableCredits ?? row.anonymousCredits ?? 0;
@@ -725,7 +732,7 @@ async function submitAnonymityChange() {
   }
 }
 
-async function toggleAiWhitelist(row: any) {
+async function toggleAiWhitelist(row: AdminUser) {
   await runUserAction(row, async () => {
     await adminApi.updateUser(row.id, { aiReviewWhitelisted: !row.aiReviewWhitelisted });
     ElMessage.success(row.aiReviewWhitelisted ? "已取消 AI 白名单" : "已加入 AI 白名单");
@@ -733,7 +740,7 @@ async function toggleAiWhitelist(row: any) {
   });
 }
 
-async function resetPw(row: any) {
+async function resetPw(row: AdminUser) {
   await runUserAction(row, async () => {
     const { value } = await ElMessageBox.prompt(
       `为 ${row.nickname}（${row.username}）设置新密码（至少 6 位）`,
@@ -744,14 +751,14 @@ async function resetPw(row: any) {
         inputErrorMessage: "密码 6-64 位",
         confirmButtonText: "重置",
       }
-    ).catch(() => ({ value: null as any }));
+    ).catch(() => ({ value: null as string | null }));
     if (!value) return;
     await adminApi.resetUserPassword(row.id, value);
     ElMessage.success(`已重置 ${row.username} 的密码，请妥善告知本人`);
   });
 }
 
-async function deleteUser(row: any) {
+async function deleteUser(row: AdminUser) {
   await runUserAction(row, async () => {
     const { value } = await ElMessageBox.prompt(
       `此操作会永久删除用户 ${row.nickname || row.username}（${row.username}）及其帖子、回复、点赞、课程评分和消息记录。\n请输入账号 ${row.username} 确认删除。`,
@@ -764,7 +771,7 @@ async function deleteUser(row: any) {
         cancelButtonText: "取消",
         type: "warning",
       }
-    ).catch(() => ({ value: null as any }));
+    ).catch(() => ({ value: null as string | null }));
     if (!value) return;
     const result = await adminApi.deleteUser(row.id);
     ElMessage.success(`已删除 ${row.username}，同时删除 ${result.deletedTopics} 个帖子、${result.deletedReplies} 条回复`);

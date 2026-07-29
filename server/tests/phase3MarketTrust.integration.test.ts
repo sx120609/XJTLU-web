@@ -24,6 +24,7 @@ test("stage 3 real routes enforce post-accept privacy, trust restrictions, repor
       role,
       studentSso: true,
       forumEnabled: true,
+      postCount: index === 1 ? 6 : 0,
       aiReviewWhitelisted: true,
       dataAuthAgreedAt: new Date(),
     },
@@ -115,6 +116,46 @@ test("stage 3 real routes enforce post-accept privacy, trust restrictions, repor
   assert.equal(reservation.status, "reserved");
   const linkedConversation = await prisma.marketConversation.findFirst({ where: { itemId: listing.id, buyerId: buyer.id } });
   assert.equal(linkedConversation?.orderId, reservation.id);
+
+  await prisma.user.update({ where: { id: buyer.id }, data: { status: "muted", mutedUntil: new Date(Date.now() + 60_000) } });
+  const mutedInitialMessage = await call(`/items/${listing.id}/conversations`, buyerToken, "POST", { message: "禁言期间不能发送" });
+  assert.equal(mutedInitialMessage.response.status, 403);
+  assert.match(mutedInitialMessage.body.message, /禁言/);
+  await prisma.user.update({ where: { id: buyer.id }, data: { status: "active", mutedUntil: null } });
+
+  const conversationList = await api("/conversations", buyerToken);
+  const conversationSummary = conversationList.find((entry: any) => entry.id === linkedConversation?.id);
+  assert.ok(conversationSummary);
+  assert.equal(conversationSummary.item.description, undefined);
+  assert.equal(conversationSummary.item.digitalDeliveryEncrypted, undefined);
+  assert.equal(conversationSummary.counterpart.id, seller.id);
+  assert.equal(conversationSummary.counterpart.username, undefined);
+
+  const sentMessage = await api(`/conversations/${linkedConversation!.id}/messages`, buyerToken, "POST", { content: "周五见面前再确认一次" });
+  assert.equal(sentMessage.content, "周五见面前再确认一次");
+  assert.equal(sentMessage.sender.id, buyer.id);
+  assert.equal(sentMessage.sender.username, undefined);
+  await prisma.marketMessage.createMany({
+    data: Array.from({ length: 305 }, (_, index) => ({
+      conversationId: linkedConversation!.id,
+      senderId: buyer.id,
+      content: `历史分页消息 ${index}`,
+    })),
+  });
+  const pagedMessages = await api(`/conversations/${linkedConversation!.id}/messages`, sellerToken);
+  assert.equal(pagedMessages.length, 300);
+  assert.equal(pagedMessages[0].content, "历史分页消息 5");
+  assert.equal(pagedMessages.at(-1).content, "历史分页消息 304");
+  assert.ok(pagedMessages.every((message: any, index: number) => index === 0 || message.id > pagedMessages[index - 1].id));
+  const persistedMessages = await prisma.marketMessage.findMany({
+    where: { conversationId: linkedConversation!.id },
+    select: { id: true, readAt: true },
+    orderBy: { id: "asc" },
+  });
+  assert.equal(persistedMessages.length, 306);
+  assert.equal(persistedMessages[0].readAt, null);
+  assert.ok(persistedMessages.at(-1)?.readAt);
+
   const contacts = await api(`/orders/${reservation.id}/contact-cards`, buyerToken);
   assert.equal(contacts.counterpart.contact.value, sellerContact);
   assert.equal(contacts.own.contact.value, buyerContact);
@@ -131,6 +172,16 @@ test("stage 3 real routes enforce post-accept privacy, trust restrictions, repor
   assert.equal(reviewListing.status, "reviewing");
 
   const secondListing = await api("/items", sellerToken, "POST", listingPayload(`阶段三限制测试商品 ${suffix}`));
+  const mismatchedViolation = await call("/admin/violations", adminToken, "POST", {
+    userId: buyer.id,
+    itemId: secondListing.id,
+    type: "risk_trade",
+    level: "moderate",
+    action: "restrict_trade",
+    reason: `阶段三错误关联测试 ${suffix}`,
+  });
+  assert.equal(mismatchedViolation.response.status, 400);
+  assert.match(mismatchedViolation.body.message, /不属于/);
   const violation = await api("/admin/violations", adminToken, "POST", { userId: buyer.id, type: "risk_trade", level: "moderate", action: "restrict_trade", reason: `阶段三限制测试 ${suffix}`, expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() });
   violationIds.push(violation.id);
   const restrictedIntent = await call(`/items/${secondListing.id}/intents`, buyerToken, "POST", { price: 80, message: "限制期间测试", availableTime: "周六下午" });
@@ -141,22 +192,96 @@ test("stage 3 real routes enforce post-accept privacy, trust restrictions, repor
   assert.ok(myTrust.restrictions.some((entry: any) => entry.id === violation.id));
   const appeal = await api(`/violations/${violation.id}/appeals`, buyerToken, "POST", { content: "这是阶段三自动化测试申诉，包含可核验的完整说明。" });
   appealIds.push(appeal.id);
-  const handledAppeal = await api(`/admin/appeals/${appeal.id}`, adminToken, "PATCH", { status: "approved", note: "自动化核验通过，撤销限制" });
+  const appealHandleRace = await Promise.all([1, 2].map(() => call(
+    `/admin/appeals/${appeal.id}`,
+    adminToken,
+    "PATCH",
+    { status: "approved", note: "自动化核验通过，撤销限制" },
+  )));
+  assert.deepEqual(
+    appealHandleRace.map((result) => result.response.status).sort((a, b) => a - b),
+    [200, 409],
+  );
+  const handledAppeal = appealHandleRace.find((result) => result.response.status === 200)!.body.data;
   assert.equal(handledAppeal.status, "approved");
   const restoredIntent = await api(`/items/${secondListing.id}/intents`, buyerToken, "POST", { price: 80, message: "撤销后恢复", availableTime: "周六下午" });
   assert.equal(restoredIntent.status, "pending");
 
-  const userReport = await api(`/users/${seller.id}/reports`, outsiderToken, "POST", { reason: "阶段三用户举报", detail: suffix });
+  const userReportRace = await Promise.all([1, 2].map(() => call(
+    `/users/${seller.id}/reports`,
+    outsiderToken,
+    "POST",
+    { reason: "阶段三用户举报", detail: suffix },
+  )));
+  assert.deepEqual(
+    userReportRace.map((result) => result.response.status).sort((a, b) => a - b),
+    [200, 409],
+  );
+  const userReport = userReportRace.find((result) => result.response.status === 200)!.body.data;
   reportIds.push(userReport.id);
+  assert.equal(await prisma.marketReport.count({
+    where: {
+      type: "user",
+      reportedUserId: seller.id,
+      reporterId: outsider.id,
+      status: "pending",
+    },
+  }), 1);
   const orderReport = await api(`/orders/${reservation.id}/report`, buyerToken, "POST", { reason: "阶段三交易举报", detail: suffix });
   reportIds.push(orderReport.id);
-  const wanted = await api("/wanted", buyerToken, "POST", { title: `阶段三求购 ${suffix}`, category: "other", budgetMin: 20, budgetMax: 100, brandModel: "不限", condition: "使用良好", expectedTradeTime: "本周", campus: "SIP", location: "中心楼大厅", description: "阶段三求购举报测试", allowSellerOffers: true, expiryDays: 21 });
+  const wanted = await api("/wanted", buyerToken, "POST", { title: `阶段三求购 ${suffix}`, category: "other", budgetMin: 20, budgetMax: 100, brandModel: "不限", condition: "使用良好", expectedTradeTime: "本周", campus: "SIP", location: "中心楼大厅", description: "阶段三求购举报测试", allowSellerOffers: true, anonymous: true, expiryDays: 21 });
+  const wantedResponse = await api(`/wanted/${wanted.id}/responses`, sellerToken, "POST", {
+    title: `阶段三响应 ${suffix}`,
+    price: 66,
+    description: "实体商品响应说明",
+    images: ["/uploads/phase3-test.jpg"],
+    condition: "good",
+    brand: "测试品牌",
+    model: "R3",
+    availableTime: "周末下午",
+  });
+  await prisma.marketItem.update({
+    where: { id: wantedResponse.itemId },
+    data: { digitalDeliveryEncrypted: `workspace-secret-${suffix}` },
+  });
+  const sellerWorkspace = await api("/mine", sellerToken);
+  const workspaceResponse = sellerWorkspace.wantedResponses.find((entry: any) => entry.id === wantedResponse.id);
+  assert.ok(workspaceResponse);
+  assert.equal(workspaceResponse.wantedPost.authorId, null);
+  assert.equal(workspaceResponse.wantedPost.author.nickname.startsWith("匿名同学"), true);
+  assert.equal(workspaceResponse.item.digitalDeliveryEncrypted, undefined);
+  assert.equal(workspaceResponse.item.hasDigitalDelivery, true);
   const wantedReport = await api(`/wanted/${wanted.id}/reports`, outsiderToken, "POST", { reason: "阶段三求购举报", detail: suffix });
   reportIds.push(wantedReport.id);
+  const handledWantedReport = await api(
+    `/admin/reports/${wantedReport.id}`,
+    adminToken,
+    "PATCH",
+    { status: "resolved", note: "举报核验成立", hideItem: true },
+  );
+  assert.equal(handledWantedReport.status, "resolved");
+  const [removedWanted, expiredResponse, withdrawnTargetedItem] = await Promise.all([
+    prisma.wantedPost.findUniqueOrThrow({ where: { id: wanted.id } }),
+    prisma.wantedResponse.findUniqueOrThrow({ where: { id: wantedResponse.id } }),
+    prisma.marketItem.findUniqueOrThrow({ where: { id: wantedResponse.itemId } }),
+  ]);
+  assert.equal(removedWanted.status, "removed");
+  assert.equal(expiredResponse.status, "expired");
+  assert.equal(withdrawnTargetedItem.status, "withdrawn");
   const overview = await api("/admin/overview", adminToken);
   assert.ok(["user", "trade", "wanted"].every((type) => overview.reports.some((report: any) => report.type === type && reportIds.includes(report.id))));
   const logs = await api("/admin/action-logs?size=100", adminToken);
   assert.ok(logs.list.some((entry: any) => entry.action === "market.violation.create" && entry.targetId === String(buyer.id)));
-  assert.ok(logs.list.some((entry: any) => entry.action === "market.appeal.approved" && entry.targetId === String(appeal.id)));
+  assert.equal(logs.list.filter((entry: any) => entry.action === "market.appeal.approved" && entry.targetId === String(appeal.id)).length, 1);
+  assert.ok(logs.list.some((entry: any) => entry.action === "market.report.handle" && entry.targetId === String(wantedReport.id)));
   assert.equal(JSON.stringify(logs.list).includes(sellerContact), false);
+
+  const cancelledReservation = await api(`/orders/${reservation.id}`, buyerToken, "PATCH", { action: "cancel", reason: "阶段三关闭隐私窗口测试" });
+  assert.equal(cancelledReservation.status, "cancelled");
+  const closedContacts = await call(`/orders/${reservation.id}/contact-cards`, buyerToken);
+  assert.equal(closedContacts.response.status, 403);
+  const closedConversation = await call(`/conversations/${linkedConversation!.id}/messages`, buyerToken);
+  assert.equal(closedConversation.response.status, 404);
+  const conversationsAfterCancel = await api("/conversations", buyerToken);
+  assert.equal(conversationsAfterCancel.some((entry: any) => entry.id === linkedConversation!.id), false);
 });

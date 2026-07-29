@@ -195,11 +195,15 @@
 import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, MoreFilled } from "@element-plus/icons-vue";
-import { adminApi } from "@/api/admin";
+import {
+  adminApi,
+  type AdminTopicReviewStatus,
+  type AdminTopicRow,
+} from "@/api/admin";
 import { boardApi, type Board } from "@/api/board";
 import { fmtDate } from "@/utils/format";
 
-const list = ref<any[]>([]);
+const list = ref<AdminTopicRow[]>([]);
 const boards = ref<Board[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -211,7 +215,7 @@ const topicBusyId = ref<number | null>(null);
 const q = ref("");
 const boardSlug = ref("");
 const hidden = ref<"" | "0" | "1">("");
-const reviewStatus = ref("");
+const reviewStatus = ref<AdminTopicReviewStatus | "">("");
 let reloadSeq = 0;
 
 onMounted(async () => {
@@ -256,11 +260,11 @@ function requestMessage(error: unknown) {
   return error instanceof Error ? error.message : "";
 }
 
-function isTopicBusy(row: any) {
+function isTopicBusy(row: AdminTopicRow) {
   return topicBusyId.value === row.id;
 }
 
-async function runTopicAction(row: any, action: () => Promise<void>) {
+async function runTopicAction(row: AdminTopicRow, action: () => Promise<void>) {
   if (topicBusyId.value !== null) return;
   topicBusyId.value = row.id;
   try {
@@ -270,7 +274,7 @@ async function runTopicAction(row: any, action: () => Promise<void>) {
   }
 }
 
-function handleTopicCommand(command: string, row: any) {
+function handleTopicCommand(command: string, row: AdminTopicRow) {
   if (command === "open") return openTopic(row);
   if (topicBusyId.value !== null) return;
   if (command === "pin") return togglePin(row);
@@ -284,32 +288,32 @@ function handleTopicCommand(command: string, row: any) {
   if (command === "destroy") return destroyRow(row);
 }
 
-function openTopic(row: any) {
+function openTopic(row: AdminTopicRow) {
   window.open(`/forum/topic/${row.id}`, "_blank", "noopener,noreferrer");
 }
 
-async function togglePin(row: any) {
+async function togglePin(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     await adminApi.updateTopic(row.id, { pinned: !row.pinned });
     ElMessage.success(row.pinned ? "已取消板块置顶" : "已设为板块置顶");
     await reload();
   });
 }
-async function toggleGlobalPin(row: any) {
+async function toggleGlobalPin(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     await adminApi.updateTopic(row.id, { globalPinned: !row.globalPinned });
     ElMessage.success(row.globalPinned ? "已取消全局置顶" : "已设为全局置顶");
     await reload();
   });
 }
-async function toggleLock(row: any) {
+async function toggleLock(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     await adminApi.updateTopic(row.id, { locked: !row.locked });
     ElMessage.success(row.locked ? "已解锁" : "已锁定");
     await reload();
   });
 }
-async function hideRow(row: any) {
+async function hideRow(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     const confirmed = await ElMessageBox.confirm(`隐藏帖子《${row.title.slice(0, 30)}》？`, "确认", { type: "warning" })
       .then(() => true)
@@ -320,7 +324,7 @@ async function hideRow(row: any) {
     await reload();
   });
 }
-async function destroyRow(row: any) {
+async function destroyRow(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     const confirmed = await ElMessageBox.confirm(
       `永久删除帖子《${row.title.slice(0, 30)}》？\n该操作会删除回复、点赞以及爬虫去重记录，无法恢复。`,
@@ -333,14 +337,14 @@ async function destroyRow(row: any) {
     await reload();
   });
 }
-async function unhide(row: any) {
+async function unhide(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     await adminApi.updateTopic(row.id, { hidden: false });
     ElMessage.success("已恢复");
     await reload();
   });
 }
-async function moveBoard(row: any) {
+async function moveBoard(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     const writable = boards.value.filter((b) => !b.readOnly);
     if (!writable.length) {
@@ -360,7 +364,7 @@ async function moveBoard(row: any) {
   });
 }
 
-function reviewLabel(status?: string) {
+function reviewLabel(status?: AdminTopicReviewStatus) {
   if (status === "auto_passed") return "自动通过";
   if (status === "blocked_ai") return "AI 拦截";
   if (status === "manual_requested") return "申请人工审核";
@@ -370,7 +374,7 @@ function reviewLabel(status?: string) {
   return "未审核";
 }
 
-async function approveReview(row: any) {
+async function approveReview(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     await adminApi.updateTopic(row.id, { aiReviewStatus: "approved_manual", manualReviewNote: "管理员人工审核通过" });
     ElMessage.success("已审核通过");
@@ -378,7 +382,7 @@ async function approveReview(row: any) {
   });
 }
 
-async function rejectReview(row: any) {
+async function rejectReview(row: AdminTopicRow) {
   await runTopicAction(row, async () => {
     let value = "";
     try {

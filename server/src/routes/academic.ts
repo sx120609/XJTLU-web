@@ -23,7 +23,12 @@ academicRouter.get("/status", async (req, res, next) => {
     const status = await getXjtluEbridgeStatus(req.user!.userId, forceRefresh(req.query.refresh));
     if (status.active) return ok(res, status);
     const connection = await getXjtluPortalConnectionStatus(req.user!.userId);
-    ok(res, { ...status, connecting: connection.ebridge === "connecting" });
+    ok(res, {
+      ...status,
+      connecting: connection.ebridge === "connecting",
+      connectionFailed: connection.ebridge === "failed",
+      connectionError: connection.ebridge === "failed" ? connection.ebridgeError : undefined,
+    });
   } catch (error) {
     next(error);
   }

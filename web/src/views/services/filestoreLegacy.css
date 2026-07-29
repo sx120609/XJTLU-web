@@ -2131,6 +2131,17 @@ dialog.busy-dialog {
   gap: 16px;
 }
 
+.submit-empty-state {
+  margin: 24px;
+  padding: 28px 24px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.7;
+}
+
 .submit-section-title {
   display: flex;
   align-items: baseline;

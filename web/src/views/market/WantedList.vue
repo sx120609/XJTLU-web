@@ -39,7 +39,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Plus, Search } from "@element-plus/icons-vue";
-import { MARKET_CAMPUSES, marketApi, type MarketCategoryOption, type WantedPost } from "@/api/market";
+import { MARKET_CAMPUSES, marketApi, type MarketCampus, type MarketCategoryOption, type WantedPost } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { fmtRelative } from "@/utils/format";
 import UserAvatar from "@/components/common/UserAvatar.vue";
@@ -49,7 +49,7 @@ const auth = useAuthStore();
 const router = useRouter();
 const categories = ref<MarketCategoryOption[]>([]);
 const posts = ref<WantedPost[]>([]);
-const filters = reactive({ q: "", category: "", campus: "" });
+const filters = reactive<{ q: string; category: string; campus: MarketCampus | "" }>({ q: "", category: "", campus: "" });
 const loading = ref(false);
 const error = ref("");
 const total = ref(0);

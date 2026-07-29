@@ -364,7 +364,7 @@ import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { authApi } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
-import { paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
+import { paymentsApi, type PayType, type SponsorOptions, type SponsorOrder } from "@/api/payments";
 import { request } from "@/api/request";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -392,7 +392,7 @@ const sponsorPayType = ref<PayType>("alipay");
 const sponsorMessage = ref("");
 const sponsorDisplayMode = ref<"public" | "anonymous" | "hidden">("public");
 const sponsorConfirmOpen = ref(false);
-const sponsorOrders = ref<any[]>([]);
+const sponsorOrders = ref<SponsorOrder[]>([]);
 const profileLoading = ref(false);
 const profileLoadError = ref("");
 const sponsorOptions = reactive<SponsorOptions>({

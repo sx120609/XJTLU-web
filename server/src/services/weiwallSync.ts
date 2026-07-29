@@ -843,7 +843,9 @@ export async function updateWeiwallSyncConfig(patch: WeiwallSyncPatch) {
   const current = await ensureWeiwallSyncConfigRow();
   const data: Prisma.WeiwallSyncConfigUncheckedUpdateInput = {};
   if (patch.enabled !== undefined) data.enabled = patch.enabled;
-  if (patch.baseUrl !== undefined) data.baseUrl = trimTo(patch.baseUrl, 240, WEIWALL_DEFAULT_BASE_URL);
+  if (patch.baseUrl !== undefined) {
+    data.baseUrl = normalizeWeiwallBaseUrl(patch.baseUrl);
+  }
   if (patch.schoolEn !== undefined) data.schoolEn = trimTo(patch.schoolEn, 40, "cpu");
   if (patch.tenantId !== undefined) data.tenantId = patch.tenantId;
   if (patch.token !== undefined) data.token = String(patch.token ?? "").trim();
@@ -857,6 +859,14 @@ export async function updateWeiwallSyncConfig(patch: WeiwallSyncPatch) {
   }
   if (patch.maxCommentPages !== undefined) data.maxCommentPages = Math.max(1, Math.min(50, Math.round(patch.maxCommentPages)));
   if (patch.maxReplyPages !== undefined) data.maxReplyPages = Math.max(1, Math.min(50, Math.round(patch.maxReplyPages)));
+  const effectiveToken = patch.clearToken
+    ? ""
+    : patch.token !== undefined
+      ? String(patch.token ?? "").trim()
+      : current.token;
+  if (patch.enabled === true && !effectiveToken) {
+    throw Errors.badRequest("启用逛逛同步前请先配置 Token");
+  }
 
   const board = await ensureWeiwallBoard();
   await prisma.weiwallSyncConfig.update({
@@ -1082,10 +1092,34 @@ function verifyWeiwallAuthFlowToken(token: string) {
   return jwt.verify(token, config.jwtSecret) as WeiwallAuthFlowPayload;
 }
 
-function normalizeOrigin(origin: string) {
-  const text = String(origin ?? "").trim().replace(/\/+$/, "");
-  if (!/^https?:\/\//i.test(text)) throw Errors.badRequest("当前站点地址不合法，无法生成微信授权链接");
-  return text;
+export function normalizeWeiwallBaseUrl(input: string) {
+  const text = String(input ?? "").trim() || WEIWALL_DEFAULT_BASE_URL;
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "https:" || url.username || url.password) {
+      throw new Error("invalid");
+    }
+    return url.origin;
+  } catch {
+    throw Errors.badRequest("逛逛 Base URL 必须是有效的 HTTPS 地址");
+  }
+}
+
+export function normalizeWeiwallCallbackOrigin(origin: string) {
+  const text = String(origin ?? "").trim();
+  try {
+    const url = new URL(text);
+    if (
+      !["http:", "https:"].includes(url.protocol)
+      || url.username
+      || url.password
+    ) {
+      throw new Error("invalid");
+    }
+    return url.origin;
+  } catch {
+    throw Errors.badRequest("当前站点地址不合法，无法生成微信授权链接");
+  }
 }
 
 async function readWeiwallAuthFlow(flowId: string) {
@@ -1128,7 +1162,9 @@ async function exchangeWeiwallCodeForToken(
 
 export async function createWeiwallTokenAuthSession(origin: string) {
   const configRow = await ensureWeiwallSyncConfigRow();
-  const normalizedOrigin = normalizeOrigin(getSiteOrigin() || origin);
+  const normalizedOrigin = normalizeWeiwallCallbackOrigin(
+    getSiteOrigin() || origin,
+  );
   const flowId = randomUUID();
   const expiresAtMs = Date.now() + WEIWALL_AUTH_FLOW_TTL_MS;
   const flowToken = signWeiwallAuthFlowToken({
@@ -1189,45 +1225,59 @@ export async function completeWeiwallTokenAuthCallback(input: {
 }) {
   const payload = verifyWeiwallAuthFlowToken(String(input.flowToken || ""));
   if (payload.purpose !== "weiwall-token-auth") throw Errors.badRequest("授权凭证无效");
-  const record = await readWeiwallAuthFlow(payload.flowId);
-  if (!record || record.expiresAtMs <= Date.now()) {
-    throw Errors.badRequest("授权会话已过期，请重新生成二维码");
+  const locked = await runWithDistributedLock(
+    `weiwall-auth-flow-complete:${payload.flowId}`,
+    60_000,
+    async () => {
+      const record = await readWeiwallAuthFlow(payload.flowId);
+      if (!record || record.expiresAtMs <= Date.now()) {
+        throw Errors.badRequest("授权会话已过期，请重新生成二维码");
+      }
+      if (record.used) {
+        throw Errors.badRequest("授权会话已使用，请重新生成二维码");
+      }
+      const school = String(
+        input.school || record.schoolEn || payload.schoolEn || "",
+      ).trim();
+      const code = String(input.code || "").trim();
+      if (!school || !code) {
+        throw Errors.badRequest("缺少 school 或 code，无法完成授权");
+      }
+      try {
+        const configRow = await ensureWeiwallSyncConfigRow();
+        const token = await exchangeWeiwallCodeForToken(configRow, school, code);
+        await prisma.weiwallSyncConfig.update({
+          where: { id: configRow.id },
+          data: {
+            schoolEn: school,
+            token,
+            lastError: null,
+          },
+        });
+        record.used = true;
+        record.status = "success";
+        record.error = null;
+        record.completedAtMs = Date.now();
+        await writeWeiwallAuthFlow(record, 10 * 60_000);
+        return {
+          ok: true,
+          title: "逛逛 Token 已更新",
+          message: "新的逛逛 Token 已自动保存，现在可以返回后台继续使用。",
+        };
+      } catch (error: any) {
+        record.used = true;
+        record.status = "error";
+        record.error = error?.message ?? String(error);
+        record.completedAtMs = Date.now();
+        await writeWeiwallAuthFlow(record, 10 * 60_000);
+        throw error;
+      }
+    },
+  );
+  if (!locked.acquired) {
+    throw Errors.conflict("授权回调正在处理，请勿重复提交");
   }
-  if (record.used) {
-    throw Errors.badRequest("授权会话已使用，请重新生成二维码");
-  }
-  const school = String(input.school || record.schoolEn || payload.schoolEn || "").trim();
-  const code = String(input.code || "").trim();
-  if (!school || !code) throw Errors.badRequest("缺少 school 或 code，无法完成授权");
-  try {
-    const configRow = await ensureWeiwallSyncConfigRow();
-    const token = await exchangeWeiwallCodeForToken(configRow, school, code);
-    await prisma.weiwallSyncConfig.update({
-      where: { id: configRow.id },
-      data: {
-        schoolEn: school,
-        token,
-        lastError: null,
-      },
-    });
-    record.used = true;
-    record.status = "success";
-    record.error = null;
-    record.completedAtMs = Date.now();
-    await writeWeiwallAuthFlow(record, 10 * 60_000);
-    return {
-      ok: true,
-      title: "逛逛 Token 已更新",
-      message: "新的逛逛 Token 已自动保存，现在可以返回后台继续使用。",
-    };
-  } catch (error: any) {
-    record.used = true;
-    record.status = "error";
-    record.error = error?.message ?? String(error);
-    record.completedAtMs = Date.now();
-    await writeWeiwallAuthFlow(record, 10 * 60_000);
-    throw error;
-  }
+  return locked.result!;
 }
 
 async function fetchTopicComments(

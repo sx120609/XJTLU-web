@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { config } from "../config";
 import { broadcastStorageConfigReload } from "./runtimeBroadcast";
+import { runWithDistributedLock } from "./cache";
 
 export type MediaStorageProvider = "local" | "onedrive-cn";
 export type MediaStorageKind = "image" | "video";
@@ -42,6 +43,18 @@ export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
   legacyClientSecret: string;
   legacyDriveId: string;
   legacyRootPath: string;
+};
+
+export type MediaStorageAdminPatch = {
+  mediaStorageProvider?: MediaStorageProvider;
+  mediaStorageImageProvider?: MediaStorageProvider;
+  mediaStorageVideoProvider?: MediaStorageProvider;
+  mediaStorageRemotePrefixes?: string[] | string;
+  oneDriveChinaClientId?: string;
+  oneDriveChinaClientSecret?: string;
+  clearOneDriveChinaClientSecret?: boolean;
+  oneDriveChinaSharepointUrl?: string;
+  oneDriveChinaRootPath?: string;
 };
 
 const MEDIA_STORAGE_PROVIDER_KEY = "storage.media.provider";
@@ -149,6 +162,7 @@ export async function loadStorageConfig(): Promise<void> {
       key: { in: [...STORAGE_KEYS] },
     },
   });
+  let invalidSharepointUrl = false;
   for (const row of rows) {
     if (row.key === MEDIA_STORAGE_PROVIDER_KEY) {
       next.mediaStorageProvider = normalizeMediaStorageProvider(row.value, "local");
@@ -183,7 +197,15 @@ export async function loadStorageConfig(): Promise<void> {
       continue;
     }
     if (row.key === ONEDRIVE_CN_SHAREPOINT_URL_KEY) {
-      next.oneDriveChinaSharepointUrl = normalizeOptionalUrl(row.value);
+      try {
+        next.oneDriveChinaSharepointUrl = normalizeSharePointUrl(row.value);
+      } catch {
+        // Do not make the whole server fail to boot because a legacy row used
+        // HTTP or embedded credentials. It remains disabled until an admin
+        // saves a safe replacement.
+        next.oneDriveChinaSharepointUrl = "";
+        invalidSharepointUrl = true;
+      }
       continue;
     }
     if (row.key === ONEDRIVE_CN_SHAREPOINT_HOST_KEY) {
@@ -226,6 +248,10 @@ export async function loadStorageConfig(): Promise<void> {
       next.oneDriveChinaLastError = String(row.value || "").trim();
     }
   }
+  if (invalidSharepointUrl) {
+    next.oneDriveChinaLastError =
+      "旧 SharePoint 地址不安全，已停用，请重新配置 HTTPS 地址";
+  }
   sanitizeStorageConfig(next);
   Object.assign(storageConfigCache, next);
   loaded = true;
@@ -233,16 +259,28 @@ export async function loadStorageConfig(): Promise<void> {
 
 export async function getMediaStorageAdminConfig(): Promise<MediaStorageAdminConfig> {
   await ensureLoaded();
-  const normalizedProvider = storageConfigCache.mediaStorageImageProvider === storageConfigCache.mediaStorageVideoProvider
-    ? storageConfigCache.mediaStorageImageProvider
-    : storageConfigCache.mediaStorageProvider;
+  return serializeMediaStorageAdminConfig(storageConfigCache);
+}
+
+export function serializeMediaStorageAdminConfig(
+  current: MediaStorageStoredConfig,
+): MediaStorageAdminConfig {
+  const normalizedProvider = current.mediaStorageImageProvider
+    === current.mediaStorageVideoProvider
+    ? current.mediaStorageImageProvider
+    : current.mediaStorageProvider;
+  const {
+    oneDriveChinaClientSecret,
+    oneDriveChinaRefreshToken,
+    ...publicConfig
+  } = cloneStorageConfig({
+    ...current,
+    mediaStorageProvider: normalizedProvider,
+  });
   return {
-    ...cloneStorageConfig({
-      ...storageConfigCache,
-      mediaStorageProvider: normalizedProvider,
-    }),
-    oneDriveChinaClientSecretConfigured: Boolean(storageConfigCache.oneDriveChinaClientSecret),
-    oneDriveChinaRefreshTokenConfigured: Boolean(storageConfigCache.oneDriveChinaRefreshToken),
+    ...publicConfig,
+    oneDriveChinaClientSecretConfigured: Boolean(oneDriveChinaClientSecret),
+    oneDriveChinaRefreshTokenConfigured: Boolean(oneDriveChinaRefreshToken),
   };
 }
 
@@ -274,81 +312,76 @@ export function getMediaStorageRuntimeConfigSync(): MediaStorageRuntimeConfig {
   };
 }
 
-export async function updateMediaStorageAdminConfig(input: {
-  mediaStorageProvider?: string;
-  mediaStorageImageProvider?: string;
-  mediaStorageVideoProvider?: string;
-  mediaStorageRemotePrefixes?: string[] | string;
-  oneDriveChinaClientId?: string;
-  oneDriveChinaClientSecret?: string;
-  clearOneDriveChinaClientSecret?: boolean;
-  oneDriveChinaSharepointUrl?: string;
-  oneDriveChinaRootPath?: string;
-}): Promise<MediaStorageAdminConfig> {
-  await ensureLoaded();
-  const next = cloneStorageConfig(storageConfigCache);
-  const previousClientId = next.oneDriveChinaClientId;
-  const previousClientSecret = next.oneDriveChinaClientSecret;
-  const previousSharepointUrl = next.oneDriveChinaSharepointUrl;
+export async function updateMediaStorageAdminConfig(
+  input: MediaStorageAdminPatch,
+): Promise<MediaStorageAdminConfig> {
+  await mutateStorageConfig((next) => {
+    const previousClientId = next.oneDriveChinaClientId;
+    const previousClientSecret = next.oneDriveChinaClientSecret;
+    const previousSharepointUrl = next.oneDriveChinaSharepointUrl;
 
-  if (input.mediaStorageProvider !== undefined) {
-    const normalized = normalizeMediaStorageProvider(input.mediaStorageProvider, next.mediaStorageProvider);
-    next.mediaStorageProvider = normalized;
-    next.mediaStorageImageProvider = normalized;
-    next.mediaStorageVideoProvider = normalized;
-  }
-  if (input.mediaStorageImageProvider !== undefined) {
-    next.mediaStorageImageProvider = normalizeMediaStorageProvider(input.mediaStorageImageProvider, next.mediaStorageImageProvider);
-  }
-  if (input.mediaStorageVideoProvider !== undefined) {
-    next.mediaStorageVideoProvider = normalizeMediaStorageProvider(input.mediaStorageVideoProvider, next.mediaStorageVideoProvider);
-  }
-  if (input.mediaStorageRemotePrefixes !== undefined) {
-    next.mediaStorageRemotePrefixes = normalizeRemotePrefixes(input.mediaStorageRemotePrefixes, next.mediaStorageRemotePrefixes);
-  }
-  if (input.oneDriveChinaClientId !== undefined) {
-    next.oneDriveChinaClientId = String(input.oneDriveChinaClientId || "").trim();
-  }
-  if (input.clearOneDriveChinaClientSecret) {
-    next.oneDriveChinaClientSecret = "";
-  } else if (input.oneDriveChinaClientSecret !== undefined) {
-    const raw = String(input.oneDriveChinaClientSecret || "").trim();
-    if (raw) next.oneDriveChinaClientSecret = raw;
-  }
-  if (input.oneDriveChinaSharepointUrl !== undefined) {
-    next.oneDriveChinaSharepointUrl = normalizeOptionalUrl(input.oneDriveChinaSharepointUrl);
-  }
-  if (input.oneDriveChinaRootPath !== undefined) {
-    next.oneDriveChinaRootPath = normalizeRootPath(input.oneDriveChinaRootPath);
-  }
+    if (input.mediaStorageProvider !== undefined) {
+      next.mediaStorageProvider = input.mediaStorageProvider;
+      next.mediaStorageImageProvider = input.mediaStorageProvider;
+      next.mediaStorageVideoProvider = input.mediaStorageProvider;
+    }
+    if (input.mediaStorageImageProvider !== undefined) {
+      next.mediaStorageImageProvider = input.mediaStorageImageProvider;
+    }
+    if (input.mediaStorageVideoProvider !== undefined) {
+      next.mediaStorageVideoProvider = input.mediaStorageVideoProvider;
+    }
+    if (input.mediaStorageRemotePrefixes !== undefined) {
+      next.mediaStorageRemotePrefixes = normalizeRemotePrefixes(
+        input.mediaStorageRemotePrefixes,
+        next.mediaStorageRemotePrefixes,
+      );
+    }
+    if (input.oneDriveChinaClientId !== undefined) {
+      next.oneDriveChinaClientId = input.oneDriveChinaClientId.trim();
+    }
+    if (input.clearOneDriveChinaClientSecret) {
+      next.oneDriveChinaClientSecret = "";
+    } else if (input.oneDriveChinaClientSecret !== undefined) {
+      next.oneDriveChinaClientSecret = input.oneDriveChinaClientSecret.trim();
+    }
+    if (input.oneDriveChinaSharepointUrl !== undefined) {
+      next.oneDriveChinaSharepointUrl = normalizeSharePointUrl(
+        input.oneDriveChinaSharepointUrl,
+      );
+    }
+    if (input.oneDriveChinaRootPath !== undefined) {
+      next.oneDriveChinaRootPath = normalizeRootPath(
+        input.oneDriveChinaRootPath,
+      );
+    }
 
-  const credentialsChanged = previousClientId !== next.oneDriveChinaClientId || previousClientSecret !== next.oneDriveChinaClientSecret;
-  const siteChanged = previousSharepointUrl !== next.oneDriveChinaSharepointUrl;
-  if (credentialsChanged) {
-    next.oneDriveChinaRefreshToken = "";
-    next.oneDriveChinaAuthorizedAt = "";
-    next.oneDriveChinaLastError = "";
-  }
-  if (siteChanged || credentialsChanged) {
-    clearResolvedSharePointState(next);
-  }
-
-  sanitizeStorageConfig(next);
-  if (next.mediaStorageImageProvider === next.mediaStorageVideoProvider) {
-    next.mediaStorageProvider = next.mediaStorageImageProvider;
-  }
-  await persistStorageConfig(next);
-  Object.assign(storageConfigCache, next);
+    const credentialsChanged = previousClientId !== next.oneDriveChinaClientId
+      || previousClientSecret !== next.oneDriveChinaClientSecret;
+    const siteChanged = previousSharepointUrl
+      !== next.oneDriveChinaSharepointUrl;
+    if (credentialsChanged) {
+      next.oneDriveChinaRefreshToken = "";
+      next.oneDriveChinaAuthorizedAt = "";
+      next.oneDriveChinaLastError = "";
+    }
+    if (siteChanged || credentialsChanged) {
+      clearResolvedSharePointState(next);
+    }
+    if (
+      next.mediaStorageImageProvider === next.mediaStorageVideoProvider
+    ) {
+      next.mediaStorageProvider = next.mediaStorageImageProvider;
+    }
+    assertEnabledRemoteStorageReady(next);
+  });
   return getMediaStorageAdminConfig();
 }
 
 export async function getFilestoreStorageAdminConfig() {
   await ensureLoaded();
   const runtime = getMediaStorageRuntimeConfigSync();
-  const remoteReady = Boolean(
-    (runtime.oneDriveChinaRefreshToken.trim() || runtime.legacyClientSecret.trim())
-    && (runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim()),
-  );
+  const remoteReady = isRuntimeRemoteStorageReady(runtime);
   return {
     enabled: runtime.filestoreRemoteStorageEnabled,
     minSizeMb: runtime.filestoreRemoteMinSizeMb,
@@ -369,25 +402,18 @@ export async function getFilestoreStorageAdminConfig() {
 }
 
 export async function updateFilestoreStorageAdminConfig(input: { enabled?: boolean; minSizeMb?: number }) {
-  await ensureLoaded();
-  const next = cloneStorageConfig(storageConfigCache);
-  if (input.enabled !== undefined) {
-    if (input.enabled) {
-      const runtime = getMediaStorageRuntimeConfigSync();
-      const remoteReady = Boolean(
-        (runtime.oneDriveChinaRefreshToken.trim() || runtime.legacyClientSecret.trim())
-        && (runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim()),
-      );
-      if (!remoteReady) throw new Error("请先在媒体存储页完成世纪互联授权并选择文档库");
+  await mutateStorageConfig((next) => {
+    if (input.enabled !== undefined) {
+      next.filestoreRemoteStorageEnabled = input.enabled;
     }
-    next.filestoreRemoteStorageEnabled = Boolean(input.enabled);
-  }
-  if (input.minSizeMb !== undefined) {
-    next.filestoreRemoteMinSizeMb = normalizeFileSizeThresholdMb(input.minSizeMb, next.filestoreRemoteMinSizeMb);
-  }
-  sanitizeStorageConfig(next);
-  await persistStorageConfig(next);
-  Object.assign(storageConfigCache, next);
+    if (input.minSizeMb !== undefined) {
+      next.filestoreRemoteMinSizeMb = normalizeFileSizeThresholdMb(
+        input.minSizeMb,
+        next.filestoreRemoteMinSizeMb,
+      );
+    }
+    assertEnabledRemoteStorageReady(next);
+  });
   return getFilestoreStorageAdminConfig();
 }
 
@@ -401,29 +427,29 @@ export async function setOneDriveChinaResolvedSite(input: {
   driveName?: string;
   lastError?: string;
 }) {
-  await ensureLoaded();
-  const next = cloneStorageConfig(storageConfigCache);
-  next.oneDriveChinaSharepointUrl = normalizeOptionalUrl(input.sharepointUrl);
-  next.oneDriveChinaSharepointHost = String(input.sharepointHost || "").trim().toLowerCase();
-  next.oneDriveChinaSharepointPath = normalizeSharePointPath(input.sharepointPath);
-  next.oneDriveChinaSiteId = String(input.siteId || "").trim();
-  next.oneDriveChinaSiteName = String(input.siteName || "").trim();
-  next.oneDriveChinaDriveId = String(input.driveId || "").trim();
-  next.oneDriveChinaDriveName = String(input.driveName || "").trim();
-  next.oneDriveChinaLastError = String(input.lastError || "").trim();
-  sanitizeStorageConfig(next);
-  await persistStorageConfig(next);
-  Object.assign(storageConfigCache, next);
+  await mutateStorageConfig((next) => {
+    next.oneDriveChinaSharepointUrl = normalizeSharePointUrl(
+      input.sharepointUrl,
+    );
+    next.oneDriveChinaSharepointHost = String(
+      input.sharepointHost || "",
+    ).trim().toLowerCase();
+    next.oneDriveChinaSharepointPath = normalizeSharePointPath(
+      input.sharepointPath,
+    );
+    next.oneDriveChinaSiteId = String(input.siteId || "").trim();
+    next.oneDriveChinaSiteName = String(input.siteName || "").trim();
+    next.oneDriveChinaDriveId = String(input.driveId || "").trim();
+    next.oneDriveChinaDriveName = String(input.driveName || "").trim();
+    next.oneDriveChinaLastError = String(input.lastError || "").trim();
+  });
 }
 
 export async function setOneDriveChinaDriveSelection(driveId: string, driveName?: string) {
-  await ensureLoaded();
-  const next = cloneStorageConfig(storageConfigCache);
-  next.oneDriveChinaDriveId = String(driveId || "").trim();
-  next.oneDriveChinaDriveName = String(driveName || "").trim();
-  sanitizeStorageConfig(next);
-  await persistStorageConfig(next);
-  Object.assign(storageConfigCache, next);
+  await mutateStorageConfig((next) => {
+    next.oneDriveChinaDriveId = String(driveId || "").trim();
+    next.oneDriveChinaDriveName = String(driveName || "").trim();
+  });
 }
 
 export async function setOneDriveChinaRefreshTokenState(input: {
@@ -431,38 +457,66 @@ export async function setOneDriveChinaRefreshTokenState(input: {
   authorizedAt?: string | Date | null;
   lastError?: string | null;
 }) {
-  await ensureLoaded();
-  const next = cloneStorageConfig(storageConfigCache);
-  next.oneDriveChinaRefreshToken = String(input.refreshToken || "").trim();
-  next.oneDriveChinaAuthorizedAt = normalizeIsoDate(input.authorizedAt) || new Date().toISOString();
-  next.oneDriveChinaLastError = String(input.lastError || "").trim();
-  sanitizeStorageConfig(next);
-  await persistStorageConfig(next);
-  Object.assign(storageConfigCache, next);
+  await mutateStorageConfig((next) => {
+    next.oneDriveChinaRefreshToken = String(input.refreshToken || "").trim();
+    next.oneDriveChinaAuthorizedAt = normalizeIsoDate(input.authorizedAt)
+      || new Date().toISOString();
+    next.oneDriveChinaLastError = String(input.lastError || "").trim();
+  });
 }
 
 export async function setOneDriveChinaLastError(message: string) {
-  await ensureLoaded();
-  const next = cloneStorageConfig(storageConfigCache);
-  next.oneDriveChinaLastError = String(message || "").trim().slice(0, 500);
-  await persistStorageConfig(next);
-  Object.assign(storageConfigCache, next);
+  await mutateStorageConfig((next) => {
+    next.oneDriveChinaLastError = String(message || "").trim().slice(0, 500);
+  });
 }
 
 export async function clearOneDriveChinaAuthorization() {
-  await ensureLoaded();
-  const next = cloneStorageConfig(storageConfigCache);
-  next.oneDriveChinaRefreshToken = "";
-  next.oneDriveChinaAuthorizedAt = "";
-  next.oneDriveChinaLastError = "";
-  clearResolvedSharePointState(next);
-  await persistStorageConfig(next);
-  Object.assign(storageConfigCache, next);
+  await mutateStorageConfig((next) => {
+    if (
+      next.mediaStorageImageProvider === "onedrive-cn"
+      || next.mediaStorageVideoProvider === "onedrive-cn"
+      || next.filestoreRemoteStorageEnabled
+    ) {
+      throw new Error(
+        "清除授权前请先将图片、视频后端切回本地并关闭文件收集远端存储",
+      );
+    }
+    next.oneDriveChinaRefreshToken = "";
+    next.oneDriveChinaAuthorizedAt = "";
+    next.oneDriveChinaLastError = "";
+    clearResolvedSharePointState(next);
+  });
 }
 
 async function ensureLoaded() {
   if (loaded) return;
   await loadStorageConfig();
+}
+
+async function mutateStorageConfig(
+  mutate: (next: MediaStorageStoredConfig) => void | Promise<void>,
+) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const locked = await runWithDistributedLock(
+      "storage-config:update",
+      30_000,
+      async () => {
+        // Always refresh inside the lock. This prevents a stale process-local
+        // snapshot from overwriting a token or drive selection written by
+        // another request/process.
+        await loadStorageConfig();
+        const next = cloneStorageConfig(storageConfigCache);
+        await mutate(next);
+        sanitizeStorageConfig(next);
+        await persistStorageConfig(next);
+        Object.assign(storageConfigCache, next);
+      },
+    );
+    if (locked.acquired) return;
+    await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+  }
+  throw new Error("存储配置正在被其他操作更新，请稍后重试");
 }
 
 function cloneStorageConfig(source: MediaStorageStoredConfig): MediaStorageStoredConfig {
@@ -479,7 +533,7 @@ function sanitizeStorageConfig(target: MediaStorageStoredConfig) {
   target.mediaStorageRemotePrefixes = normalizeRemotePrefixes(target.mediaStorageRemotePrefixes, ["forum"]);
   target.filestoreRemoteStorageEnabled = Boolean(target.filestoreRemoteStorageEnabled);
   target.filestoreRemoteMinSizeMb = normalizeFileSizeThresholdMb(target.filestoreRemoteMinSizeMb, 0);
-  target.oneDriveChinaSharepointUrl = normalizeOptionalUrl(target.oneDriveChinaSharepointUrl);
+  target.oneDriveChinaSharepointUrl = normalizeSharePointUrl(target.oneDriveChinaSharepointUrl);
   target.oneDriveChinaSharepointHost = String(target.oneDriveChinaSharepointHost || "").trim().toLowerCase();
   target.oneDriveChinaSharepointPath = normalizeSharePointPath(target.oneDriveChinaSharepointPath);
   target.oneDriveChinaRootPath = normalizeRootPath(target.oneDriveChinaRootPath);
@@ -563,11 +617,12 @@ function normalizeRemotePrefixes(input: string[] | string | unknown, fallback: s
   const rawList = Array.isArray(input) ? input : String(input || "").split(",");
   const normalized = rawList
     .map((item) => String(item || "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((item) => item.split("/").every((segment) => segment !== "." && segment !== ".."));
   return normalized.length ? Array.from(new Set(normalized)) : [...fallback];
 }
 
-function normalizeOptionalUrl(input: unknown) {
+export function normalizeSharePointUrl(input: unknown) {
   const raw = String(input || "").trim();
   if (!raw) return "";
   const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -577,13 +632,61 @@ function normalizeOptionalUrl(input: unknown) {
   } catch {
     throw new Error("SharePoint 地址格式不正确");
   }
-  if (!/^https?:$/i.test(parsed.protocol) || !parsed.hostname) {
-    throw new Error("SharePoint 地址仅支持 http 或 https");
+  if (
+    parsed.protocol !== "https:"
+    || !parsed.hostname
+    || parsed.username
+    || parsed.password
+  ) {
+    throw new Error("SharePoint 地址必须是无账号密码的 HTTPS 地址");
   }
   parsed.hash = "";
   parsed.search = "";
   parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
   return parsed.toString().replace(/\/$/, parsed.pathname === "/" ? "/" : "");
+}
+
+function isRuntimeRemoteStorageReady(runtime: MediaStorageRuntimeConfig) {
+  const delegatedReady = Boolean(
+    runtime.oneDriveChinaClientId.trim()
+    && runtime.oneDriveChinaClientSecret.trim()
+    && runtime.oneDriveChinaRefreshToken.trim()
+    && runtime.oneDriveChinaDriveId.trim(),
+  );
+  const legacyReady = Boolean(
+    runtime.legacyTenantId.trim()
+    && runtime.legacyClientId.trim()
+    && runtime.legacyClientSecret.trim()
+    && runtime.legacyDriveId.trim(),
+  );
+  return delegatedReady || legacyReady;
+}
+
+function isStoredRemoteStorageReady(current: MediaStorageStoredConfig) {
+  const delegatedReady = Boolean(
+    current.oneDriveChinaClientId.trim()
+    && current.oneDriveChinaClientSecret.trim()
+    && current.oneDriveChinaRefreshToken.trim()
+    && current.oneDriveChinaDriveId.trim(),
+  );
+  const legacyReady = Boolean(
+    String(config.oneDriveChinaTenantId || "").trim()
+    && String(config.oneDriveChinaClientId || "").trim()
+    && String(config.oneDriveChinaClientSecret || "").trim()
+    && String(config.oneDriveChinaDriveId || "").trim(),
+  );
+  return delegatedReady || legacyReady;
+}
+
+function assertEnabledRemoteStorageReady(current: MediaStorageStoredConfig) {
+  const remoteEnabled = current.mediaStorageImageProvider === "onedrive-cn"
+    || current.mediaStorageVideoProvider === "onedrive-cn"
+    || current.filestoreRemoteStorageEnabled;
+  if (remoteEnabled && !isStoredRemoteStorageReady(current)) {
+    throw new Error(
+      "启用世纪互联存储前请先保存应用凭据、完成授权并选择文档库",
+    );
+  }
 }
 
 function normalizeSharePointPath(input: unknown) {

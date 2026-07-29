@@ -38,6 +38,6 @@ test("phase 7 mobile web exposes complete site and publishing navigation", () =>
   assert.match(layout, /footer-safety/);
   assert.match(layout, /页脚导航/);
   assert.match(market, /mobileFiltersOpen/);
-  assert.match(hub, /\/learning\/free\/publish/);
-  assert.match(sheet, /分享免费原创/);
+  assert.match(hub, /\/learning\/materials\/publish/);
+  assert.match(sheet, /发布付费资料/);
 });

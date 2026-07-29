@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import test from "node:test";
 
 process.env.NODE_ENV = "test";
@@ -68,7 +70,11 @@ test("browser auth uses an opaque HttpOnly cookie and enforces CSRF", async () =
 });
 
 test("browser auth accepts the configured public site origin behind a reverse proxy", async () => {
-  const { allowedOrigins, requestOriginAndCsrfProtection } = await import("../src/middleware/browserSession");
+  const {
+    allowedOrigins,
+    corsOptionsForRequest,
+    requestOriginAndCsrfProtection,
+  } = await import("../src/middleware/browserSession");
   const request = {
     protocol: "http",
     get(name: string) {
@@ -96,4 +102,36 @@ test("browser auth accepts the configured public site origin behind a reverse pr
   let nextError: unknown;
   requestOriginAndCsrfProtection(request, {} as any, (error?: unknown) => { nextError = error; });
   assert.equal(nextError, undefined);
+
+  const trustedCors = corsOptionsForRequest(request, "https://campus.example.edu");
+  assert.equal(trustedCors.origin, true);
+  assert.equal(trustedCors.credentials, true);
+  request.get = (name: string) => {
+    const values: Record<string, string> = {
+      host: "127.0.0.1:24333",
+      origin: "https://attacker.example",
+      "sec-fetch-site": "cross-site",
+    };
+    return values[name.toLowerCase()] || "";
+  };
+  assert.equal(corsOptionsForRequest(request, "https://campus.example.edu").origin, false);
+});
+
+test("Express app factory serves credentialed CORS without owning background workers", async (t) => {
+  const { createApp } = await import("../src/app");
+  const server = createApp().listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  const { port } = server.address() as AddressInfo;
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/auth/xjtlu-sso-begin`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "http://localhost:5173",
+      "Access-Control-Request-Method": "POST",
+    },
+  });
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), "http://localhost:5173");
+  assert.equal(response.headers.get("access-control-allow-credentials"), "true");
 });

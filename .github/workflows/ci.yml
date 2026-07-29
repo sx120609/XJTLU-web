@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  quality:
+    name: Unit, types and builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            web/package-lock.json
+            desktop/package-lock.json
+
+      - name: Install server dependencies
+        run: npm ci --prefix server
+      - name: Install web dependencies
+        run: npm ci --prefix web
+      - name: Install desktop dependencies
+        run: npm ci --prefix desktop
+      - name: Generate Prisma Client
+        run: npm run prisma:generate --prefix server
+
+      - name: Run server unit tests
+        run: npm test --prefix server
+      - name: Type-check server
+        run: npm run typecheck --prefix server
+      - name: Build web
+        run: npm run build --prefix web
+      - name: Check web bundle budgets
+        run: npm run verify:budgets --prefix web
+      - name: Build legacy desktop client
+        run: npm run build --prefix desktop
+
+      - name: Audit server production dependencies
+        run: npm audit --omit=dev --prefix server
+      - name: Audit desktop production dependencies
+        run: npm audit --omit=dev --prefix desktop
+      - name: Report known web production dependency debt
+        continue-on-error: true
+        run: npm audit --omit=dev --prefix web
+
+  integration:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: xjtlu_test
+          POSTGRES_PASSWORD: xjtlu_test
+          POSTGRES_DB: xjtlu_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U xjtlu_test -d xjtlu_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://xjtlu_test:xjtlu_test@127.0.0.1:5432/xjtlu_test?schema=public
+      NODE_ENV: test
+      REDIS_ENABLED: "false"
+      JWT_SECRET: ci-integration-secret-that-is-not-used-outside-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install server dependencies
+        run: npm ci --prefix server
+      - name: Generate Prisma Client
+        run: npm run prisma:generate --prefix server
+      - name: Apply clean-database migrations
+        run: npm run db:migrate --prefix server
+      - name: Run integration tests
+        run: npm run test:integration --prefix server

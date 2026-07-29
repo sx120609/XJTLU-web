@@ -1,18 +1,12 @@
 import express, { type Request, type RequestHandler, type Response } from "express";
 import multer from "multer";
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
-import { readFile, rm, unlink } from "node:fs/promises";
-import http from "node:http";
+import { mkdir, readFile, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import QRCode from "qrcode";
-import { config } from "../config";
 import { prisma } from "../prisma";
-import { hasToolContentManagePermission, hasToolManagerPermission } from "./serviceTools";
 import { getSiteFilingNumber, getSiteOrigin } from "./siteSettings";
-import { verifyToken } from "../utils/jwt";
 import { requestAiJson } from "./topicAiReview";
 import {
   createRemoteMediaUploadSession,
@@ -29,11 +23,59 @@ import {
 } from "./oneDriveChina";
 import { getMediaStorageRuntimeConfig } from "./storageConfig";
 import { repairFileCollectTaskFilenames } from "./fileCollectFilenameRepair";
+import {
+  acquireFileCollectSubmissionLock,
+  acquireFileCollectTaskLock,
+} from "./fileCollectLockService";
+import {
+  assertNoActiveFileCollectUploads,
+  deleteUploadingFileCollectSubmission,
+  refreshFileCollectTaskCounters,
+  removeStaleFileCollectUploadsForIdentity,
+} from "./fileCollectSubmissionService";
+import {
+  signFileCollectCompletionToken,
+  verifyFileCollectCompletionToken,
+} from "./fileCollectCompletionToken";
+import {
+  ensureFilestoreStarted,
+  FILESTORE_MOUNT_PATH as MOUNT_PATH,
+  filestoreUpstreamPath as upstreamPath,
+  proxyToFilestore,
+} from "./filestoreProxyRuntime";
+import {
+  assertFilestoreAccess,
+  type FilestoreAccessUser,
+} from "./filestoreAccessService";
+import {
+  buildFilestorePublicUrl,
+  FILESTORE_SITE_TITLE_DEFAULT,
+  filestoreIsoDate as isoDate,
+  normalizeFilestoreSiteTitle as normalizeSiteTitle,
+  normalizeFilestoreSiteUrl as normalizeSiteUrl,
+  normalizeFilestoreStatus,
+  normalizeFilestoreTaskPayload,
+  normalizeFilestoreTemplatePayload as normalizeTemplatePayload,
+  parseFilestoreJsonAnswers as parseJsonAnswers,
+  parseFilestoreJsonObject as parseJsonObject,
+  parseStoredFilestoreFields as parseStoredFields,
+  parseStoredFilestoreRules as parseStoredRules,
+  parseStoredFilestoreSurveyFields as parseStoredSurveyFields,
+  storedFilestoreFields as storedFields,
+  storedFilestoreSurveyFields as storedSurveyFields,
+  type FilestoreField,
+  type FilestoreRules,
+  type FilestoreSurveyField,
+} from "./filestoreContracts";
+import {
+  filestoreApiError,
+  sendFilestoreApiError,
+} from "./filestoreApiError";
+export { normalizeFilestoreStatus } from "./filestoreContracts";
 import { notifyFileCollectSubmissionForQqBot } from "./toolQqReminders";
 import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
-  isLocalOrPrivateHost,
   isOfficePreviewFile,
   joinPublicUrl,
   normalizePreviewPublicOrigin,
@@ -45,20 +87,18 @@ import {
 import { normalizeMulterOriginalNames, normalizeUploadOriginalName } from "../utils/uploadFilename";
 import { querySize } from "../utils/query";
 
-const MOUNT_PATH = "/filestore";
-const TEXT_RESPONSE_RE = /^(text\/|application\/json\b|application\/javascript\b|text\/javascript\b)/i;
-const TRUSTED_PROXY_TOKEN = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-const FILESTORE_SITE_TITLE_DEFAULT = "靠浦文件收集";
 const FILESTORE_SITE_TITLE_KEY = "filestore.siteTitle";
 const FILESTORE_SITE_URL_KEY = "filestore.siteUrl";
 const FILESTORE_TEMPLATE_VISIBILITY = "filestore-global";
 const fileCollectTmpDir = path.resolve(process.cwd(), "runtime", "file-collect-tmp");
 
-mkdirSync(fileCollectTmpDir, { recursive: true });
-
 const filestoreUpload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, fileCollectTmpDir),
+    destination: (_req, _file, cb) => {
+      mkdir(fileCollectTmpDir, { recursive: true })
+        .then(() => cb(null, fileCollectTmpDir))
+        .catch((error) => cb(error, fileCollectTmpDir));
+    },
     filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomUUID()}${path.extname(normalizeUploadOriginalName(file.originalname))}`),
   }),
   limits: {
@@ -68,259 +108,9 @@ const filestoreUpload = multer({
   },
 });
 
-let filestoreProcess: ChildProcess | null = null;
-let startupPromise: Promise<void> | null = null;
-
-type PlatformFilestoreUser = {
-  userId: number;
-  username: string;
-  nickname: string;
-  role: string;
-  studentId: string;
-  campus: string;
-};
-
-type FilestoreAccessUser = PlatformFilestoreUser & {
-  isToolManager: boolean;
-};
-
-function filestoreRoot() {
-  const candidates = [
-    path.resolve(process.cwd(), "filestore"),
-    path.resolve(process.cwd(), "server", "filestore"),
-    path.resolve(__dirname, "../../filestore"),
-  ];
-  const root = candidates.find((candidate) => existsSync(path.join(candidate, "app.py")));
-  if (!root) throw new Error("未找到 server/filestore/app.py");
-  return root;
-}
-
-function pythonCommand() {
-  if (config.filestorePython) return { command: config.filestorePython, args: [] as string[] };
-  if (process.platform === "win32") return { command: "python", args: [] as string[] };
-  return { command: "python3", args: [] as string[] };
-}
-
-function requestStatus(targetPath: string, headers: Record<string, string> = {}) {
-  return new Promise<number>((resolve) => {
-    const req = http.request({
-      hostname: "127.0.0.1",
-      port: config.filestorePort,
-      path: targetPath,
-      method: "GET",
-      headers,
-      timeout: 800,
-    }, (resp) => {
-      resp.resume();
-      resolve(resp.statusCode ?? 0);
-    });
-    req.on("timeout", () => {
-      req.destroy();
-      resolve(0);
-    });
-    req.on("error", () => resolve(0));
-    req.end();
-  });
-}
-
-async function healthCheck() {
-  const status = await requestStatus("/api/health");
-  return status >= 200 && status < 500;
-}
-
-async function waitForHealth(timeoutMs = 7000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await healthCheck()) return;
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error(`Filestore 未能在 ${timeoutMs}ms 内启动`);
-}
-
-async function ensureFilestoreStarted() {
-  if (!config.filestoreEnabled) throw new Error("Filestore 已通过 FILESTORE_ENABLED=false 禁用");
-  if (await healthCheck()) return;
-  if (startupPromise) return startupPromise;
-
-  startupPromise = (async () => {
-    const root = filestoreRoot();
-    const python = pythonCommand();
-    filestoreProcess = spawn(python.command, [...python.args, "app.py"], {
-      cwd: root,
-      env: {
-        ...process.env,
-        PORT: String(config.filestorePort),
-        FILESTORE_TRUSTED_PROXY_TOKEN: TRUSTED_PROXY_TOKEN,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    filestoreProcess.stdout?.on("data", (data) => {
-      String(data).trim().split(/\r?\n/).filter(Boolean).forEach((line) => console.log(`[filestore] ${line}`));
-    });
-    filestoreProcess.stderr?.on("data", (data) => {
-      String(data).trim().split(/\r?\n/).filter(Boolean).forEach((line) => console.warn(`[filestore] ${line}`));
-    });
-    filestoreProcess.on("exit", (code, signal) => {
-      filestoreProcess = null;
-      startupPromise = null;
-      if (code !== 0 && signal !== "SIGTERM") console.warn(`Filestore 已退出: code=${code} signal=${signal ?? ""}`);
-    });
-
-    await waitForHealth();
-  })();
-
-  return startupPromise;
-}
-
-function upstreamPath(req: Request) {
-  const original = req.originalUrl || req.url || "/";
-  const withoutMount = original.replace(new RegExp(`^${MOUNT_PATH}(?=/|$)`), "") || "/";
-  return withoutMount.startsWith("/") ? withoutMount : `/${withoutMount}`;
-}
-
-function isPublicFilestoreRequest(req: Request) {
-  const target = upstreamPath(req).split("?")[0];
-  if (req.method === "GET" && target === "/api/health") return true;
-  if (req.method === "GET" && target === "/api/platform/site-config") return true;
-  if (req.method === "GET" && target === "/api/qrcode") return true;
-  if (req.method === "GET" && /^\/api\/public\/(tasks|status)\/[A-Za-z0-9_-]+$/.test(target)) return true;
-  if ((req.method === "GET" || req.method === "HEAD") && /^\/api\/files\/\d+\/public-preview(?:\/[^/]+){0,2}$/.test(target)) return true;
-  if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+$/.test(target)) return true;
-  if (req.method === "POST" && /^\/api\/submit\/[A-Za-z0-9_-]+\/(check-duplicate|prepare-remote|complete-remote)$/.test(target)) return true;
-  return !target.startsWith("/api/");
-}
-
-async function platformUserFromRequest(req: Request) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) return null;
-  try {
-    const payload = verifyToken(header.slice(7));
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true, username: true, nickname: true, role: true, status: true },
-    });
-    if (!user || user.status === "banned") return null;
-    return {
-      ...payload,
-      studentId: user.username,
-      username: user.username,
-      nickname: user.nickname || user.username,
-      role: user.role,
-    } satisfies PlatformFilestoreUser;
-  } catch {
-    return null;
-  }
-}
-
-async function assertFilestoreAccess(req: Request, res: Response): Promise<FilestoreAccessUser | null | false> {
-  if (isPublicFilestoreRequest(req)) return null;
-  const user = await platformUserFromRequest(req);
-  if (!user?.userId) {
-    res.status(401).json({ error: "请先登录平台账号" });
-    return false;
-  }
-  const isToolManager = await hasToolManagerPermission("file_collect", user);
-  if (!isToolManager && !(await hasToolContentManagePermission("file_collect", user))) {
-    res.status(403).json({ error: "没有文件收集管理权限" });
-    return false;
-  }
-  return { ...user, isToolManager };
-}
-
-function encodeFilestoreHeaderValue(value?: string | null) {
-  return encodeURIComponent(String(value ?? ""));
-}
-
-function rewriteText(body: string) {
-  return body
-    .replace(/((?:href|src)=["'])\/(styles\.css|admin\.js|submit\.js|status\.js)(["'])/g, `$1${MOUNT_PATH}/$2$3`)
-    .replace(/(["'`])\/api\//g, `$1${MOUNT_PATH}/api/`)
-    .replace(/(["'`])\/submit\//g, `$1${MOUNT_PATH}/submit/`)
-    .replace(/(["'`])\/status\//g, `$1${MOUNT_PATH}/status/`)
-    .replace(/\$\{base\}\/status\//g, `\${base}${MOUNT_PATH}/status/`)
-    .replace(/\$\{base\}\/submit\//g, `\${base}${MOUNT_PATH}/submit/`);
-}
-
-function rewriteHeaderValue(name: string, value: number | string | string[]): string | string[] {
-  if (Array.isArray(value)) return value.map((item) => String(rewriteHeaderValue(name, item)));
-  const text = String(value);
-  if (name.toLowerCase() === "set-cookie") return text.replace(/;\s*Path=\//i, `; Path=${MOUNT_PATH}`);
-  if (name.toLowerCase() === "location" && text.startsWith("/")) return `${MOUNT_PATH}${text}`;
-  return text;
-}
-
-function writeHeaders(res: Response, upstream: http.IncomingMessage, rewrittenBody?: Buffer) {
-  res.status(upstream.statusCode ?? 502);
-  for (const [name, value] of Object.entries(upstream.headers)) {
-    if (value === undefined) continue;
-    if (name.toLowerCase() === "connection") continue;
-    if (rewrittenBody && name.toLowerCase() === "content-length") continue;
-    res.setHeader(name, rewriteHeaderValue(name, value));
-  }
-  if (rewrittenBody) res.setHeader("content-length", String(rewrittenBody.byteLength));
-}
-
 function queryStringValue(value: unknown) {
   if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : "";
   return typeof value === "string" ? value : "";
-}
-
-class FilestoreApiError extends Error {
-  constructor(public status: number, message: string, public payload?: Record<string, unknown>) {
-    super(message);
-  }
-}
-
-type FilestoreField = {
-  id: string;
-  key: string;
-  label: string;
-  required: boolean;
-  pattern: string;
-  placeholder: string;
-};
-
-type FilestoreSurveyFieldType = "text" | "textarea" | "single" | "multiple" | "number" | "date" | "rating";
-
-type FilestoreSurveyBranchRule = {
-  action: "end" | "jump";
-  targetId?: string;
-};
-
-type FilestoreSurveyField = {
-  id: string;
-  label: string;
-  type: FilestoreSurveyFieldType;
-  required?: boolean;
-  placeholder?: string;
-  options?: string[];
-  description?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  maxLength?: number;
-  branching?: Record<string, FilestoreSurveyBranchRule>;
-};
-
-type FilestoreRules = {
-  allowedTypes: string[];
-  maxSizeMb: number;
-  maxCount: number;
-};
-
-function filestoreApiError(status: number, message: string, payload?: Record<string, unknown>) {
-  return new FilestoreApiError(status, message, payload);
-}
-
-function sendFilestoreApiError(res: Response, error: unknown) {
-  const status = error instanceof FilestoreApiError ? error.status : 500;
-  const message = error instanceof Error ? error.message : "请求失败";
-  if (error instanceof FilestoreApiError && error.payload) {
-    res.status(status).json({ error: message, ...error.payload });
-    return;
-  }
-  res.status(status).json({ error: message });
 }
 
 async function parseFilestoreJsonBody(req: Request, res: Response) {
@@ -340,350 +130,6 @@ async function parseFilestoreUpload(req: Request, res: Response) {
       else resolve(normalizeMulterOriginalNames((req.files as Express.Multer.File[] | undefined) ?? []));
     });
   });
-}
-
-function parseJsonObject(raw: string | null | undefined): Record<string, string> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]));
-  } catch {
-    return {};
-  }
-}
-
-function parseJsonAnswers(raw: string | null | undefined): Record<string, string | string[]> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const result: Record<string, string | string[]> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      result[key] = Array.isArray(value) ? value.map((item) => String(item ?? "")) : String(value ?? "");
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-function normalizeSiteTitle(value: unknown) {
-  const title = String(value ?? "").trim();
-  if (!title || /^filestore(?:\s|$)/i.test(title)) return FILESTORE_SITE_TITLE_DEFAULT;
-  return title.slice(0, 80);
-}
-
-function normalizeSiteUrl(value: unknown) {
-  return String(value ?? "").trim().replace(/\/+$/, "").slice(0, 240);
-}
-
-function buildFilestorePublicUrl(base: string, mountedPath: string) {
-  const normalizedBase = normalizeSiteUrl(base);
-  if (!normalizedBase) return "";
-  let targetPath = mountedPath.startsWith("/") ? mountedPath : `/${mountedPath}`;
-  try {
-    const url = new URL(normalizedBase);
-    if (config.nodeEnv === "production" && isLocalOrPrivateHost(url.host)) return "";
-    const basePath = url.pathname.replace(/\/+$/, "");
-    if (basePath.endsWith(MOUNT_PATH) && targetPath.startsWith(`${MOUNT_PATH}/`)) {
-      targetPath = targetPath.slice(MOUNT_PATH.length) || "/";
-    }
-  } catch {
-    return "";
-  }
-  return joinPublicUrl(normalizedBase, targetPath);
-}
-
-function normalizeFieldKey(value: unknown) {
-  return String(value ?? "")
-    .trim()
-    .replace(/[^a-zA-Z0-9_\u4e00-\u9fa5]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 40);
-}
-
-function normalizeFilestoreFields(input: unknown): FilestoreField[] {
-  if (!Array.isArray(input) || !input.length) throw filestoreApiError(400, "至少需要一个表单字段");
-  const seen = new Set<string>();
-  return input.map((item) => {
-    const field = item && typeof item === "object" ? item as Record<string, unknown> : {};
-    const key = normalizeFieldKey(field.key ?? field.id);
-    const label = String(field.label ?? "").trim().slice(0, 80);
-    if (!key || !label) throw filestoreApiError(400, "字段 key 和名称不能为空");
-    if (seen.has(key)) throw filestoreApiError(400, `字段 key 重复：${key}`);
-    const pattern = String(field.pattern ?? "").trim().slice(0, 200);
-    if (pattern) {
-      try {
-        new RegExp(pattern);
-      } catch {
-        throw filestoreApiError(400, `字段“${label}”的正则规则不合法`);
-      }
-    }
-    seen.add(key);
-    return {
-      id: key,
-      key,
-      label,
-      required: field.required !== false,
-      pattern,
-      placeholder: String(field.placeholder ?? "").trim().slice(0, 120),
-    };
-  });
-}
-
-function storedFields(fields: FilestoreField[]) {
-  return fields.map((field) => ({
-    id: field.key,
-    label: field.label,
-    required: field.required,
-    pattern: field.pattern,
-    placeholder: field.placeholder,
-  }));
-}
-
-const filestoreSurveyFieldTypes = new Set<FilestoreSurveyFieldType>(["text", "textarea", "single", "multiple", "number", "date", "rating"]);
-
-function normalizeSurveyFieldId(value: unknown) {
-  return String(value ?? "")
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 40);
-}
-
-function normalizeSurveyOptions(value: unknown) {
-  const list = Array.isArray(value)
-    ? value
-    : String(value ?? "").split(/\r?\n|,/);
-  return [...new Set(list
-    .map((item) => String(item ?? "").trim().slice(0, 80))
-    .filter(Boolean))]
-    .slice(0, 20);
-}
-
-function normalizeOptionalNumber(value: unknown) {
-  if (value === undefined || value === null || value === "") return undefined;
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : undefined;
-}
-
-function normalizeSurveyBranching(
-  source: unknown,
-  field: { id: string; label: string; type: FilestoreSurveyFieldType; options?: string[] },
-  indexById: Map<string, number>,
-) {
-  if (!source || typeof source !== "object" || field.type !== "single") return undefined;
-  const options = new Set(field.options ?? []);
-  const currentIndex = indexById.get(field.id) ?? 0;
-  const result: Record<string, FilestoreSurveyBranchRule> = {};
-  for (const [option, rawRule] of Object.entries(source as Record<string, unknown>)) {
-    if (!options.has(option) || !rawRule || typeof rawRule !== "object") continue;
-    const rule = rawRule as Record<string, unknown>;
-    const action = String(rule.action || "").trim();
-    if (action === "end") {
-      result[option] = { action: "end" };
-      continue;
-    }
-    const targetId = normalizeSurveyFieldId(rule.targetId);
-    const targetIndex = indexById.get(targetId);
-    if (action === "jump" && targetId && targetIndex !== undefined && targetIndex > currentIndex) {
-      result[option] = { action: "jump", targetId };
-    }
-  }
-  return Object.keys(result).length ? result : undefined;
-}
-
-function normalizeFilestoreSurveyFields(input: unknown): FilestoreSurveyField[] {
-  if (!Array.isArray(input)) return [];
-  const drafts = input.slice(0, 30).map((item) => {
-    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
-    const id = normalizeSurveyFieldId(row.id);
-    const label = String(row.label ?? "").trim().slice(0, 80);
-    const type = String(row.type ?? "text") as FilestoreSurveyFieldType;
-    if (!id || !label) throw filestoreApiError(400, "问卷题目的 ID 和标题不能为空");
-    if (!filestoreSurveyFieldTypes.has(type)) throw filestoreApiError(400, `问卷题目“${label}”类型不支持`);
-    const field: FilestoreSurveyField = {
-      id,
-      label,
-      type,
-      required: row.required === true,
-      placeholder: String(row.placeholder ?? "").trim().slice(0, 120) || undefined,
-      description: String(row.description ?? "").trim().slice(0, 300) || undefined,
-      min: normalizeOptionalNumber(row.min),
-      max: normalizeOptionalNumber(row.max),
-      step: normalizeOptionalNumber(row.step),
-      maxLength: Math.min(2000, Math.max(1, Math.round(Number(row.maxLength || (type === "textarea" ? 2000 : 300))))),
-    };
-    if (type === "single" || type === "multiple") {
-      field.options = normalizeSurveyOptions(row.options);
-      if (field.options.length < 2) throw filestoreApiError(400, `选项题“${label}”至少需要 2 个选项`);
-    } else {
-      delete field.options;
-    }
-    if (type === "rating") {
-      const min = Math.max(0, Math.round(field.min ?? 1));
-      const max = Math.min(10, Math.round(field.max ?? 5));
-      if (min >= max) throw filestoreApiError(400, `评分题“${label}”的最高分需要大于最低分`);
-      field.min = min;
-      field.max = max;
-      delete field.step;
-    } else if (type === "number") {
-      if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
-        throw filestoreApiError(400, `数字题“${label}”的最小值不能大于最大值`);
-      }
-      field.step = field.step && field.step > 0 ? field.step : 1;
-    } else {
-      delete field.min;
-      delete field.max;
-      delete field.step;
-    }
-    return { field, rawBranching: row.branching };
-  });
-  const ids = new Set<string>();
-  for (const { field } of drafts) {
-    if (ids.has(field.id)) throw filestoreApiError(400, `问卷题目 ID 重复：${field.id}`);
-    ids.add(field.id);
-  }
-  const indexById = new Map(drafts.map(({ field }, index) => [field.id, index]));
-  return drafts.map(({ field, rawBranching }) => {
-    const branching = normalizeSurveyBranching(rawBranching, field, indexById);
-    if (branching) field.branching = branching;
-    return field;
-  });
-}
-
-function storedSurveyFields(fields: FilestoreSurveyField[]) {
-  return fields.map((field) => ({
-    id: field.id,
-    label: field.label,
-    type: field.type,
-    required: field.required === true,
-    placeholder: field.placeholder,
-    description: field.description,
-    options: field.options,
-    min: field.min,
-    max: field.max,
-    step: field.step,
-    maxLength: field.maxLength,
-    branching: field.branching,
-  }));
-}
-
-function parseStoredSurveyFields(raw: string | null | undefined): FilestoreSurveyField[] {
-  try {
-    const parsed = JSON.parse(raw || "[]");
-    return normalizeFilestoreSurveyFields(parsed);
-  } catch {
-    return [];
-  }
-}
-
-function parseStoredFields(raw: string | null | undefined): FilestoreField[] {
-  try {
-    const parsed = JSON.parse(raw || "[]");
-    return normalizeFilestoreFields(Array.isArray(parsed)
-      ? parsed.map((item) => ({ ...item, key: item?.key ?? item?.id }))
-      : []);
-  } catch {
-    return [];
-  }
-}
-
-function normalizeAllowedTypes(value: unknown) {
-  const list = Array.isArray(value)
-    ? value
-    : String(value ?? "").split(",");
-  return [...new Set(list
-    .map((item) => String(item ?? "").trim().toLowerCase().replace(/^\.+/, ""))
-    .filter((item) => /^[a-z0-9]+$/.test(item))
-    .slice(0, 30))];
-}
-
-function normalizeFilestoreRules(input: unknown): FilestoreRules {
-  const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const maxSizeMb = Number(source.maxSizeMb || 20);
-  const maxCount = Number(source.maxCount || 1);
-  if (!Number.isFinite(maxSizeMb) || maxSizeMb <= 0 || maxSizeMb > 100) {
-    throw filestoreApiError(400, "单文件大小必须在 0 到 100 MB 之间");
-  }
-  if (!Number.isInteger(maxCount) || maxCount <= 0 || maxCount > 20) {
-    throw filestoreApiError(400, "文件数量必须在 1 到 20 个之间");
-  }
-  return {
-    allowedTypes: normalizeAllowedTypes(source.allowedTypes),
-    maxSizeMb,
-    maxCount,
-  };
-}
-
-function parseStoredRules(raw: string | null | undefined): FilestoreRules {
-  try {
-    return normalizeFilestoreRules(JSON.parse(raw || "{}"));
-  } catch {
-    return { allowedTypes: [], maxSizeMb: 20, maxCount: 1 };
-  }
-}
-
-function normalizeDeadline(value: unknown) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) throw filestoreApiError(400, "截止时间不合法");
-  return date;
-}
-
-function isoDate(value: unknown) {
-  if (!value) return "";
-  const date = value instanceof Date ? value : new Date(String(value));
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-function normalizeStatus(value: unknown) {
-  const status = String(value ?? "open").trim();
-  return status === "closed" ? "closed" : "open";
-}
-
-function normalizeFilestoreTaskPayload(input: Record<string, unknown>) {
-  const title = String(input.title ?? "").trim().slice(0, 120);
-  if (!title) throw filestoreApiError(400, "任务标题不能为空");
-  const fields = normalizeFilestoreFields(input.fields);
-  const surveyFields = normalizeFilestoreSurveyFields(input.surveyFields);
-  const fileRules = normalizeFilestoreRules(input.fileRules);
-  return {
-    title,
-    description: String(input.description ?? "").trim().slice(0, 1000),
-    deadline: normalizeDeadline(input.deadline),
-    status: normalizeStatus(input.status),
-    fields,
-    surveyFields,
-    fileRules,
-    renameTemplate: String(input.renameTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
-    folderTemplate: String(input.folderTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
-    expectedEntries: String(input.expectedEntries ?? "").trim().slice(0, 20000),
-  };
-}
-
-function normalizeTemplatePayload(input: unknown) {
-  const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const name = String(source.name ?? "").trim().slice(0, 60);
-  if (!name) throw filestoreApiError(400, "模板名称不能为空");
-  const fields = normalizeFilestoreFields(source.fields);
-  const surveyFields = normalizeFilestoreSurveyFields(source.surveyFields);
-  const fileRules = normalizeFilestoreRules(source.fileRules);
-  return {
-    id: source.id,
-    name,
-    description: String(source.description ?? "").trim().slice(0, 1000),
-    fields,
-    surveyFields,
-    fileRules,
-    renameTemplate: String(source.renameTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
-    folderTemplate: String(source.folderTemplate ?? "{name}-{student_id}").trim().slice(0, 120) || "{name}-{student_id}",
-    expectedEntries: String(source.expectedEntries ?? "").trim().slice(0, 20000),
-  };
 }
 
 function userIsSuperAdmin(user: FilestoreAccessUser | null | undefined) {
@@ -785,10 +231,24 @@ function duplicateSubmissionPayload(existing: NonNullable<Awaited<ReturnType<typ
 
 async function assertCanCreateOrOverwriteSubmission(taskId: number, identity: string, identityLabel: string, overwrite: boolean) {
   const existing = await findExistingSubmittedFilestoreSubmission(taskId, identity);
+  assertCanCreateOrOverwriteExisting(existing, identity, identityLabel, overwrite);
+  return existing;
+}
+
+function assertCanCreateOrOverwriteExisting(
+  existing: Awaited<ReturnType<typeof findExistingSubmittedFilestoreSubmission>>,
+  identity: string,
+  identityLabel: string,
+  overwrite: boolean,
+) {
   if (existing && !overwrite) {
     throw filestoreApiError(409, "该身份已提交过，请确认是否覆盖", duplicateSubmissionPayload(existing, identity, identityLabel));
   }
-  return existing;
+}
+
+function assertFilestoreTaskAcceptsSubmission(task: { status: string; deadline: Date | null }) {
+  if (normalizeFilestoreStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
+  if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
 }
 
 function buildFilestoreStats(task: { expectedEntries: string }, submissions: Array<{ id: number; data: Record<string, string>; createdAt: string }>) {
@@ -836,7 +296,7 @@ function normalizeFilestoreTask(row: any, options: { includeCreator?: boolean; i
     renameTemplate: row.renameTemplate || "{name}-{student_id}",
     folderTemplate: row.folderTemplate || "{name}-{student_id}",
     expectedEntries: row.expectedEntries || "",
-    status: normalizeStatus(row.status),
+    status: normalizeFilestoreStatus(row.status),
     createdAt: isoDate(row.createdAt),
     updatedAt: isoDate(row.updatedAt),
     submitUrl: `${MOUNT_PATH}/submit/${row.slug}`,
@@ -1005,17 +465,6 @@ function renderStoredName(template: string, data: Record<string, string>, origin
 
 async function unlinkFileCollectPath(relative: string) {
   await deleteMediaAsset(relative).catch(() => null);
-}
-
-async function refreshFileCollectStats(taskId: number) {
-  const [submissionCount, fileCount] = await Promise.all([
-    prisma.fileCollectSubmission.count({ where: { taskId, status: "submitted" } }),
-    prisma.fileCollectFile.count({ where: { submission: { taskId, status: "submitted" } } }),
-  ]);
-  await prisma.fileCollectTask.update({
-    where: { id: taskId },
-    data: { submissionCount, fileCount },
-  }).catch(() => null);
 }
 
 function normalizeSubmissionData(fields: FilestoreField[], input: Record<string, unknown>) {
@@ -1233,110 +682,132 @@ async function waitForFileCollectRemoteUpload(file: { path: string; size: number
 }
 
 async function rerenameFilestoreTaskFiles(taskId: number, renameTemplate: string) {
-  const rows = await prisma.fileCollectSubmission.findMany({
-    where: { taskId, status: "submitted" },
-    include: { files: { orderBy: { id: "asc" } } },
-    orderBy: { id: "asc" },
-  });
-  const result = { renamed: 0, unchanged: 0, missing: 0 };
-  for (const submission of rows) {
-    const data = parseJsonObject(submission.data);
-    const total = submission.files.length;
-    for (let index = 0; index < submission.files.length; index += 1) {
-      const file = submission.files[index];
-      const storedName = renderStoredName(renameTemplate, data, file.originalName, index + 1, total);
-      if (storedName === file.storedName) {
-        result.unchanged += 1;
-        continue;
+  return prisma.$transaction(async (tx) => {
+    await acquireFileCollectTaskLock(tx, taskId);
+    const rows = await tx.fileCollectSubmission.findMany({
+      where: { taskId, status: "submitted" },
+      include: { files: { orderBy: { id: "asc" } } },
+      orderBy: { id: "asc" },
+    });
+    const result = { renamed: 0, unchanged: 0, missing: 0 };
+    for (const submission of rows) {
+      const data = parseJsonObject(submission.data);
+      const total = submission.files.length;
+      for (let index = 0; index < submission.files.length; index += 1) {
+        const file = submission.files[index];
+        const storedName = renderStoredName(renameTemplate, data, file.originalName, index + 1, total);
+        if (storedName === file.storedName) {
+          result.unchanged += 1;
+          continue;
+        }
+        await tx.fileCollectFile.update({ where: { id: file.id }, data: { storedName } });
+        result.renamed += 1;
       }
-      await prisma.fileCollectFile.update({ where: { id: file.id }, data: { storedName } });
-      result.renamed += 1;
     }
-  }
-  return result;
+    return result;
+  }, { timeout: 120_000 });
 }
 
-async function repairFileCollectRemoteFilenames(taskId: number) {
-  const submissions = await prisma.fileCollectSubmission.findMany({
-    where: { taskId, status: "submitted" },
-    include: { files: { orderBy: { id: "asc" } } },
-    orderBy: { id: "asc" },
-  });
-  const result = {
-    scanned: 0,
-    repaired: 0,
-    synced: 0,
-    unchanged: 0,
-    skippedLocal: 0,
-    conflicts: 0,
-    failed: 0,
-    details: [] as Array<{ fileId: number; storedName: string; from: string; to: string; status: string; message?: string }>,
-  };
+async function repairFileCollectRemoteFilenames(
+  taskId: number,
+  user: FilestoreAccessUser | null,
+) {
+  return prisma.$transaction(async (tx) => {
+    await acquireFileCollectTaskLock(tx, taskId);
+    const task = await tx.fileCollectTask.findUnique({ where: { id: taskId } });
+    if (!task || !canAccessFilestoreTask(user, task)) {
+      throw filestoreApiError(404, "任务不存在");
+    }
+    if (normalizeFilestoreStatus(task.status) === "open") {
+      throw filestoreApiError(409, "请先停止任务提交，再修复远端文件名");
+    }
+    const uploadingCount = await tx.fileCollectSubmission.count({
+      where: { taskId, status: "uploading" },
+    });
+    if (uploadingCount) {
+      throw filestoreApiError(409, "仍有未完成上传，暂不能修复远端文件名");
+    }
+    const submissions = await tx.fileCollectSubmission.findMany({
+      where: { taskId, status: "submitted" },
+      include: { files: { orderBy: { id: "asc" } } },
+      orderBy: { id: "asc" },
+    });
+    const result = {
+      scanned: 0,
+      repaired: 0,
+      synced: 0,
+      unchanged: 0,
+      skippedLocal: 0,
+      conflicts: 0,
+      failed: 0,
+      details: [] as Array<{ fileId: number; storedName: string; from: string; to: string; status: string; message?: string }>,
+    };
 
-  for (const submission of submissions) {
-    for (let index = 0; index < submission.files.length; index += 1) {
-      const file = submission.files[index];
-      result.scanned += 1;
-      const targetPath = buildFileCollectRemoteRelativePath(taskId, submission.id, index + 1, file.storedName);
-      const detail = { fileId: file.id, storedName: file.storedName, from: file.path, to: targetPath, status: "", message: "" };
-      const currentMeta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
-      if (file.path === targetPath && currentMeta?.kind === "file" && remoteDownloadNameMatchesStoredName(currentMeta.name, file.storedName)) {
-        result.unchanged += 1;
-        detail.status = "unchanged";
-        result.details.push(detail);
-        continue;
-      }
+    for (const submission of submissions) {
+      for (let index = 0; index < submission.files.length; index += 1) {
+        const file = submission.files[index];
+        result.scanned += 1;
+        const targetPath = buildFileCollectRemoteRelativePath(taskId, submission.id, index + 1, file.storedName);
+        const detail = { fileId: file.id, storedName: file.storedName, from: file.path, to: targetPath, status: "", message: "" };
+        const currentMeta = await getOneDriveChinaItemMetadata(file.path).catch(() => null);
+        if (file.path === targetPath && currentMeta?.kind === "file" && remoteDownloadNameMatchesStoredName(currentMeta.name, file.storedName)) {
+          result.unchanged += 1;
+          detail.status = "unchanged";
+          result.details.push(detail);
+          continue;
+        }
 
-      const targetMeta = file.path === targetPath
-        ? null
-        : await getOneDriveChinaItemMetadata(targetPath).catch(() => null);
-      if (targetMeta?.kind === "file") {
-        if (currentMeta?.kind === "file" && file.path !== targetPath) {
+        const targetMeta = file.path === targetPath
+          ? null
+          : await getOneDriveChinaItemMetadata(targetPath).catch(() => null);
+        if (targetMeta?.kind === "file") {
+          if (currentMeta?.kind === "file" && file.path !== targetPath) {
+            result.conflicts += 1;
+            detail.status = "conflict";
+            detail.message = "当前路径和目标路径都存在文件，已跳过以避免误删";
+            result.details.push(detail);
+            continue;
+          }
+          if (targetMeta.size === null || Number(targetMeta.size) === Number(file.size)) {
+            await tx.fileCollectFile.update({ where: { id: file.id }, data: { path: targetPath } });
+            result.synced += 1;
+            detail.status = "synced";
+            detail.message = "目标文件已存在，已同步数据库路径";
+            result.details.push(detail);
+            continue;
+          }
           result.conflicts += 1;
           detail.status = "conflict";
-          detail.message = "当前路径和目标路径都存在文件，已跳过以避免误删";
+          detail.message = "目标位置已有同名文件且大小不一致";
           result.details.push(detail);
           continue;
         }
-        if (targetMeta.size === null || Number(targetMeta.size) === Number(file.size)) {
-          await prisma.fileCollectFile.update({ where: { id: file.id }, data: { path: targetPath } });
-          result.synced += 1;
-          detail.status = "synced";
-          detail.message = "目标文件已存在，已同步数据库路径";
+
+        if (!currentMeta || currentMeta.kind !== "file") {
+          result.skippedLocal += 1;
+          detail.status = "skipped";
+          detail.message = "未在世纪互联找到当前文件，可能是本地文件或远端已被移除";
           result.details.push(detail);
           continue;
         }
-        result.conflicts += 1;
-        detail.status = "conflict";
-        detail.message = "目标位置已有同名文件且大小不一致";
-        result.details.push(detail);
-        continue;
-      }
 
-      if (!currentMeta || currentMeta.kind !== "file") {
-        result.skippedLocal += 1;
-        detail.status = "skipped";
-        detail.message = "未在世纪互联找到当前文件，可能是本地文件或远端已被移除";
-        result.details.push(detail);
-        continue;
-      }
-
-      try {
-        await moveOneDriveChinaItem(file.path, targetPath);
-        await prisma.fileCollectFile.update({ where: { id: file.id }, data: { path: targetPath } });
-        result.repaired += 1;
-        detail.status = "repaired";
-        result.details.push(detail);
-      } catch (error) {
-        result.failed += 1;
-        detail.status = "failed";
-        detail.message = error instanceof Error ? error.message : "修复失败";
-        result.details.push(detail);
+        try {
+          await moveOneDriveChinaItem(file.path, targetPath);
+          await tx.fileCollectFile.update({ where: { id: file.id }, data: { path: targetPath } });
+          result.repaired += 1;
+          detail.status = "repaired";
+          result.details.push(detail);
+        } catch (error) {
+          result.failed += 1;
+          detail.status = "failed";
+          detail.message = error instanceof Error ? error.message : "修复失败";
+          result.details.push(detail);
+        }
       }
     }
-  }
 
-  return result;
+    return result;
+  }, { timeout: 15 * 60 * 1000 });
 }
 
 function csvCell(value: unknown) {
@@ -1578,22 +1049,29 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const rawPayload = await parseFilestoreJsonBody(req, res);
     const payload = normalizeFilestoreTaskPayload(rawPayload);
     const now = new Date();
-    await prisma.fileCollectTask.update({
-      where: { id: current.id },
-      data: {
-        title: payload.title,
-        description: payload.description || null,
-        status: payload.status,
-        fields: JSON.stringify(storedFields(payload.fields)),
-        surveyFields: JSON.stringify(storedSurveyFields(payload.surveyFields)),
-        fileRules: JSON.stringify(payload.fileRules),
-        renameTemplate: payload.renameTemplate,
-        folderTemplate: payload.folderTemplate,
-        expectedEntries: payload.expectedEntries,
-        deadline: payload.deadline,
-        publishedAt: payload.status === "open" && !current.publishedAt ? now : undefined,
-        closedAt: payload.status === "closed" ? now : payload.status === "open" ? null : undefined,
-      },
+    await prisma.$transaction(async (tx) => {
+      await acquireFileCollectTaskLock(tx, current.id);
+      const locked = await tx.fileCollectTask.findUnique({ where: { id: current.id } });
+      if (!locked || !canAccessFilestoreTask(user, locked)) {
+        throw filestoreApiError(404, "任务不存在");
+      }
+      await tx.fileCollectTask.update({
+        where: { id: current.id },
+        data: {
+          title: payload.title,
+          description: payload.description || null,
+          status: payload.status,
+          fields: JSON.stringify(storedFields(payload.fields)),
+          surveyFields: JSON.stringify(storedSurveyFields(payload.surveyFields)),
+          fileRules: JSON.stringify(payload.fileRules),
+          renameTemplate: payload.renameTemplate,
+          folderTemplate: payload.folderTemplate,
+          expectedEntries: payload.expectedEntries,
+          deadline: payload.deadline,
+          publishedAt: payload.status === "open" && !locked.publishedAt ? now : undefined,
+          closedAt: payload.status === "closed" ? now : payload.status === "open" ? null : undefined,
+        },
+      });
     });
     const renameResult = rawPayload.renameExistingFiles
       ? await rerenameFilestoreTaskFiles(current.id, payload.renameTemplate)
@@ -1621,7 +1099,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(404).json({ error: "任务不存在" });
       return true;
     }
-    res.json(await repairFileCollectRemoteFilenames(current.id));
+    res.json(await repairFileCollectRemoteFilenames(current.id, user));
     return true;
   }
   if (req.method === "DELETE" && taskDetailMatch) {
@@ -1630,12 +1108,25 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(404).json({ error: "任务不存在" });
       return true;
     }
-    const files = await prisma.fileCollectFile.findMany({
-      where: { submission: { taskId: current.id } },
-      select: { path: true },
+    const paths = await prisma.$transaction(async (tx) => {
+      await acquireFileCollectTaskLock(tx, current.id);
+      const locked = await tx.fileCollectTask.findUnique({ where: { id: current.id } });
+      if (!locked || !canAccessFilestoreTask(user, locked)) {
+        throw filestoreApiError(404, "任务不存在");
+      }
+      await assertNoActiveFileCollectUploads(
+        tx,
+        current.id,
+        () => filestoreApiError(409, "仍有文件正在上传，请稍后再删除任务"),
+      );
+      const files = await tx.fileCollectFile.findMany({
+        where: { submission: { taskId: current.id } },
+        select: { path: true },
+      });
+      await tx.fileCollectTask.delete({ where: { id: current.id } });
+      return files.map((file) => file.path);
     });
-    await prisma.fileCollectTask.delete({ where: { id: current.id } });
-    await Promise.all(files.map((file) => unlinkFileCollectPath(file.path)));
+    await Promise.all(paths.map((relativePath) => unlinkFileCollectPath(relativePath)));
     await rm(path.resolve(process.cwd(), "uploads", "file-collect", String(current.id)), { recursive: true, force: true });
     res.json({ ok: true });
     return true;
@@ -1646,28 +1137,29 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(403).json({ error: "仅超级管理员可操作" });
       return true;
     }
-    const task = await prisma.fileCollectTask.findUnique({ where: { id: Number(ownerMatch[1]) } });
-    if (!task) {
-      res.status(404).json({ error: "任务不存在" });
-      return true;
-    }
+    const taskId = Number(ownerMatch[1]);
     const payload = await parseFilestoreJsonBody(req, res);
     const userId = Number(payload.userId);
     if (!Number.isInteger(userId) || userId <= 0) throw filestoreApiError(400, "绑定用户 ID 无效");
-    const owner = await prisma.user.findFirst({
-      where: {
-        id: userId,
-        status: { not: "banned" },
-        OR: [
-          { role: "admin" },
-          { toolPermissions: { some: { toolCode: "file_collect" } } },
-        ],
-      },
-      select: { id: true },
+    await prisma.$transaction(async (tx) => {
+      await acquireFileCollectTaskLock(tx, taskId);
+      const task = await tx.fileCollectTask.findUnique({ where: { id: taskId } });
+      if (!task) throw filestoreApiError(404, "任务不存在");
+      const owner = await tx.user.findFirst({
+        where: {
+          id: userId,
+          status: { not: "banned" },
+          OR: [
+            { role: "admin" },
+            { toolPermissions: { some: { toolCode: "file_collect" } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!owner) throw filestoreApiError(400, "未找到可绑定的文件收集管理员");
+      await tx.fileCollectTask.update({ where: { id: task.id }, data: { createdById: userId } });
     });
-    if (!owner) throw filestoreApiError(400, "未找到可绑定的文件收集管理员");
-    await prisma.fileCollectTask.update({ where: { id: task.id }, data: { createdById: userId } });
-    const row = await getFilestoreTaskForActor(task.id, user, true);
+    const row = await getFilestoreTaskForActor(taskId, user, true);
     res.json(normalizeFilestoreTask(row, { includeCreator: true, includeSubmissions: true }));
     return true;
   }
@@ -1709,7 +1201,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const payload = await parseFilestoreJsonBody(req, res);
     const task = await prisma.fileCollectTask.findUnique({ where: { slug: checkDuplicateSubmitMatch[1] } });
     if (!task) throw filestoreApiError(404, "提交链接不存在");
-    if (normalizeStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
+    if (normalizeFilestoreStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
     if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
     const fields = parseStoredFields(task.fields);
     const dataSource = payload.data && typeof payload.data === "object"
@@ -1734,8 +1226,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const payload = await parseFilestoreJsonBody(req, res);
     const task = await prisma.fileCollectTask.findUnique({ where: { slug: prepareRemoteSubmitMatch[1] } });
     if (!task) throw filestoreApiError(404, "提交链接不存在");
-    if (normalizeStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
-    if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
+    assertFilestoreTaskAcceptsSubmission(task);
     const remotePolicy = await filestoreRemoteUploadPolicy(task.id);
     if (!remotePolicy.available) {
       throw filestoreApiError(400, "当前任务未启用世纪互联直传");
@@ -1763,12 +1254,32 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
     const identity = submissionIdentity(data, fields);
     const identityLabel = submissionIdentityLabel(data, fields);
     const overwrite = parseOverwriteFlag(payload.overwrite ?? payload.overwriteConfirmed);
-    await assertCanCreateOrOverwriteSubmission(task.id, identity, identityLabel, overwrite);
+    const lockIdentity = identity || `anonymous:${randomUUID()}`;
 
     const created = await prisma.$transaction(async (tx) => {
+      await acquireFileCollectSubmissionLock(tx, task.id, lockIdentity);
+      const lockedTask = await tx.fileCollectTask.findUnique({ where: { id: task.id } });
+      if (!lockedTask) throw filestoreApiError(404, "提交链接不存在");
+      assertFilestoreTaskAcceptsSubmission(lockedTask);
+      const existing = identity
+        ? await tx.fileCollectSubmission.findFirst({
+          where: { taskId: task.id, identity, status: "submitted" },
+          orderBy: { createdAt: "desc" },
+          include: { files: { orderBy: { id: "asc" } } },
+        })
+        : null;
+      assertCanCreateOrOverwriteExisting(existing, identity, identityLabel, overwrite);
+
+      const stalePaths = await removeStaleFileCollectUploadsForIdentity(
+        tx,
+        task.id,
+        identity,
+        () => filestoreApiError(409, "同一身份的文件正在上传，请稍后重试"),
+      );
+
       const submission = await tx.fileCollectSubmission.create({
         data: {
-          taskId: task.id,
+          taskId: lockedTask.id,
           submitterId: null,
           identity,
           data: JSON.stringify(data),
@@ -1780,10 +1291,10 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       const fileRows = [];
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
-        const storedName = renderStoredName(task.renameTemplate, data, file.originalname, index + 1, files.length);
+        const storedName = renderStoredName(lockedTask.renameTemplate, data, file.originalname, index + 1, files.length);
         const relativePath = directFileIndexes.has(index)
-          ? buildFileCollectRemoteRelativePath(task.id, submission.id, index + 1, storedName)
-          : buildFileCollectRelativePath(task.id, `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`);
+          ? buildFileCollectRemoteRelativePath(lockedTask.id, submission.id, index + 1, storedName)
+          : buildFileCollectRelativePath(lockedTask.id, `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`);
         fileRows.push(await tx.fileCollectFile.create({
           data: {
             submissionId: submission.id,
@@ -1795,8 +1306,9 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
           },
         }));
       }
-      return { submission, files: fileRows };
+      return { submission, files: fileRows, stalePaths };
     });
+    await Promise.all(created.stalePaths.map((relativePath) => unlinkFileCollectPath(relativePath)));
 
     try {
       const uploadFiles = [];
@@ -1835,12 +1347,16 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         ok: true,
         directUpload: true,
         submissionId: created.submission.id,
+        completionToken: signFileCollectCompletionToken(created.submission),
         files: uploadFiles,
         localFiles,
       });
     } catch (error) {
-      await prisma.fileCollectSubmission.delete({ where: { id: created.submission.id } }).catch(() => null);
-      await Promise.all(created.files.map((file) => unlinkFileCollectPath(file.path)));
+      const pendingPaths = await deleteUploadingFileCollectSubmission(created.submission.id).catch(() => [] as string[]);
+      await Promise.all(
+        [...new Set([...created.files.map((file) => file.path), ...pendingPaths])]
+          .map((relativePath) => unlinkFileCollectPath(relativePath)),
+      );
       throw error;
     }
     return true;
@@ -1849,6 +1365,9 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
   if (req.method === "POST" && completeRemoteSubmitMatch) {
     let uploadedFiles: Express.Multer.File[] = [];
     const movedPaths: string[] = [];
+    const knownSubmissionPaths: string[] = [];
+    let completionAuthorized = false;
+    let completionSubmissionId = 0;
     try {
       const contentType = String(req.headers["content-type"] || "");
       const isMultipart = contentType.includes("multipart/form-data");
@@ -1861,6 +1380,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       }
       const submissionId = Number(body.submissionId ?? body.id);
       if (!Number.isInteger(submissionId) || submissionId <= 0) throw filestoreApiError(400, "提交编号无效");
+      completionSubmissionId = submissionId;
       const submission = await prisma.fileCollectSubmission.findUnique({
         where: { id: submissionId },
         include: {
@@ -1871,6 +1391,11 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       if (!submission || submission.task.slug !== completeRemoteSubmitMatch[1]) {
         throw filestoreApiError(404, "提交记录不存在");
       }
+      knownSubmissionPaths.push(...submission.files.map((file) => file.path));
+      if (!verifyFileCollectCompletionToken(String(body.completionToken || ""), submission)) {
+        throw filestoreApiError(403, "提交确认凭证无效或已过期，请重新上传");
+      }
+      completionAuthorized = true;
       if (submission.status === "submitted") {
         res.json({
           ok: true,
@@ -1883,6 +1408,7 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       }
       if (submission.status !== "uploading") throw filestoreApiError(400, "提交状态无法完成");
       if (!submission.files.length) throw filestoreApiError(400, "没有待确认文件");
+      assertFilestoreTaskAcceptsSubmission(submission.task);
 
       const uploadPolicy = await filestoreRemoteUploadPolicy(submission.taskId, submission.files);
       const expectedRemoteFiles = uploadPolicy.available
@@ -1917,7 +1443,6 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       const submissionData = parseJsonObject(submission.data);
       const submissionFields = parseStoredFields(submission.task.fields);
       const identityLabel = submissionIdentityLabel(submissionData, submissionFields);
-      await assertCanCreateOrOverwriteSubmission(submission.taskId, submission.identity, identityLabel, overwrite);
 
       if (expectedLocalFiles.length) {
         const localById = new Map(expectedLocalFiles.map((file) => [file.id, file]));
@@ -1932,15 +1457,50 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         }
       }
 
-      const stalePaths = await prisma.$transaction(async (tx) => {
+      const completed = await prisma.$transaction(async (tx) => {
+        await acquireFileCollectSubmissionLock(
+          tx,
+          submission.taskId,
+          submission.identity || `pending:${submission.id}`,
+        );
+        const current = await tx.fileCollectSubmission.findUnique({
+          where: { id: submission.id },
+          include: {
+            task: true,
+            files: { orderBy: { id: "asc" } },
+          },
+        });
+        if (!current || current.task.slug !== completeRemoteSubmitMatch[1]) {
+          throw filestoreApiError(404, "提交记录不存在");
+        }
+        if (current.status === "submitted") {
+          return { submission: current, stalePaths: [] as string[], alreadySubmitted: true };
+        }
+        if (current.status !== "uploading") throw filestoreApiError(400, "提交状态无法完成");
+        assertFilestoreTaskAcceptsSubmission(current.task);
+
+        const existing = current.identity
+          ? await tx.fileCollectSubmission.findFirst({
+            where: {
+              taskId: current.taskId,
+              identity: current.identity,
+              status: "submitted",
+              id: { not: current.id },
+            },
+            orderBy: { createdAt: "desc" },
+            include: { files: { orderBy: { id: "asc" } } },
+          })
+          : null;
+        assertCanCreateOrOverwriteExisting(existing, current.identity, identityLabel, overwrite);
+
         const oldPaths: string[] = [];
-        if (submission.identity && overwrite) {
+        if (current.identity && overwrite) {
           const oldRows = await tx.fileCollectSubmission.findMany({
             where: {
-              taskId: submission.taskId,
-              identity: submission.identity,
+              taskId: current.taskId,
+              identity: current.identity,
               status: "submitted",
-              id: { not: submission.id },
+              id: { not: current.id },
             },
             include: { files: true },
           });
@@ -1950,39 +1510,57 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
           }
         }
         await tx.fileCollectSubmission.update({
-          where: { id: submission.id },
+          where: { id: current.id },
           data: { status: "submitted" },
         });
-        await tx.fileCollectTask.update({
-          where: { id: submission.taskId },
-          data: {
-            submissionCount: await tx.fileCollectSubmission.count({ where: { taskId: submission.taskId, status: "submitted" } }),
-            fileCount: await tx.fileCollectFile.count({ where: { submission: { taskId: submission.taskId, status: "submitted" } } }),
-          },
-        });
-        return oldPaths;
+        await refreshFileCollectTaskCounters(tx, current.taskId);
+        return {
+          submission: { ...current, status: "submitted" },
+          stalePaths: oldPaths,
+          alreadySubmitted: false,
+        };
       });
-      await Promise.all(stalePaths.map((item) => unlinkFileCollectPath(item)));
-      await notifyFileCollectSubmissionForQqBot({
-        task: submission.task,
-        submission: {
-          id: submission.id,
-          identity: submission.identity,
-          submitterId: submission.submitterId,
-          data: submission.data,
-        },
-        fileCount: submission.files.length,
-      }).catch((error) => console.warn("[filestore] qqbot reminder failed", error));
+      await Promise.all(completed.stalePaths.map((item) => unlinkFileCollectPath(item)));
+      if (!completed.alreadySubmitted) {
+        await notifyFileCollectSubmissionForQqBot({
+          task: completed.submission.task,
+          submission: {
+            id: completed.submission.id,
+            identity: completed.submission.identity,
+            submitterId: completed.submission.submitterId,
+            data: completed.submission.data,
+          },
+          fileCount: completed.submission.files.length,
+        }).catch((error) => console.warn("[filestore] qqbot reminder failed", error));
+      }
       res.json({
         ok: true,
-        id: submission.id,
-        submissionId: submission.id,
-        createdAt: isoDate(submission.createdAt),
-        files: submission.files.map((file) => file.storedName),
+        id: completed.submission.id,
+        submissionId: completed.submission.id,
+        createdAt: isoDate(completed.submission.createdAt),
+        files: completed.submission.files.map((file) => file.storedName),
       });
     } catch (error) {
       await Promise.all(uploadedFiles.map((file) => unlink(file.path).catch(() => null)));
-      if (movedPaths.length) await Promise.all(movedPaths.map((item) => unlinkFileCollectPath(item)));
+      const cleanupPaths = [...movedPaths];
+      if (completionAuthorized) {
+        const current = await prisma.fileCollectSubmission.findFirst({
+          where: { id: completionSubmissionId },
+          include: { task: true },
+        }).catch(() => null);
+        const terminal = !current
+          || (current.status === "uploading" && (
+            normalizeFilestoreStatus(current.task.status) !== "open"
+            || Boolean(current.task.deadline && Date.now() > current.task.deadline.getTime())
+          ));
+        if (terminal) {
+          const pendingPaths = current?.status === "uploading"
+            ? await deleteUploadingFileCollectSubmission(current.id).catch(() => [] as string[])
+            : [];
+          cleanupPaths.push(...knownSubmissionPaths, ...pendingPaths);
+        }
+      }
+      await Promise.all([...new Set(cleanupPaths)].map((item) => unlinkFileCollectPath(item)));
       throw error;
     }
     return true;
@@ -1991,11 +1569,11 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
   if (req.method === "POST" && submitMatch) {
     let uploadedFiles: Express.Multer.File[] = [];
     const movedPaths: string[] = [];
+    let pendingSubmissionId: number | null = null;
     try {
       const task = await prisma.fileCollectTask.findUnique({ where: { slug: submitMatch[1] } });
       if (!task) throw filestoreApiError(404, "提交链接不存在");
-      if (normalizeStatus(task.status) !== "open") throw filestoreApiError(400, "任务未开放提交");
-      if (task.deadline && Date.now() > task.deadline.getTime()) throw filestoreApiError(400, "已超过截止时间");
+      assertFilestoreTaskAcceptsSubmission(task);
       uploadedFiles = await parseFilestoreUpload(req, res);
       const fields = parseStoredFields(task.fields);
       const rules = parseStoredRules(task.fileRules);
@@ -2010,12 +1588,102 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       const identity = submissionIdentity(data, fields);
       const identityLabel = submissionIdentityLabel(data, fields);
       const overwrite = parseOverwriteFlag(body.overwrite ?? body.overwriteConfirmed);
-      await assertCanCreateOrOverwriteSubmission(task.id, identity, identityLabel, overwrite);
+      const lockIdentity = identity || `anonymous:${randomUUID()}`;
+      const pending = await prisma.$transaction(async (tx) => {
+        await acquireFileCollectSubmissionLock(tx, task.id, lockIdentity);
+        const lockedTask = await tx.fileCollectTask.findUnique({ where: { id: task.id } });
+        if (!lockedTask) throw filestoreApiError(404, "提交链接不存在");
+        assertFilestoreTaskAcceptsSubmission(lockedTask);
+
+        const existing = identity
+          ? await tx.fileCollectSubmission.findFirst({
+            where: { taskId: task.id, identity, status: "submitted" },
+            orderBy: { createdAt: "desc" },
+            include: { files: { orderBy: { id: "asc" } } },
+          })
+          : null;
+        assertCanCreateOrOverwriteExisting(existing, identity, identityLabel, overwrite);
+
+        const stalePaths = await removeStaleFileCollectUploadsForIdentity(
+          tx,
+          task.id,
+          identity,
+          () => filestoreApiError(409, "同一身份的文件正在上传，请稍后重试"),
+        );
+        const submission = await tx.fileCollectSubmission.create({
+          data: {
+            taskId: lockedTask.id,
+            submitterId: null,
+            identity,
+            data: JSON.stringify(data),
+            answers: JSON.stringify(answers),
+            ip: req.ip,
+            status: "uploading",
+          },
+        });
+        return { submission, task: lockedTask, stalePaths };
+      });
+      pendingSubmissionId = pending.submission.id;
+      await Promise.all(pending.stalePaths.map((relativePath) => unlinkFileCollectPath(relativePath)));
+
+      const fileData: Array<{
+        originalName: string;
+        storedName: string;
+        mimeType: string;
+        size: number;
+        path: string;
+      }> = [];
+      for (let index = 0; index < uploadedFiles.length; index += 1) {
+        const file = uploadedFiles[index];
+        const storedName = renderStoredName(pending.task.renameTemplate, data, file.originalname, index + 1, uploadedFiles.length);
+        const physicalName = `${pending.submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`;
+        const relativePath = buildFileCollectRelativePath(pending.task.id, physicalName);
+        await saveUploadedFileCollectAsset(relativePath, file);
+        movedPaths.push(relativePath);
+        fileData.push({
+          originalName: file.originalname,
+          storedName,
+          mimeType: file.mimetype || "application/octet-stream",
+          size: file.size,
+          path: relativePath,
+        });
+      }
+
       const result = await prisma.$transaction(async (tx) => {
+        await acquireFileCollectSubmissionLock(tx, task.id, lockIdentity);
+        const current = await tx.fileCollectSubmission.findUnique({
+          where: { id: pending.submission.id },
+          include: { task: true },
+        });
+        if (!current || current.task.slug !== submitMatch[1]) {
+          throw filestoreApiError(404, "提交记录不存在");
+        }
+        if (current.status !== "uploading") throw filestoreApiError(409, "提交状态已发生变化，请重新提交");
+        assertFilestoreTaskAcceptsSubmission(current.task);
+
+        const existing = current.identity
+          ? await tx.fileCollectSubmission.findFirst({
+            where: {
+              taskId: current.taskId,
+              identity: current.identity,
+              status: "submitted",
+              id: { not: current.id },
+            },
+            orderBy: { createdAt: "desc" },
+            include: { files: { orderBy: { id: "asc" } } },
+          })
+          : null;
+        assertCanCreateOrOverwriteExisting(existing, current.identity, identityLabel, overwrite);
+
         const oldPaths: string[] = [];
-        if (identity && overwrite) {
+        if (current.identity && overwrite) {
           const oldRows = await tx.fileCollectSubmission.findMany({
-            where: { taskId: task.id, identity },
+            where: {
+              taskId: current.taskId,
+              identity: current.identity,
+              status: "submitted",
+              id: { not: current.id },
+            },
             include: { files: true },
           });
           for (const old of oldRows) {
@@ -2023,48 +1691,30 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
             oldPaths.push(...old.files.map((file) => file.path));
           }
         }
-        const submission = await tx.fileCollectSubmission.create({
-          data: {
-            taskId: task.id,
-            submitterId: null,
-            identity,
-            data: JSON.stringify(data),
-            answers: JSON.stringify(answers),
-            ip: req.ip,
-            status: "submitted",
-          },
-        });
         const fileRows = [];
-        for (let index = 0; index < uploadedFiles.length; index += 1) {
-          const file = uploadedFiles[index];
-          const storedName = renderStoredName(task.renameTemplate, data, file.originalname, index + 1, uploadedFiles.length);
-          const physicalName = `${submission.id}-${index + 1}-${randomUUID()}-${safeStoredFilename(storedName)}`;
-          const relativePath = buildFileCollectRelativePath(task.id, physicalName);
-          await saveUploadedFileCollectAsset(relativePath, file);
-          movedPaths.push(relativePath);
+        for (const file of fileData) {
           fileRows.push(await tx.fileCollectFile.create({
             data: {
-              submissionId: submission.id,
-              originalName: file.originalname,
-              storedName,
-              mimeType: file.mimetype || "application/octet-stream",
+              submissionId: current.id,
+              originalName: file.originalName,
+              storedName: file.storedName,
+              mimeType: file.mimeType,
               size: file.size,
-              path: relativePath,
+              path: file.path,
             },
           }));
         }
-        await tx.fileCollectTask.update({
-          where: { id: task.id },
-          data: {
-            submissionCount: await tx.fileCollectSubmission.count({ where: { taskId: task.id, status: "submitted" } }),
-            fileCount: await tx.fileCollectFile.count({ where: { submission: { taskId: task.id, status: "submitted" } } }),
-          },
+        const submission = await tx.fileCollectSubmission.update({
+          where: { id: current.id },
+          data: { status: "submitted" },
         });
-        return { submission, files: fileRows, oldPaths };
+        await refreshFileCollectTaskCounters(tx, current.taskId);
+        return { submission, files: fileRows, oldPaths, task: current.task };
       });
+      pendingSubmissionId = null;
       await Promise.all(result.oldPaths.map((item) => unlinkFileCollectPath(item)));
       await notifyFileCollectSubmissionForQqBot({
-        task,
+        task: result.task,
         submission: {
           id: result.submission.id,
           identity: result.submission.identity,
@@ -2082,7 +1732,12 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       });
     } catch (error) {
       await Promise.all(uploadedFiles.map((file) => unlink(file.path).catch(() => null)));
-      if (movedPaths.length) await Promise.all(movedPaths.map((item) => unlinkFileCollectPath(item)));
+      const pendingPaths = pendingSubmissionId
+        ? await deleteUploadingFileCollectSubmission(pendingSubmissionId).catch(() => [] as string[])
+        : [];
+      await Promise.all(
+        [...new Set([...movedPaths, ...pendingPaths])].map((item) => unlinkFileCollectPath(item)),
+      );
       throw error;
     }
     return true;
@@ -2211,9 +1866,24 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(404).json({ error: "文件不存在" });
       return true;
     }
-    await prisma.fileCollectFile.delete({ where: { id: file.id } });
-    await unlinkFileCollectPath(file.path);
-    await refreshFileCollectStats(file.submission.taskId);
+    const deletedPath = await prisma.$transaction(async (tx) => {
+      await acquireFileCollectSubmissionLock(
+        tx,
+        file.submission.taskId,
+        file.submission.identity || `submission:${file.submission.id}`,
+      );
+      const current = await tx.fileCollectFile.findUnique({
+        where: { id: file.id },
+        include: { submission: { include: { task: true } } },
+      });
+      if (!current || !canAccessFilestoreTask(user, current.submission.task)) {
+        throw filestoreApiError(404, "文件不存在");
+      }
+      await tx.fileCollectFile.delete({ where: { id: current.id } });
+      await refreshFileCollectTaskCounters(tx, current.submission.taskId);
+      return current.path;
+    });
+    await unlinkFileCollectPath(deletedPath);
     res.json({ ok: true });
     return true;
   }
@@ -2227,9 +1897,24 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
       res.status(404).json({ error: "提交记录不存在" });
       return true;
     }
-    await prisma.fileCollectSubmission.delete({ where: { id: submission.id } });
-    await Promise.all(submission.files.map((file) => unlinkFileCollectPath(file.path)));
-    await refreshFileCollectStats(submission.taskId);
+    const deletedPaths = await prisma.$transaction(async (tx) => {
+      await acquireFileCollectSubmissionLock(
+        tx,
+        submission.taskId,
+        submission.identity || `submission:${submission.id}`,
+      );
+      const current = await tx.fileCollectSubmission.findUnique({
+        where: { id: submission.id },
+        include: { task: true, files: true },
+      });
+      if (!current || !canAccessFilestoreTask(user, current.task)) {
+        throw filestoreApiError(404, "提交记录不存在");
+      }
+      await tx.fileCollectSubmission.delete({ where: { id: current.id } });
+      await refreshFileCollectTaskCounters(tx, current.taskId);
+      return current.files.map((item) => item.path);
+    });
+    await Promise.all(deletedPaths.map((relativePath) => unlinkFileCollectPath(relativePath)));
     res.json({ ok: true });
     return true;
   }
@@ -2333,54 +2018,6 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
   return false;
 }
 
-function proxyToFilestore(req: Request, res: Response, user: FilestoreAccessUser | null) {
-  const headers = {
-    ...req.headers,
-    host: `127.0.0.1:${config.filestorePort}`,
-    "x-cpu-filestore-admin": TRUSTED_PROXY_TOKEN,
-    ...(user ? {
-      "x-cpu-filestore-user-id": String(user.userId),
-      "x-cpu-filestore-username": encodeFilestoreHeaderValue(user.username),
-      "x-cpu-filestore-display-name": encodeFilestoreHeaderValue(user.nickname || user.username),
-      "x-cpu-filestore-role": user.role,
-      "x-cpu-filestore-is-manager": user.isToolManager ? "1" : "0",
-    } : {}),
-  };
-  const upstream = http.request({
-    hostname: "127.0.0.1",
-    port: config.filestorePort,
-    path: upstreamPath(req),
-    method: req.method,
-    headers,
-  }, (upstreamRes) => {
-    const contentType = String(upstreamRes.headers["content-type"] ?? "");
-    const shouldRewrite = TEXT_RESPONSE_RE.test(contentType);
-    if (!shouldRewrite) {
-      writeHeaders(res, upstreamRes);
-      upstreamRes.pipe(res);
-      return;
-    }
-
-    const chunks: Buffer[] = [];
-    upstreamRes.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-    upstreamRes.on("end", () => {
-      const source = Buffer.concat(chunks).toString("utf8");
-      const body = Buffer.from(rewriteText(source), "utf8");
-      writeHeaders(res, upstreamRes, body);
-      res.end(body);
-    });
-  });
-
-  upstream.on("error", (error) => {
-    if (!res.headersSent) {
-      res.status(502).send(`Filestore 代理失败：${error.message}`);
-    } else {
-      res.end();
-    }
-  });
-  req.pipe(upstream);
-}
-
 export const filestoreProxy: RequestHandler = async (req, res) => {
   try {
     const user = await assertFilestoreAccess(req, res);
@@ -2391,7 +2028,8 @@ export const filestoreProxy: RequestHandler = async (req, res) => {
       sendFilestoreApiError(res, error);
       return;
     }
-    if (upstreamPath(req).split("?")[0].startsWith("/api/")) {
+    const targetPath = upstreamPath(req).split("?")[0];
+    if (targetPath === "/api" || targetPath.startsWith("/api/")) {
       res.status(404).json({ error: "接口不存在" });
       return;
     }

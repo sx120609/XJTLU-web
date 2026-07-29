@@ -25,11 +25,11 @@
       type="warning"
       show-icon
       :closable="false"
-      title="当前没有可用的 eBridge 教务会话"
-      description="请退出后重新使用 XJTLU 账号登录一次，系统会同时建立融合门户和 eBridge 会话。"
+      :title="status.connectionFailed ? 'eBridge 教务连接失败' : '当前没有可用的 eBridge 教务会话'"
+      :description="inactiveDescription"
     />
     <div v-if="statusChecked && !status.active && !status.connecting" class="relogin-row">
-      <el-button type="primary" @click="relogin">退出并重新登录</el-button>
+      <el-button type="primary" @click="reconnectEbridge">重新连接 eBridge</el-button>
     </div>
 
     <template v-if="!statusChecked || status.active || status.connecting">
@@ -52,7 +52,15 @@
               :closable="false"
               :title="scheduleError"
             />
+            <el-alert
+              v-else-if="scheduleNotice"
+              type="info"
+              show-icon
+              :closable="false"
+              :title="scheduleNotice"
+            />
             <SchedulePane
+              v-if="scheduleData"
               :data="scheduleData"
               :loading="loading && !scheduleData"
               source="ebridge"
@@ -122,6 +130,7 @@ const status = ref<AcademicStatus>({ active: false });
 const overview = ref<AcademicOverview | null>(null);
 const scheduleData = ref<AcademicSchedule | null>(null);
 const scheduleError = ref("");
+const scheduleNotice = ref("");
 const loading = ref(false);
 const error = ref("");
 const activeTab = ref("schedule");
@@ -155,6 +164,14 @@ const cpuGradesData = computed(() => {
       list,
     },
   };
+});
+
+const inactiveDescription = computed(() => {
+  if (status.value.connectionFailed) {
+    const detail = status.value.connectionError?.trim();
+    return `${detail ? `${detail}；` : ""}靠浦账号仍保持登录，请重新验证一次 XJTLU 身份后重试。`;
+  }
+  return "靠浦账号仍保持登录；只需重新验证一次 XJTLU 身份，即可恢复融合门户和 eBridge 会话。";
 });
 
 onMounted(() => {
@@ -206,11 +223,14 @@ function saveScheduleCache(username: string | undefined, data: AcademicSchedule)
 }
 
 async function load() {
+  if (loading.value) return;
   loading.value = true;
   error.value = "";
   scheduleError.value = "";
+  scheduleNotice.value = "";
   try {
     const nextStatus = await academicApi.status({
+      refresh: true,
       suppressErrorMessage: true,
     });
     statusChecked.value = true;
@@ -219,9 +239,28 @@ async function load() {
       status.value = nextStatus;
       restoreScheduleCache(nextStatus.username || auth.user?.username);
       const [overviewResult, scheduleResult] = await Promise.allSettled([
-        academicApi.overview({ refresh: true, suppressErrorMessage: true }),
-        academicApi.schedule({ refresh: true, suppressErrorMessage: true }),
+        academicApi.overview({
+          refresh: true,
+          suppressErrorMessage: true,
+          suppressAuthRedirect: true,
+          suppressAuthMessage: true,
+        }),
+        academicApi.schedule({
+          refresh: true,
+          suppressErrorMessage: true,
+          suppressAuthRedirect: true,
+          suppressAuthMessage: true,
+        }),
       ]);
+      if (
+        (overviewResult.status === "rejected" && isEbridgeSessionExpired(overviewResult.reason))
+        || (scheduleResult.status === "rejected" && isEbridgeSessionExpired(scheduleResult.reason))
+      ) {
+        status.value = { active: false };
+        overview.value = null;
+        scheduleError.value = "";
+        return;
+      }
       if (overviewResult.status === "fulfilled") {
         overview.value = overviewResult.value;
       } else {
@@ -229,8 +268,12 @@ async function load() {
         error.value = errorMessage(overviewResult.reason, "学业记录和考试安排加载失败");
       }
       if (scheduleResult.status === "fulfilled") {
-        scheduleData.value = scheduleResult.value;
-        saveScheduleCache(nextStatus.username || auth.user?.username, scheduleResult.value);
+        if (scheduleResult.value.available === false) {
+          scheduleNotice.value = scheduleResult.value.message || "eBridge 当前暂未发布个人课表";
+        } else {
+          scheduleData.value = scheduleResult.value;
+          saveScheduleCache(nextStatus.username || auth.user?.username, scheduleResult.value);
+        }
       } else {
         scheduleError.value = errorMessage(scheduleResult.reason, "个人课表加载失败");
       }
@@ -257,9 +300,21 @@ function errorMessage(reason: unknown, fallback: string) {
   return reason instanceof Error && reason.message ? reason.message : fallback;
 }
 
-async function relogin() {
-  await auth.logout();
-  await router.push({ name: "login", query: { redirect: "/academic" } });
+function isEbridgeSessionExpired(reason: unknown) {
+  const response = (reason as {
+    response?: { status?: number; data?: { code?: number } };
+  })?.response;
+  return response?.status === 409 && response.data?.code === 4601;
+}
+
+async function reconnectEbridge() {
+  await router.push({
+    name: "login",
+    query: {
+      redirect: "/academic",
+      reconnect: "ebridge",
+    },
+  });
 }
 </script>
 

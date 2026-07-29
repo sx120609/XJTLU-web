@@ -4,6 +4,34 @@ import test from "node:test";
 
 process.env.REDIS_ENABLED = "false";
 
+test("portal handshakes run sequentially and share rotated UIM cookies", async () => {
+  const { establishXjtluPortalSessions } = await import("../src/services/xjtluSsoClient");
+  const events: string[] = [];
+  const uimCookies = { SESSION: "initial-session" };
+  const results = await establishXjtluPortalSessions({
+    userId: 7790,
+    username: "student.name24",
+    uimCookies,
+  }, {
+    getEhallStatus: async () => ({ active: false as const }),
+    getEbridgeStatus: async () => ({ active: false as const }),
+    establishEhall: async (_userId, _username, cookies) => {
+      events.push("ehall");
+      assert.equal(cookies.SESSION, "initial-session");
+      cookies.SESSION = "rotated-by-ehall";
+      return { username: "student.name24", displayName: "Test Student" };
+    },
+    establishEbridge: async (_userId, _username, cookies) => {
+      events.push("ebridge");
+      assert.equal(cookies.SESSION, "rotated-by-ehall");
+      return { username: "student.name24", displayName: "Test Student" };
+    },
+  });
+  assert.deepEqual(events, ["ehall", "ebridge"]);
+  assert.equal(results.ehall.status, "fulfilled");
+  assert.equal(results.ebridge.status, "fulfilled");
+});
+
 test("XJTLU SSO fetches a fresh key, encrypts the password, and accepts a trusted redirect", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {

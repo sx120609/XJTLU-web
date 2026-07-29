@@ -267,8 +267,6 @@ const configLoading = ref(false);
 const loadError = ref("");
 const savingConfig = ref(false);
 const pendingKey = ref<FKey | null>(null);
-const aiConfigExpanded = ref(false);
-const aiPromptsExpanded = ref(false);
 const trustConfigExpanded = ref(false);
 const siteName = ref("靠浦");
 const siteSubtitle = ref("重塑校园生活的可能");
@@ -277,24 +275,6 @@ const logoFileInput = ref<HTMLInputElement | null>(null);
 const uploadingLogo = ref(false);
 const siteOrigin = ref("");
 const siteFilingNumber = ref("");
-const aiReviewEnabled = ref(false);
-const aiReviewProvider = ref("deepseek");
-const aiReviewModel = ref("deepseek-v4-flash");
-const aiReviewApiKey = ref("");
-const imageReviewEnabled = ref(false);
-const imageReviewApiUrl = ref("https://api.openai.com/v1/chat/completions");
-const imageReviewModel = ref("gpt-4o-mini");
-const imageReviewApiKey = ref("");
-const imageReviewSystemPrompt = ref("");
-const imageReviewUserPrompt = ref("");
-const aiReviewThreshold = ref(24);
-const aiEditSimilarityPercent = ref(0);
-const aiTopicReviewSystemPrompt = ref("");
-const aiTopicReviewUserPrompt = ref("");
-const aiReplyReviewSystemPrompt = ref("");
-const aiReplyReviewUserPrompt = ref("");
-const aiEditSimilaritySystemPrompt = ref("");
-const aiEditSimilarityUserPrompt = ref("");
 const anonymousMinReputation = ref(30);
 const accountAgeDaysPerStep = ref(14);
 const accountAgePointsPerStep = ref(2);
@@ -330,13 +310,18 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
     paths: ["/forum", "/post", "/forum/topic/:id"],
   },
   {
+    key: "coursereview", icon: "📝", title: "课程点评",
+    desc: "课程点评板块、课程评分聚合和课程点评发帖入口。",
+    paths: ["/forum/board/course-review", "boards type=coursereview"],
+  },
+  {
     key: "market", icon: "🛒", title: "市集",
     desc: "XJTLU 校内实体闲置与求购信息撮合，买卖双方见面验货并直接结算。",
     paths: ["/market", "boards type=market"],
   },
   {
     key: "promotion", icon: "📣", title: "推广与合作商户展示",
-    desc: "独立关闭商业展示、新推广申请和商户公开主页，不影响学生实体交易、求购与免费学习资料；历史订单和人工核验记录会保留。",
+    desc: "独立关闭商业展示、新推广申请和商户公开主页，不影响学生实体交易、求购与付费学习资料；历史订单和人工核验记录会保留。",
     paths: ["/market/promotions", "/market/merchants", "首页推广位"],
   },
   {
@@ -371,24 +356,6 @@ async function reload() {
     siteLogoUrl.value = config.siteLogoUrl;
     siteOrigin.value = config.siteOrigin;
     siteFilingNumber.value = config.siteFilingNumber;
-    aiReviewEnabled.value = config.aiReviewEnabled;
-    aiReviewProvider.value = config.aiReviewProvider;
-    aiReviewModel.value = config.aiReviewModel;
-    aiReviewApiKey.value = config.aiReviewApiKey;
-    imageReviewEnabled.value = config.imageReviewEnabled;
-    imageReviewApiUrl.value = config.imageReviewApiUrl;
-    imageReviewModel.value = config.imageReviewModel;
-    imageReviewApiKey.value = config.imageReviewApiKey;
-    imageReviewSystemPrompt.value = config.imageReviewSystemPrompt ?? "";
-    imageReviewUserPrompt.value = config.imageReviewUserPrompt ?? "";
-    aiReviewThreshold.value = config.aiReviewThreshold;
-    aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
-    aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
-    aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";
-    aiReplyReviewSystemPrompt.value = config.aiReplyReviewSystemPrompt ?? "";
-    aiReplyReviewUserPrompt.value = config.aiReplyReviewUserPrompt ?? "";
-    aiEditSimilaritySystemPrompt.value = config.aiEditSimilaritySystemPrompt ?? "";
-    aiEditSimilarityUserPrompt.value = config.aiEditSimilarityUserPrompt ?? "";
     anonymousMinReputation.value = config.anonymousMinReputation;
     accountAgeDaysPerStep.value = config.accountAgeDaysPerStep;
     accountAgePointsPerStep.value = config.accountAgePointsPerStep;
@@ -454,54 +421,6 @@ async function uploadLogo(event: Event) {
     siteLogoUrl.value = result.url;
     ElMessage.success("Logo 已上传，请点击保存应用到全站");
   } finally { uploadingLogo.value = false; }
-}
-
-async function saveAiReviewConfig() {
-  if (savingConfig.value || loadError.value) return;
-  savingConfig.value = true;
-  try {
-    const config = await adminApi.updateSiteConfig({
-      aiReviewEnabled: aiReviewEnabled.value,
-      aiReviewProvider: aiReviewProvider.value,
-      aiReviewModel: aiReviewModel.value,
-      aiReviewApiKey: aiReviewApiKey.value,
-      imageReviewEnabled: imageReviewEnabled.value,
-      imageReviewApiUrl: imageReviewApiUrl.value,
-      imageReviewModel: imageReviewModel.value,
-      imageReviewApiKey: imageReviewApiKey.value,
-      imageReviewSystemPrompt: imageReviewSystemPrompt.value,
-      imageReviewUserPrompt: imageReviewUserPrompt.value,
-      aiReviewThreshold: aiReviewThreshold.value,
-      aiEditSimilarityThreshold: aiEditSimilarityPercent.value / 100,
-      aiTopicReviewSystemPrompt: aiTopicReviewSystemPrompt.value,
-      aiTopicReviewUserPrompt: aiTopicReviewUserPrompt.value,
-      aiReplyReviewSystemPrompt: aiReplyReviewSystemPrompt.value,
-      aiReplyReviewUserPrompt: aiReplyReviewUserPrompt.value,
-      aiEditSimilaritySystemPrompt: aiEditSimilaritySystemPrompt.value,
-      aiEditSimilarityUserPrompt: aiEditSimilarityUserPrompt.value,
-    });
-    aiReviewEnabled.value = config.aiReviewEnabled;
-    aiReviewProvider.value = config.aiReviewProvider;
-    aiReviewModel.value = config.aiReviewModel;
-    aiReviewApiKey.value = config.aiReviewApiKey;
-    imageReviewEnabled.value = config.imageReviewEnabled;
-    imageReviewApiUrl.value = config.imageReviewApiUrl;
-    imageReviewModel.value = config.imageReviewModel;
-    imageReviewApiKey.value = config.imageReviewApiKey;
-    imageReviewSystemPrompt.value = config.imageReviewSystemPrompt ?? "";
-    imageReviewUserPrompt.value = config.imageReviewUserPrompt ?? "";
-    aiReviewThreshold.value = config.aiReviewThreshold;
-    aiEditSimilarityPercent.value = Math.round((config.aiEditSimilarityThreshold ?? 0) * 100);
-    aiTopicReviewSystemPrompt.value = config.aiTopicReviewSystemPrompt ?? "";
-    aiTopicReviewUserPrompt.value = config.aiTopicReviewUserPrompt ?? "";
-    aiReplyReviewSystemPrompt.value = config.aiReplyReviewSystemPrompt ?? "";
-    aiReplyReviewUserPrompt.value = config.aiReplyReviewUserPrompt ?? "";
-    aiEditSimilaritySystemPrompt.value = config.aiEditSimilaritySystemPrompt ?? "";
-    aiEditSimilarityUserPrompt.value = config.aiEditSimilarityUserPrompt ?? "";
-    ElMessage.success("AI 审核配置已保存");
-  } finally {
-    savingConfig.value = false;
-  }
 }
 
 async function saveTrustConfig() {

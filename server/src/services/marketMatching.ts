@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
+import { acquireMarketOrderLock } from "./marketOrderLockService";
 import { runTrackedJob } from "./runtimeHealth";
 
 type MatchableItem = {
@@ -245,45 +246,90 @@ export async function notifyMatchesForWanted(wantedPostId: number) {
 
 export async function runMarketMeetupReminders(now = new Date()) {
   const deadline = new Date(now.getTime() + 24 * 60 * 60_000);
-  const orders = await prisma.marketOrder.findMany({
+  const candidates = await prisma.marketOrder.findMany({
     where: {
       deliveryType: "physical",
       status: { in: ["reserved", "paid", "delivering"] },
       meetupTime: { gte: now, lte: deadline },
       meetupReminderSentAt: null,
     },
-    include: { item: { select: { title: true } } },
+    select: { id: true },
     take: 200,
   });
-  if (!orders.length) return { orders: 0, notifications: 0 };
-  const userIds = [...new Set(orders.flatMap((order) => [order.buyerId, order.sellerId]))];
-  const preferences = await prisma.marketPreference.findMany({ where: { userId: { in: userIds } } });
-  const reminderEnabled = new Map(preferences.map((preference) => [preference.userId, preference.meetupRemindersEnabled]));
+  if (!candidates.length) return { orders: 0, notifications: 0 };
+
+  let orderCount = 0;
   let notificationCount = 0;
-  for (const order of orders) {
-    const recipients = [order.buyerId, order.sellerId].filter((userId) => reminderEnabled.get(userId) !== false);
-    if (recipients.length) {
-      const time = order.meetupTime!.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
-      await prisma.notification.createMany({
-        data: recipients.map((userId) => ({
-          userId,
-          category: "market",
-          level: "strong",
-          title: "校内面交即将开始",
-          content: `“${order.item.title}”约在 ${time}${order.meetupLocation ? `，地点：${order.meetupLocation}` : ""}。请提前与对方确认。`,
-          link: "/market/mine?tab=reservations",
-          source: "靠浦校园市集",
-          payload: JSON.stringify({ type: "market-meetup-reminder", orderId: order.id }),
-        })),
+  for (const candidate of candidates) {
+    const claimed = await prisma.$transaction(async (tx) => {
+      await acquireMarketOrderLock(tx, candidate.id);
+      const order = await tx.marketOrder.findUnique({
+        where: { id: candidate.id },
+        include: { item: { select: { title: true } } },
       });
-      notificationCount += recipients.length;
-    }
-    await prisma.marketOrder.updateMany({
-      where: { id: order.id, meetupReminderSentAt: null },
-      data: { meetupReminderSentAt: now },
+      if (
+        !order
+        || order.deliveryType !== "physical"
+        || !["reserved", "paid", "delivering"].includes(order.status)
+        || !order.meetupTime
+        || order.meetupTime < now
+        || order.meetupTime > deadline
+        || order.meetupReminderSentAt
+      ) {
+        return { orders: 0, notifications: 0 };
+      }
+      const claimedOrder = await tx.marketOrder.updateMany({
+        where: {
+          id: order.id,
+          deliveryType: "physical",
+          status: { in: ["reserved", "paid", "delivering"] },
+          meetupTime: { gte: now, lte: deadline },
+          meetupReminderSentAt: null,
+        },
+        data: { meetupReminderSentAt: now },
+      });
+      if (claimedOrder.count !== 1) return { orders: 0, notifications: 0 };
+
+      const userIds = [order.buyerId, order.sellerId];
+      const preferences = await tx.marketPreference.findMany({
+        where: { userId: { in: userIds } },
+      });
+      const reminderEnabled = new Map(
+        preferences.map((preference) => [
+          preference.userId,
+          preference.meetupRemindersEnabled,
+        ]),
+      );
+      const recipients = userIds.filter(
+        (userId) => reminderEnabled.get(userId) !== false,
+      );
+      if (recipients.length) {
+        const time = order.meetupTime.toLocaleString("zh-CN", {
+          timeZone: "Asia/Shanghai",
+          hour12: false,
+        });
+        await tx.notification.createMany({
+          data: recipients.map((userId) => ({
+            userId,
+            category: "market",
+            level: "strong",
+            title: "校内面交即将开始",
+            content: `“${order.item.title}”约在 ${time}${order.meetupLocation ? `，地点：${order.meetupLocation}` : ""}。请提前与对方确认。`,
+            link: "/market/mine?tab=reservations",
+            source: "靠浦校园市集",
+            payload: JSON.stringify({
+              type: "market-meetup-reminder",
+              orderId: order.id,
+            }),
+          })),
+        });
+      }
+      return { orders: 1, notifications: recipients.length };
     });
+    orderCount += claimed.orders;
+    notificationCount += claimed.notifications;
   }
-  return { orders: orders.length, notifications: notificationCount };
+  return { orders: orderCount, notifications: notificationCount };
 }
 
 export function startMarketReminderPoller() {

@@ -4,7 +4,7 @@
       <div class="auth-nav">
         <el-button text class="nav-btn" @click="goHome">
           <el-icon><ArrowLeft /></el-icon>
-          {{ reconnectMode ? "返回服务页" : "返回首页" }}
+          {{ reconnectReturnLabel }}
         </el-button>
       </div>
 
@@ -229,7 +229,13 @@ const formRef = ref<FormInstance>();
 const remember = ref(false);
 const savedCredsPresent = ref(hasCreds());
 const isDev = computed(() => import.meta.env.DEV);
-const reconnectMode = computed(() => route.query.reconnect === "ehall");
+const reconnectSource = computed(() => (
+  typeof route.query.reconnect === "string" ? route.query.reconnect : ""
+));
+const reconnectMode = computed(() => ["ehall", "ebridge", "school"].includes(reconnectSource.value));
+const reconnectReturnLabel = computed(() => (
+  reconnectSource.value === "ebridge" ? "返回教务页" : reconnectMode.value ? "返回服务页" : "返回首页"
+));
 const captchaRefreshing = ref(false);
 const sliderValue = ref(0);
 const sliderChecking = ref(false);
@@ -458,7 +464,7 @@ function loginSuccessMessage(name: string) {
 }
 
 function goHome() {
-  router.replace(reconnectMode.value ? "/services" : "/home");
+  router.replace(reconnectMode.value ? redirectTarget() : "/home");
 }
 
 async function onSubmit() {

@@ -55,7 +55,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { isMarketCampus, MARKET_CAMPUSES, marketApi, normalizeMarketCampus, type MarketCategoryOption, type WantedPostInput } from "@/api/market";
+import { isMarketCampus, MARKET_CAMPUSES, marketApi, normalizeMarketCampus, type MarketCampus, type MarketCategoryOption, type WantedPostInput, type WantedPostPatch } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { clearPublishDraft, readPublishDraft, savePublishDraft } from "@/utils/publishDraft";
 
@@ -66,7 +66,7 @@ const editingId = Number(route.params.id || 0);
 const categories = ref<MarketCategoryOption[]>([]);
 const loading = ref(false);
 const submitting = ref(false);
-const form = reactive({ title: "", category: "other", budgetMin: 0, budgetMax: 0, brandModel: "", condition: "", expectedTradeTime: "", campus: "", location: "", description: "", allowSellerOffers: true, anonymous: false, expiryDays: 30 });
+const form = reactive<{ title: string; category: string; budgetMin: number; budgetMax: number; brandModel: string; condition: string; expectedTradeTime: string; campus: MarketCampus | ""; location: string; description: string; allowSellerOffers: boolean; anonymous: boolean; expiryDays: number }>({ title: "", category: "other", budgetMin: 0, budgetMax: 0, brandModel: "", condition: "", expectedTradeTime: "", campus: "", location: "", description: "", allowSellerOffers: true, anonymous: false, expiryDays: 30 });
 const draftReady = ref(false);
 const draftSavedAt = ref(0);
 let draftTimer = 0;
@@ -143,12 +143,20 @@ function validate() {
   return true;
 }
 
+function toWantedPatch({ anonymous: _anonymous, ...patch }: WantedPostInput): WantedPostPatch {
+  return patch;
+}
+
 async function submit() {
   if (!validate() || submitting.value) return;
   submitting.value = true;
   try {
-    const payload: WantedPostInput = { ...form, anonymous: editingId ? undefined : form.anonymous };
-    const post = editingId ? await marketApi.updateWantedPost(editingId, payload) : await marketApi.createWantedPost(payload);
+    const campus = normalizeMarketCampus(form.campus);
+    if (!campus) return void ElMessage.warning("请选择 SIP 或 TC 校区");
+    const payload: WantedPostInput = { ...form, campus, anonymous: form.anonymous };
+    const post = editingId
+      ? await marketApi.updateWantedPost(editingId, toWantedPatch(payload))
+      : await marketApi.createWantedPost(payload);
     if (!editingId && form.anonymous) await auth.fetchMe();
     clearPublishDraft("market-wanted", auth.user?.id);
     ElMessage.success(editingId ? "求购需求已更新" : "求购需求已发布到广场");

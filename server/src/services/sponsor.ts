@@ -1,9 +1,12 @@
+import { Prisma, type SponsorOrder } from "@prisma/client";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { amountCentsToMoney, moneyToAmountCents } from "./epay";
 import { runTrackedJob } from "./runtimeHealth";
+import { acquireSponsorOrderLock } from "./sponsorOrderLockService";
 
 const SPONSOR_CONFIG_KEY = "sponsor.config";
+const SPONSOR_CONFIG_LOCK_KEY = 1_205_012n * 4_294_967_296n + 1n;
 const SPONSOR_ORDER_EXPIRE_MS = 3 * 60 * 60 * 1000;
 const SPONSOR_ORDER_EXPIRE_SWEEP_MS = 5 * 60 * 1000;
 let sponsorOrderExpiryPollerStarted = false;
@@ -16,6 +19,28 @@ export type SponsorConfig = {
   maxAmount: string;
   wallEnabled: boolean;
   allowMessage: boolean;
+};
+
+export type SponsorConfigInput = Omit<
+  Partial<SponsorConfig>,
+  "presetAmounts" | "minAmount" | "maxAmount"
+> & {
+  presetAmounts?: Array<string | number>;
+  minAmount?: string | number;
+  maxAmount?: string | number;
+};
+
+type SponsorClient = Prisma.TransactionClient | typeof prisma;
+
+type SponsorOrderUser = {
+  id: number;
+  username?: string;
+  nickname: string;
+  avatar: string | null;
+};
+
+type SerializableSponsorOrder = SponsorOrder & {
+  user?: SponsorOrderUser | null;
 };
 
 const DEFAULT_CONFIG: SponsorConfig = {
@@ -67,8 +92,10 @@ function normalizeConfig(input: Partial<SponsorConfig> | null | undefined): Spon
   };
 }
 
-export async function getSponsorConfig() {
-  const row = await prisma.siteSetting.findUnique({ where: { key: SPONSOR_CONFIG_KEY } });
+async function getSponsorConfigFromClient(client: SponsorClient) {
+  const row = await client.siteSetting.findUnique({
+    where: { key: SPONSOR_CONFIG_KEY },
+  });
   if (!row?.value) return { ...DEFAULT_CONFIG };
   try {
     return normalizeConfig(JSON.parse(row.value));
@@ -77,15 +104,49 @@ export async function getSponsorConfig() {
   }
 }
 
-export async function updateSponsorConfig(input: Partial<SponsorConfig>) {
-  const current = await getSponsorConfig();
-  const next = normalizeConfig({ ...current, ...input });
-  await prisma.siteSetting.upsert({
-    where: { key: SPONSOR_CONFIG_KEY },
-    update: { value: JSON.stringify(next) },
-    create: { key: SPONSOR_CONFIG_KEY, value: JSON.stringify(next) },
+export async function getSponsorConfig() {
+  return getSponsorConfigFromClient(prisma);
+}
+
+export async function updateSponsorConfig(input: SponsorConfigInput) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT 1 AS "locked"
+      FROM pg_advisory_xact_lock(${SPONSOR_CONFIG_LOCK_KEY})
+    `;
+    const current = await getSponsorConfigFromClient(tx);
+    const candidate = { ...current, ...input };
+    const minCents = moneyToAmountCents(candidate.minAmount);
+    const maxCents = moneyToAmountCents(candidate.maxAmount);
+    if (minCents > 99_999_900 || maxCents > 99_999_900) {
+      throw new Error("赞助金额配置超出允许范围");
+    }
+    if (minCents > maxCents) {
+      throw new Error("最低赞助金额不能高于最高赞助金额");
+    }
+    const presetCents = candidate.presetAmounts.map(moneyToAmountCents);
+    if (
+      presetCents.some(
+        (amount) => amount < minCents || amount > maxCents,
+      )
+    ) {
+      throw new Error("预设赞助金额必须位于最低和最高金额之间");
+    }
+    const next = normalizeConfig({
+      ...candidate,
+      minAmount: amountCentsToMoney(minCents),
+      maxAmount: amountCentsToMoney(maxCents),
+      presetAmounts: Array.from(new Set(presetCents))
+        .sort((left, right) => left - right)
+        .map((amount) => Number(amountCentsToMoney(amount))),
+    });
+    await tx.siteSetting.upsert({
+      where: { key: SPONSOR_CONFIG_KEY },
+      update: { value: JSON.stringify(next) },
+      create: { key: SPONSOR_CONFIG_KEY, value: JSON.stringify(next) },
+    });
+    return next;
   });
-  return next;
 }
 
 export function sponsorConfigToCents(config: SponsorConfig) {
@@ -137,12 +198,19 @@ export async function closeExpiredSponsorOrderIfNeeded<T extends {
   expiresAt?: Date | null;
 }>(order: T | null | undefined, now = new Date()) {
   if (!order || !isSponsorOrderExpired(order, now)) return order ?? null;
-  return prisma.sponsorOrder.update({
-    where: { id: order.id },
-    data: {
-      status: "closed",
-      closedAt: now,
-    },
+  return prisma.$transaction(async (tx) => {
+    await acquireSponsorOrderLock(tx, order.id);
+    const current = await tx.sponsorOrder.findUnique({
+      where: { id: order.id },
+    });
+    if (!current || !isSponsorOrderExpired(current, now)) return current;
+    return tx.sponsorOrder.update({
+      where: { id: current.id },
+      data: {
+        status: "closed",
+        closedAt: now,
+      },
+    });
   });
 }
 
@@ -163,7 +231,7 @@ export function startSponsorOrderExpiryPoller() {
   setInterval(tick, SPONSOR_ORDER_EXPIRE_SWEEP_MS);
 }
 
-export function formatSponsorOrder(order: any) {
+export function formatSponsorOrder(order: SerializableSponsorOrder) {
   return {
     id: order.id,
     outTradeNo: order.outTradeNo,
@@ -188,7 +256,9 @@ export function formatSponsorOrder(order: any) {
   };
 }
 
-export function formatSponsorWallOrder(order: any) {
+export function formatSponsorWallOrder(
+  order: SponsorOrder & { user: SponsorOrderUser },
+) {
   const anonymous = order.displayMode === "anonymous";
   return {
     id: order.id,

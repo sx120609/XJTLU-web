@@ -124,12 +124,16 @@
 import { ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { MoreFilled } from "@element-plus/icons-vue";
-import { adminApi, type AnnouncementSyncStatus } from "@/api/admin";
+import {
+  adminApi,
+  type AdminAnnouncement,
+  type AnnouncementLevel,
+  type AnnouncementSyncStatus,
+  type AnnouncementTargetClient,
+} from "@/api/admin";
 import { ehallApi } from "@/api/ehall";
 import { fmtDate } from "@/utils/format";
 import { useRoute, useRouter } from "vue-router";
-
-type AnnouncementTargetClient = "ios" | "android" | "harmony" | "web";
 
 const targetOptions: Array<{ value: AnnouncementTargetClient; label: string }> = [
   { value: "ios", label: "iOS" },
@@ -147,9 +151,23 @@ const targetLabelMap: Record<AnnouncementTargetClient, string> = {
 const route = useRoute();
 const router = useRouter();
 
-const list = ref<any[]>([]);
+const list = ref<AdminAnnouncement[]>([]);
 const editingId = ref<number | null>(null);
-const form = reactive({ title: "", content: "", level: "normal", link: "", source: "站务组", targetClients: [] as AnnouncementTargetClient[] });
+const form = reactive<{
+  title: string;
+  content: string;
+  level: AnnouncementLevel;
+  link: string;
+  source: string;
+  targetClients: AnnouncementTargetClient[];
+}>({
+  title: "",
+  content: "",
+  level: "normal",
+  link: "",
+  source: "站务组",
+  targetClients: [],
+});
 const targetAll = ref(true);
 const loading = ref(false);
 const loadError = ref("");
@@ -348,17 +366,17 @@ async function publish() {
   } finally { publishing.value = false; }
 }
 
-function handleAnnouncementCommand(command: string, row: any) {
+function handleAnnouncementCommand(command: string, row: AdminAnnouncement) {
   if (announcementBusyId.value !== null) return;
   if (command === "edit") return startEdit(row);
   if (command === "delete") return removeAnn(row);
 }
 
-function isAnnouncementBusy(row: any) {
+function isAnnouncementBusy(row: AdminAnnouncement) {
   return announcementBusyId.value === row.id;
 }
 
-function startEdit(row: any) {
+function startEdit(row: AdminAnnouncement) {
   editingId.value = row.id;
   form.title = row.title || "";
   form.content = row.content || "";
@@ -381,7 +399,7 @@ function resetForm() {
   targetAll.value = true;
 }
 
-async function removeAnn(a: any) {
+async function removeAnn(a: AdminAnnouncement) {
   if (announcementBusyId.value !== null) return;
   announcementBusyId.value = a.id;
   try {

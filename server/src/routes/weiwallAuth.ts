@@ -3,15 +3,27 @@ import { completeWeiwallTokenAuthCallback } from "../services/weiwallSync";
 
 export const weiwallAuthRouter = Router();
 
+export function escapeWeiwallAuthHtml(input: unknown) {
+  return String(input ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[char]!);
+}
+
 function renderResultPage(input: { ok: boolean; title: string; message: string }) {
   const color = input.ok ? "#0f766e" : "#b91c1c";
   const bg = input.ok ? "#ecfdf5" : "#fef2f2";
+  const title = escapeWeiwallAuthHtml(input.title);
+  const message = escapeWeiwallAuthHtml(input.message);
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${input.title}</title>
+    <title>${title}</title>
     <style>
       body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
       .wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -25,8 +37,8 @@ function renderResultPage(input: { ok: boolean; title: string; message: string }
     <div class="wrap">
       <div class="card">
         <div class="badge">${input.ok ? "授权成功" : "授权失败"}</div>
-        <h1>${input.title}</h1>
-        <p>${input.message}</p>
+        <h1>${title}</h1>
+        <p>${message}</p>
       </div>
     </div>
   </body>
@@ -45,11 +57,14 @@ weiwallAuthRouter.get("/callback", async (req, res) => {
       title: result.title,
       message: result.message,
     }));
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error
+      ? error.message
+      : "授权回调处理失败，请返回后台重新生成二维码再试。";
     res.status(400).type("html").send(renderResultPage({
       ok: false,
       title: "逛逛 Token 更新失败",
-      message: error?.message ?? "授权回调处理失败，请返回后台重新生成二维码再试。",
+      message,
     }));
   }
 });

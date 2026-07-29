@@ -5,6 +5,7 @@ import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } fr
 import { type AiJsonMessage, extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig } from "./siteSettings";
+import { acquireForumTopicLock } from "./forumTopicLockService";
 
 export type TopicAiReviewStatus =
   | "none"
@@ -669,48 +670,64 @@ function detectTextReviewApiMode(endpoint: string) {
 }
 
 export async function requestManualTopicReview(topicId: number, userId: number) {
-  const topic = await prisma.topic.findUnique({
-    where: { id: topicId },
-    select: { id: true, authorId: true, aiReviewStatus: true, hidden: true },
-  });
-  if (!topic) throw Errors.notFound("稿件不存在");
-  if (topic.authorId !== userId) throw Errors.forbidden("只能申请人工审核自己的稿件");
-  if (topic.aiReviewStatus !== "blocked_ai") throw Errors.badRequest("当前稿件不能申请人工审核");
-  if (!topic.hidden) throw Errors.badRequest("当前稿件无需申请人工审核");
+  await prisma.$transaction(async (tx) => {
+    await acquireForumTopicLock(tx, topicId);
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "User"
+      WHERE "id" = ${userId}
+      FOR UPDATE
+    `;
+    const topic = await tx.topic.findUnique({
+      where: { id: topicId },
+      select: { id: true, authorId: true, aiReviewStatus: true, hidden: true },
+    });
+    if (!topic) throw Errors.notFound("稿件不存在");
+    if (topic.authorId !== userId) throw Errors.forbidden("只能申请人工审核自己的稿件");
+    if (topic.aiReviewStatus !== "blocked_ai") throw Errors.badRequest("当前稿件不能申请人工审核");
+    if (!topic.hidden) throw Errors.badRequest("当前稿件无需申请人工审核");
 
-  const pendingCount = await prisma.topic.count({
-    where: {
-      authorId: userId,
-      aiReviewStatus: { in: ["manual_requested", "manual_reviewing"] },
-    },
-  });
-  if (pendingCount > 0) throw Errors.badRequest("你已有稿件在人工审核中");
+    const pendingCount = await tx.topic.count({
+      where: {
+        authorId: userId,
+        aiReviewStatus: { in: ["manual_requested", "manual_reviewing"] },
+      },
+    });
+    if (pendingCount > 0) throw Errors.badRequest("你已有稿件在人工审核中");
 
-  await prisma.$transaction([
-    prisma.topic.update({
+    await tx.topic.update({
       where: { id: topicId },
       data: { aiReviewStatus: "manual_requested" },
-    }),
-    prisma.user.update({
+    });
+    await tx.user.update({
       where: { id: userId },
       data: { topicSubmissionLocked: true },
-    }),
-  ]);
+    });
+  });
   await createAiReviewNotifications(topicId, userId);
 }
 
 export async function requestManualReplyReview(replyId: number, userId: number) {
-  const reply = await prisma.reply.findUnique({
+  const initial = await prisma.reply.findUnique({
     where: { id: replyId },
-    select: { id: true, authorId: true, hidden: true, content: true, aiReviewStatus: true, aiReviewReason: true, aiRiskScore: true, topicId: true },
+    select: { topicId: true },
   });
-  if (!reply) throw Errors.notFound("回复不存在");
-  if (reply.authorId !== userId) throw Errors.forbidden("只能申请人工审核自己的回复");
-  if (!reply.hidden) throw Errors.badRequest("当前回复无需申请人工审核");
-  if (reply.aiReviewStatus !== "blocked_ai") throw Errors.badRequest("当前回复不能申请人工审核");
-  await prisma.reply.update({
-    where: { id: replyId },
-    data: { aiReviewStatus: "manual_requested" },
+  if (!initial) throw Errors.notFound("回复不存在");
+  const reply = await prisma.$transaction(async (tx) => {
+    await acquireForumTopicLock(tx, initial.topicId);
+    const current = await tx.reply.findUnique({
+      where: { id: replyId },
+      select: { id: true, authorId: true, hidden: true, content: true, aiReviewStatus: true, aiReviewReason: true, aiRiskScore: true, topicId: true },
+    });
+    if (!current) throw Errors.notFound("回复不存在");
+    if (current.authorId !== userId) throw Errors.forbidden("只能申请人工审核自己的回复");
+    if (!current.hidden) throw Errors.badRequest("当前回复无需申请人工审核");
+    if (current.aiReviewStatus !== "blocked_ai") throw Errors.badRequest("当前回复不能申请人工审核");
+    return tx.reply.update({
+      where: { id: replyId },
+      data: { aiReviewStatus: "manual_requested" },
+      select: { id: true, content: true, aiReviewReason: true, aiRiskScore: true, topicId: true },
+    });
   });
   await prisma.notification.create({
     data: {
@@ -756,14 +773,17 @@ export async function requestManualReplyReview(replyId: number, userId: number) 
   }
 }
 
-export async function refreshTopicSubmissionLock(userId: number) {
-  const pending = await prisma.topic.count({
+export async function refreshTopicSubmissionLock(
+  userId: number,
+  client: Pick<typeof prisma, "topic" | "user"> = prisma,
+) {
+  const pending = await client.topic.count({
     where: {
       authorId: userId,
       aiReviewStatus: { in: ["manual_requested", "manual_reviewing"] },
     },
   });
-  await prisma.user.update({
+  await client.user.update({
     where: { id: userId },
     data: { topicSubmissionLocked: pending > 0 },
   }).catch(() => {});

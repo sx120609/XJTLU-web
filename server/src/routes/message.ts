@@ -4,48 +4,16 @@ import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { validate } from "../middleware/validate";
 import { detectLoginClient } from "../utils/loginClient";
+import {
+  notificationTargetClientWhere,
+  notificationVisibleToClient,
+} from "../services/notificationTargeting";
 
 export const messageRouter = Router();
 
 function safeJson(value: string | null | undefined) {
   if (!value) return {};
   try { return JSON.parse(value); } catch { return {}; }
-}
-
-const notificationTargetClients = ["ios", "android", "harmony", "web"] as const;
-
-function effectiveMessageClient(client: string) {
-  return client === "unknown" ? "web" : client;
-}
-
-function parseNotificationTargets(value?: string | null) {
-  if (!value || value === "all") return null;
-  const allowed = new Set<string>(notificationTargetClients);
-  const targets = value
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter((item) => allowed.has(item));
-  return targets.length ? new Set(targets) : null;
-}
-
-function notificationVisibleToClient(notification: { targetClient?: string | null }, client: string) {
-  const targets = parseNotificationTargets(notification.targetClient);
-  if (!targets) return true;
-  return targets.has(effectiveMessageClient(client));
-}
-
-function notificationTargetClientWhere(client: string) {
-  const target = effectiveMessageClient(client);
-  return {
-    OR: [
-      { targetClient: null },
-      { targetClient: "all" },
-      { targetClient: target },
-      { targetClient: { startsWith: `${target},` } },
-      { targetClient: { endsWith: `,${target}` } },
-      { targetClient: { contains: `,${target},` } },
-    ],
-  };
 }
 
 messageRouter.get("/", async (req, res, next) => {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { getRuntimeHealthSnapshot, runTrackedJob } from "../src/services/runtimeHealth";
 
@@ -33,4 +34,34 @@ test("phase 6 keeps request tracing and release verification wired", () => {
   const snapshot = getRuntimeHealthSnapshot();
   assert.ok(snapshot.process.startedAt);
   assert.ok(snapshot.process.memory.heapTotalBytes > 0);
+
+  const app = readFileSync(new URL("../src/app.ts", import.meta.url), "utf8");
+  const serverEntry = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const backgroundWorkers = readFileSync(new URL("../src/runtime/backgroundWorkers.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /start(?:Forum|Market|Promotion|Qq|Runtime|Sponsor)[A-Za-z]+(?:Poller|Sync)\(\)/);
+  assert.match(serverEntry, /startBackgroundWorkers\(\)/);
+  assert.match(backgroundWorkers, /startForumImageModerationPoller\(\)/);
+  assert.match(backgroundWorkers, /startXjtluAnnouncementSyncScheduler\(\)/);
+});
+
+test("school portal failures stay isolated from the site session and stop terminal retries", () => {
+  const ebridge = readFileSync(new URL("../src/services/xjtluEbridgeClient.ts", import.meta.url), "utf8");
+  const sso = readFileSync(new URL("../src/services/xjtluSsoClient.ts", import.meta.url), "utf8");
+  const academicPage = readFileSync(new URL("../../web/src/views/academic/Index.vue", import.meta.url), "utf8");
+  const announcements = readFileSync(new URL("../src/services/xjtluAnnouncementSync.ts", import.meta.url), "utf8");
+
+  assert.match(ebridge, /EBRIDGE_SESSION_EXPIRED_CODE = 4601/);
+  assert.match(ebridge, /new HttpError\(409, EBRIDGE_SESSION_EXPIRED_CODE/);
+  assert.match(ebridge, /eBridge 登录失败（学校端返回 \$\{result\.response\.status\}）/);
+  assert.match(sso, /Establishing eHall and eBridge concurrently with cloned cookie jars/);
+  assert.match(sso, /uimCookies: pending\.cookies/);
+  assert.match(academicPage, /if \(loading\.value\) return/);
+  assert.match(academicPage, /academicApi\.status\(\{\s*refresh: true/);
+  assert.match(academicPage, /suppressAuthRedirect: true/);
+  assert.doesNotMatch(academicPage, /auth\.logout\(\)/);
+  assert.doesNotMatch(academicPage, /退出并重新登录/);
+  assert.match(academicPage, /重新连接 eBridge/);
+  assert.match(academicPage, /reconnect: "ebridge"/);
+  assert.match(announcements, /enabled: authorizationExpired \? false/);
+  assert.match(announcements, /encryptedSession: authorizationExpired \? ""/);
 });

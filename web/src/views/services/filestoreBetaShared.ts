@@ -292,11 +292,11 @@ export function normalizeFieldKey(value: string) {
 }
 
 export function statusText(status: FilestoreBetaStatus) {
-  return status === "open" ? "开放中" : "已关闭";
+  return status === "open" ? "开放中" : status === "draft" ? "草稿" : "已关闭";
 }
 
 export function statusTagType(status: FilestoreBetaStatus) {
-  return status === "open" ? "success" : "info";
+  return status === "open" ? "success" : status === "draft" ? "warning" : "info";
 }
 
 export function formatDateTime(value: string) {

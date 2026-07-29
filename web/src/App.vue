@@ -114,6 +114,10 @@ import { router } from "@/router";
 import { messageApi } from "@/api/message";
 import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import {
+  isExternalNotificationLink,
+  safeNotificationLink,
+} from "@/utils/notificationLink";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
@@ -425,11 +429,12 @@ async function ackStrongNotice() {
 
 function openStrongNoticeLink() {
   const current = currentStrongNotice.value;
-  if (!current?.link) return;
-  if (current.link.startsWith("/")) {
-    router.push(current.link);
+  const target = safeNotificationLink(current?.link);
+  if (!target) return;
+  if (!isExternalNotificationLink(target)) {
+    router.push(target);
   } else {
-    window.open(current.link, "_blank", "noopener,noreferrer");
+    window.open(target, "_blank", "noopener,noreferrer");
   }
 }
 </script>

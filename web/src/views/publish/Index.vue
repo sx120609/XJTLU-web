@@ -31,7 +31,7 @@ import { Bell, ChatLineRound, Goods, Reading, Right, Search } from "@element-plu
 const actions = [
   { title: "出售物品", description: "发布闲置物品的价格、成色、图片和面交信息。", to: "/publish/listing", icon: Goods, tone: "teal" },
   { title: "发布求购", description: "填写预算与具体需求，让有合适物品的同学回应。", to: "/publish/wanted", icon: Search, tone: "amber" },
-  { title: "分享免费原创", description: "上传本人原创或已获授权的课程笔记、复习资料和学习模板，始终免费。", to: "/learning/free/publish", icon: Reading, tone: "rose", featured: true },
+  { title: "发布付费资料", description: "上传本人原创、已获授权或依法可使用的课程资料，经创作者认证和人工审核后上架。", to: "/learning/materials/publish", icon: Reading, tone: "rose", featured: true },
   { title: "发起讨论", description: "到校园广场提问、交流或分享经验。", to: "/publish/post", icon: ChatLineRound, tone: "violet" },
   { title: "分享校园信息", description: "发布活动、提醒和有时效性的校园生活信息。", to: "/publish/post?kind=info", icon: Bell, tone: "blue" },
 ] as const;

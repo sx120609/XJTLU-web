@@ -1,9 +1,12 @@
 import jwt from "jsonwebtoken";
+import { createHash } from "node:crypto";
 import { config } from "../config";
+import { prisma } from "../prisma";
 import { getSiteOrigin } from "./siteSettings";
 import {
   clearOneDriveChinaAuthorization,
   getMediaStorageRuntimeConfig,
+  normalizeSharePointUrl,
   setOneDriveChinaDriveSelection,
   setOneDriveChinaLastError,
   setOneDriveChinaRefreshTokenState,
@@ -72,7 +75,6 @@ const rootItemIdCache = new Map<string, string>();
 const folderIdCache = new Map<string, string>();
 
 export async function buildOneDriveChinaAuthorization(input: {
-  requestOrigin: string;
   adminUserId: number;
 }) {
   const runtime = await getMediaStorageRuntimeConfig();
@@ -80,7 +82,7 @@ export async function buildOneDriveChinaAuthorization(input: {
   if (!runtime.oneDriveChinaClientSecret.trim()) throw new Error("请先填写 Azure 应用密钥");
   if (!runtime.oneDriveChinaSharepointUrl.trim()) throw new Error("请先填写 SharePoint 站点地址");
 
-  const callbackUrl = buildOneDriveChinaCallbackUrl(input.requestOrigin, runtime);
+  const callbackUrl = getOneDriveChinaCallbackUrl();
   const state = jwt.sign({
     kind: "onedrive-cn",
     adminUserId: input.adminUserId,
@@ -104,15 +106,10 @@ export async function buildOneDriveChinaAuthorization(input: {
 export async function completeOneDriveChinaAuthorization(input: {
   code: string;
   state: string;
-  requestOrigin: string;
 }) {
   const runtime = await getMediaStorageRuntimeConfig();
-  const payload = jwt.verify(String(input.state || ""), config.jwtSecret) as AuthStatePayload;
-  if (payload.kind !== "onedrive-cn") throw new Error("授权状态无效");
-  if (payload.fingerprint !== buildStorageFingerprint(runtime)) {
-    throw new Error("授权期间配置已变更，请返回后台重新发起授权");
-  }
-  const callbackUrl = buildOneDriveChinaCallbackUrl(input.requestOrigin, runtime);
+  await validateOneDriveChinaAuthorizationState(input.state, runtime);
+  const callbackUrl = getOneDriveChinaCallbackUrl();
   const token = await exchangeAuthorizationCode({
     clientId: runtime.oneDriveChinaClientId,
     clientSecret: runtime.oneDriveChinaClientSecret,
@@ -145,6 +142,40 @@ export async function completeOneDriveChinaAuthorization(input: {
     driveName: selectedDrive?.name || "",
     drives,
   };
+}
+
+export async function validateOneDriveChinaAuthorizationState(
+  state: string,
+  runtimeInput?: Awaited<ReturnType<typeof getMediaStorageRuntimeConfig>>,
+) {
+  let payload: AuthStatePayload;
+  try {
+    payload = jwt.verify(
+      String(state || ""),
+      config.jwtSecret,
+    ) as AuthStatePayload;
+  } catch {
+    throw new Error("授权状态无效或已过期，请返回后台重新发起授权");
+  }
+  if (
+    payload.kind !== "onedrive-cn"
+    || !Number.isInteger(payload.adminUserId)
+    || payload.adminUserId <= 0
+  ) {
+    throw new Error("授权状态无效或已过期，请返回后台重新发起授权");
+  }
+  const runtime = runtimeInput ?? await getMediaStorageRuntimeConfig();
+  if (payload.fingerprint !== buildStorageFingerprint(runtime)) {
+    throw new Error("授权期间配置已变更，请返回后台重新发起授权");
+  }
+  const admin = await prisma.user.findUnique({
+    where: { id: payload.adminUserId },
+    select: { role: true, status: true },
+  });
+  if (!admin || admin.role !== "admin" || admin.status !== "active") {
+    throw new Error("发起授权的管理员账号已不可用");
+  }
+  return { adminUserId: payload.adminUserId };
 }
 
 export async function listOneDriveChinaDriveOptions() {
@@ -967,12 +998,11 @@ async function listDriveChildrenByItemId(driveId: string, itemId: string) {
 }
 
 function parseSharePointCandidateInput(input: string) {
-  const raw = String(input || "").trim();
-  if (!raw) throw new Error("请先填写 SharePoint 站点地址");
-  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const normalized = normalizeSharePointUrl(input);
+  if (!normalized) throw new Error("请先填写 SharePoint 站点地址");
   let url: URL;
   try {
-    url = new URL(withScheme);
+    url = new URL(normalized);
   } catch {
     throw new Error("SharePoint 地址格式不正确");
   }
@@ -1003,23 +1033,34 @@ function buildSiteByPathEndpoint(host: string, path: string) {
 }
 
 function buildStorageFingerprint(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfig>>) {
-  return [
+  return createHash("sha256").update([
     runtime.oneDriveChinaClientId.trim(),
+    runtime.oneDriveChinaClientSecret.trim(),
     runtime.oneDriveChinaSharepointUrl.trim(),
     runtime.oneDriveChinaRootPath.trim(),
-  ].join("|");
+    getSiteOrigin().trim(),
+  ].join("|")).digest("hex");
 }
 
-function buildOneDriveChinaCallbackUrl(requestOrigin: string, _runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfig>>) {
-  const configuredOrigin = getSiteOrigin();
-  return `${normalizeOrigin(configuredOrigin || requestOrigin)}${ONEDRIVE_CN_CALLBACK_PATH}`;
+export function getOneDriveChinaCallbackUrl() {
+  return `${normalizeOrigin(getSiteOrigin())}${ONEDRIVE_CN_CALLBACK_PATH}`;
 }
 
 function normalizeOrigin(input: string) {
   const raw = String(input || "").trim();
-  if (!raw) throw new Error("当前请求缺少可用站点域名，无法生成回调地址");
+  if (!raw) throw new Error("请先在站点配置中设置网站域名");
   const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   const parsed = new URL(withScheme);
+  const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(
+    parsed.hostname.toLowerCase(),
+  );
+  if (
+    (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLoopback))
+    || parsed.username
+    || parsed.password
+  ) {
+    throw new Error("OAuth 回调域名必须使用 HTTPS（本机开发地址除外）");
+  }
   return parsed.origin.replace(/\/+$/, "");
 }
 

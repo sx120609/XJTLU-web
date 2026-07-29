@@ -12,6 +12,92 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum LearningMaterialCommerceMode {
+  legacy_free
+  paid
+}
+
+enum LearningCreatorApplicationStatus {
+  draft
+  submitted
+  reviewing
+  approved
+  rejected
+  withdrawn
+}
+
+enum LearningCreatorStatus {
+  active
+  suspended
+  revoked
+}
+
+enum LearningMaterialReviewStatus {
+  submitted
+  reviewing
+  approved
+  rejected
+  withdrawn
+}
+
+enum LearningPrivateAssetKind {
+  collection_qr
+  payment_evidence
+  refund_evidence
+  dispute_attachment
+}
+
+enum LearningPrivateAssetStatus {
+  active
+  blocked
+  removed
+}
+
+enum LearningCollectionProvider {
+  alipay
+  wechat
+}
+
+enum LearningCollectionMethodStatus {
+  active
+  disabled
+  rejected
+}
+
+enum LearningCommerceOrderStatus {
+  pending_payment
+  awaiting_seller_confirmation
+  disputed
+  delivered
+  completed
+  refunded
+  cancelled
+  expired
+}
+
+enum LearningPaymentEvidenceStatus {
+  submitted
+  accepted
+  rejected
+  superseded
+}
+
+enum LearningOrderIssueStatus {
+  open
+  waiting_buyer
+  waiting_seller
+  refund_requested
+  refund_recorded
+  resolved
+  closed
+}
+
+enum LearningCommerceCommandStatus {
+  processing
+  completed
+  failed
+}
+
 // ============ 用户（站内独立账号，不接学校账号） ============
 
 model User {
@@ -52,6 +138,7 @@ model User {
 
   topics                                 Topic[]
   manualReviewedTopics                   Topic[]                          @relation("ManualReviewedTopics")
+  manualReviewedReplies                  Reply[]                          @relation("ManualReviewedReplies")
   manualReviewedImages                   ForumImageAsset[]                @relation("ManualReviewedImages")
   manualReviewedVideos                   ForumVideoAsset[]                @relation("ManualReviewedVideos")
   replies                                Reply[]
@@ -119,6 +206,21 @@ model User {
   learningMaterialSupportTicketsAsBuyer  LearningMaterialSupportTicket[]  @relation("LearningMaterialSupportBuyer")
   learningMaterialSupportTicketsAsSeller LearningMaterialSupportTicket[]  @relation("LearningMaterialSupportSeller")
   learningMaterialSupportMessages        LearningMaterialSupportMessage[] @relation("LearningMaterialSupportMessageSender")
+  learningCreatorApplications            LearningCreatorApplication[]     @relation("LearningCreatorApplicant")
+  reviewedLearningCreatorApplications    LearningCreatorApplication[]     @relation("LearningCreatorApplicationReviewer")
+  learningCreatorProfile                 LearningCreatorProfile?          @relation("LearningCreatorUser")
+  certifiedLearningCreatorProfiles       LearningCreatorProfile[]         @relation("LearningCreatorCertifier")
+  learningPrivateAssets                  LearningPrivateAsset[]           @relation("LearningPrivateAssetOwner")
+  learningCollectionMethods              LearningCollectionMethod[]       @relation("LearningCollectionMethodCreator")
+  reviewedLearningCollectionMethods      LearningCollectionMethod[]       @relation("LearningCollectionMethodReviewer")
+  submittedLearningMaterialReviews       LearningMaterialReview[]         @relation("LearningMaterialReviewSubmitter")
+  reviewedLearningMaterialReviews        LearningMaterialReview[]         @relation("LearningMaterialReviewReviewer")
+  submittedLearningPaymentEvidence       LearningPaymentEvidence[]        @relation("LearningPaymentEvidenceSubmitter")
+  handledLearningPaymentEvidence         LearningPaymentEvidence[]        @relation("LearningPaymentEvidenceHandler")
+  learningOrderEvents                    LearningOrderEvent[]             @relation("LearningOrderEventActor")
+  requestedLearningOrderIssues           LearningOrderIssue[]             @relation("LearningOrderIssueRequester")
+  resolvedLearningOrderIssues            LearningOrderIssue[]             @relation("LearningOrderIssueResolver")
+  learningCommerceCommands               LearningCommerceCommand[]        @relation("LearningCommerceCommandActor")
   marketPreference                       MarketPreference?
   marketMatchNotices                     MarketMatchNotice[]
 }
@@ -219,36 +321,41 @@ model Topic {
 }
 
 model Reply {
-  id             Int       @id @default(autoincrement())
-  topicId        Int
-  authorId       Int
-  content        String // Markdown
-  aiReviewStatus String    @default("none") // none / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
-  aiRiskLevel    String?
-  aiRiskScore    Int?
-  aiReviewReason String?
-  aiReviewDetail String?
-  aiModel        String?
-  aiReviewedAt   DateTime?
+  id                 Int       @id @default(autoincrement())
+  topicId            Int
+  authorId           Int
+  content            String // Markdown
+  aiReviewStatus     String    @default("none") // none / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
+  aiRiskLevel        String?
+  aiRiskScore        Int?
+  aiReviewReason     String?
+  aiReviewDetail     String?
+  aiModel            String?
+  aiReviewedAt       DateTime?
+  manualReviewedById Int?
+  manualReviewedAt   DateTime?
+  manualReviewNote   String?
   // 楼中楼：parentReplyId 指向父级回复，null 表示直接对主帖
-  parentReplyId  Int?
-  isAnonymous    Boolean   @default(false)
-  anonymousAlias String?
+  parentReplyId      Int?
+  isAnonymous        Boolean   @default(false)
+  anonymousAlias     String?
   // 排序楼层号
-  floor          Int       @default(0)
-  likeCount      Int       @default(0)
-  hidden         Boolean   @default(false)
-  createdAt      DateTime  @default(now())
+  floor              Int       @default(0)
+  likeCount          Int       @default(0)
+  hidden             Boolean   @default(false)
+  createdAt          DateTime  @default(now())
 
-  topic       Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  author      User             @relation(fields: [authorId], references: [id])
-  parentReply Reply?           @relation("ReplyToReply", fields: [parentReplyId], references: [id])
-  children    Reply[]          @relation("ReplyToReply")
-  likes       Like[]
-  weiwallMap  WeiwallReplyMap?
+  topic            Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author           User             @relation(fields: [authorId], references: [id])
+  manualReviewedBy User?            @relation("ManualReviewedReplies", fields: [manualReviewedById], references: [id], onDelete: SetNull)
+  parentReply      Reply?           @relation("ReplyToReply", fields: [parentReplyId], references: [id])
+  children         Reply[]          @relation("ReplyToReply")
+  likes            Like[]
+  weiwallMap       WeiwallReplyMap?
 
   @@index([topicId, floor])
   @@index([topicId, hidden, floor])
+  @@index([manualReviewedById])
 }
 
 model Like {
@@ -1192,6 +1299,7 @@ model MarketOrder {
   violations              MarketViolation[]
   learningMaterialAccess  LearningMaterialAccess?
   learningMaterialSupport LearningMaterialSupportTicket?
+  learningCommerceOrder   LearningCommerceOrder?
 
   @@index([buyerId, status, createdAt])
   @@index([sellerId, status, createdAt])
@@ -1725,23 +1833,24 @@ model LearningMaterialType {
 }
 
 model LearningMaterialProfile {
-  id                   Int       @id @default(autoincrement())
-  itemId               Int       @unique
+  id                   Int                          @id @default(autoincrement())
+  itemId               Int                          @unique
   typeId               Int?
   courseCode           String?
   college              String?
   major                String?
   applicableSemester   String?
-  declaredFormats      String    @default("[]")
+  declaredFormats      String                       @default("[]")
   pageCount            Int?
   versionLabel         String?
   language             String?
   originalityKind      String?
   originalityStatement String?
   rightsConfirmedAt    DateTime?
-  activeVersionId      Int?      @unique
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  commerceMode         LearningMaterialCommerceMode @default(paid)
+  activeVersionId      Int?                         @unique
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 
   item          MarketItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
   type          LearningMaterialType?     @relation(fields: [typeId], references: [id], onDelete: SetNull)
@@ -1766,11 +1875,13 @@ model LearningMaterialVersion {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  profile   LearningMaterialProfile  @relation("LearningMaterialVersions", fields: [profileId], references: [id], onDelete: Cascade)
-  activeFor LearningMaterialProfile? @relation("LearningMaterialActiveVersion")
-  createdBy User                     @relation("LearningMaterialVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  files     LearningMaterialFile[]
-  accesses  LearningMaterialAccess[]
+  profile        LearningMaterialProfile  @relation("LearningMaterialVersions", fields: [profileId], references: [id], onDelete: Cascade)
+  activeFor      LearningMaterialProfile? @relation("LearningMaterialActiveVersion")
+  createdBy      User                     @relation("LearningMaterialVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  files          LearningMaterialFile[]
+  accesses       LearningMaterialAccess[]
+  reviews        LearningMaterialReview[]
+  commerceOrders LearningCommerceOrder[]
 
   @@unique([profileId, versionNumber])
   @@index([profileId, status, createdAt])
@@ -1850,6 +1961,255 @@ model LearningMaterialSupportMessage {
 
   @@index([ticketId, createdAt])
   @@index([senderId, createdAt])
+}
+
+// ============ 付费学习资料交易内核 ============
+
+model LearningCreatorApplication {
+  id                 Int                              @id @default(autoincrement())
+  userId             Int
+  status             LearningCreatorApplicationStatus @default(submitted)
+  expertise          String                           @default("")
+  experience         String                           @default("")
+  sampleDescription  String                           @default("")
+  rightsCommitmentAt DateTime
+  submittedAt        DateTime                         @default(now())
+  reviewedById       Int?
+  reviewedAt         DateTime?
+  reviewReason       String                           @default("")
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
+
+  user       User  @relation("LearningCreatorApplicant", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("LearningCreatorApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, createdAt])
+  @@index([status, submittedAt])
+  @@index([reviewedById, reviewedAt])
+}
+
+model LearningCreatorProfile {
+  id             Int                   @id @default(autoincrement())
+  userId         Int                   @unique
+  status         LearningCreatorStatus @default(active)
+  certifiedById  Int?
+  certifiedAt    DateTime              @default(now())
+  lastReviewedAt DateTime?
+  statusReason   String                @default("")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  user              User                       @relation("LearningCreatorUser", fields: [userId], references: [id], onDelete: Cascade)
+  certifiedBy       User?                      @relation("LearningCreatorCertifier", fields: [certifiedById], references: [id], onDelete: SetNull)
+  collectionMethods LearningCollectionMethod[]
+
+  @@index([status, certifiedAt])
+  @@index([certifiedById, certifiedAt])
+}
+
+model LearningPrivateAsset {
+  id           Int                        @id @default(autoincrement())
+  ownerId      Int
+  kind         LearningPrivateAssetKind
+  originalName String
+  storedName   String
+  relativePath String                     @unique
+  mimeType     String
+  fileSize     Int
+  sha256       String
+  status       LearningPrivateAssetStatus @default(active)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  owner            User                      @relation("LearningPrivateAssetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  collectionMethod LearningCollectionMethod?
+  paymentEvidence  LearningPaymentEvidence?
+  refundIssue      LearningOrderIssue?       @relation("LearningIssueRefundAsset")
+
+  @@index([ownerId, kind, status, createdAt])
+  @@index([sha256])
+}
+
+model LearningCollectionMethod {
+  id               Int                            @id @default(autoincrement())
+  creatorId        Int
+  creatorProfileId Int
+  provider         LearningCollectionProvider
+  assetId          Int                            @unique
+  label            String                         @default("")
+  versionNumber    Int
+  status           LearningCollectionMethodStatus @default(active)
+  reviewedById     Int?
+  reviewedAt       DateTime?
+  disabledAt       DateTime?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  creator        User                    @relation("LearningCollectionMethodCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorProfile LearningCreatorProfile  @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+  asset          LearningPrivateAsset    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  reviewedBy     User?                   @relation("LearningCollectionMethodReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  commerceOrders LearningCommerceOrder[]
+
+  @@unique([creatorId, provider, versionNumber])
+  @@index([creatorId, status, createdAt])
+  @@index([creatorProfileId, status])
+  @@index([reviewedById, reviewedAt])
+}
+
+model LearningMaterialReview {
+  id            Int                          @id @default(autoincrement())
+  versionId     Int
+  round         Int
+  status        LearningMaterialReviewStatus @default(submitted)
+  submittedById Int
+  submittedAt   DateTime                     @default(now())
+  reviewedById  Int?
+  reviewedAt    DateTime?
+  reason        String                       @default("")
+  checklist     String                       @default("{}")
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  version     LearningMaterialVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  submittedBy User                    @relation("LearningMaterialReviewSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  reviewedBy  User?                   @relation("LearningMaterialReviewReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([versionId, round])
+  @@index([versionId, status, createdAt])
+  @@index([status, submittedAt])
+  @@index([reviewedById, reviewedAt])
+}
+
+model LearningCommerceOrder {
+  id                  Int                          @id @default(autoincrement())
+  orderId             Int                          @unique
+  versionId           Int
+  collectionMethodId  Int?
+  mode                LearningMaterialCommerceMode @default(paid)
+  status              LearningCommerceOrderStatus  @default(pending_payment)
+  statusVersion       Int                          @default(0)
+  priceCents          Int
+  currency            String                       @default("CNY")
+  paymentDueAt        DateTime?
+  sellerResponseDueAt DateTime?
+  deliveredAt         DateTime?
+  completionDueAt     DateTime?
+  completedAt         DateTime?
+  refundedAt          DateTime?
+  cancelledAt         DateTime?
+  cancelReason        String                       @default("")
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  order            MarketOrder               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  version          LearningMaterialVersion   @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  collectionMethod LearningCollectionMethod? @relation(fields: [collectionMethodId], references: [id], onDelete: Restrict)
+  paymentEvidence  LearningPaymentEvidence[]
+  events           LearningOrderEvent[]
+  issues           LearningOrderIssue[]
+
+  @@index([status, paymentDueAt])
+  @@index([status, sellerResponseDueAt])
+  @@index([status, completionDueAt])
+  @@index([versionId, status, createdAt])
+  @@index([collectionMethodId, createdAt])
+}
+
+model LearningPaymentEvidence {
+  id              Int                           @id @default(autoincrement())
+  commerceOrderId Int
+  assetId         Int                           @unique
+  submittedById   Int
+  attempt         Int
+  status          LearningPaymentEvidenceStatus @default(submitted)
+  claimedPaidAt   DateTime?
+  buyerNote       String                        @default("")
+  handledById     Int?
+  handledReason   String                        @default("")
+  handledAt       DateTime?
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+
+  commerceOrder LearningCommerceOrder @relation(fields: [commerceOrderId], references: [id], onDelete: Cascade)
+  asset         LearningPrivateAsset  @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  submittedBy   User                  @relation("LearningPaymentEvidenceSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  handledBy     User?                 @relation("LearningPaymentEvidenceHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@unique([commerceOrderId, attempt])
+  @@index([commerceOrderId, status, createdAt])
+  @@index([submittedById, createdAt])
+  @@index([handledById, handledAt])
+}
+
+model LearningOrderEvent {
+  id              Int                          @id @default(autoincrement())
+  commerceOrderId Int
+  sequence        Int
+  type            String
+  actorId         Int?
+  fromStatus      LearningCommerceOrderStatus?
+  toStatus        LearningCommerceOrderStatus?
+  requestId       String                       @default("")
+  detail          String                       @default("{}")
+  createdAt       DateTime                     @default(now())
+
+  commerceOrder LearningCommerceOrder @relation(fields: [commerceOrderId], references: [id], onDelete: Cascade)
+  actor         User?                 @relation("LearningOrderEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([commerceOrderId, sequence])
+  @@index([commerceOrderId, createdAt])
+  @@index([type, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model LearningOrderIssue {
+  id                Int                      @id @default(autoincrement())
+  commerceOrderId   Int
+  requestedById     Int
+  type              String
+  status            LearningOrderIssueStatus @default(open)
+  reason            String
+  detail            String                   @default("")
+  refundAmountCents Int?
+  refundAssetId     Int?                     @unique
+  resolvedById      Int?
+  resolution        String                   @default("")
+  resolvedAt        DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  commerceOrder LearningCommerceOrder @relation(fields: [commerceOrderId], references: [id], onDelete: Cascade)
+  requestedBy   User                  @relation("LearningOrderIssueRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  refundAsset   LearningPrivateAsset? @relation("LearningIssueRefundAsset", fields: [refundAssetId], references: [id], onDelete: Restrict)
+  resolvedBy    User?                 @relation("LearningOrderIssueResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([commerceOrderId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([resolvedById, resolvedAt])
+}
+
+model LearningCommerceCommand {
+  id             Int                           @id @default(autoincrement())
+  actorId        Int
+  operation      String
+  idempotencyKey String
+  requestHash    String
+  status         LearningCommerceCommandStatus @default(processing)
+  resourceType   String                        @default("")
+  resourceId     String                        @default("")
+  responseCode   Int?
+  responseBody   String                        @default("")
+  expiresAt      DateTime
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+
+  actor User @relation("LearningCommerceCommandActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@unique([actorId, operation, idempotencyKey])
+  @@index([status, expiresAt])
+  @@index([resourceType, resourceId, createdAt])
 }
 
 // ============ 通知与待办（保留，但语义改为论坛事件） ============

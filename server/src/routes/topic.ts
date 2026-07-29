@@ -261,6 +261,30 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     const manualLocked = aiResult?.riskLevel === "medium" || aiResult?.riskScore === undefined ? false : false;
     const anonymousAlias = anonymous ? createAnonymousAlias() : null;
     const topic = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "Board"
+        WHERE "id" = ${board.id}
+        FOR KEY SHARE
+      `;
+      const currentBoard = await tx.board.findUnique({
+        where: { id: board.id },
+        select: {
+          slug: true,
+          type: true,
+          readOnly: true,
+          anonymousEnabled: true,
+        },
+      });
+      if (!currentBoard) throw Errors.notFound("板块不存在");
+      if (
+        currentBoard.slug !== board.slug
+        || currentBoard.type !== board.type
+        || currentBoard.readOnly !== board.readOnly
+        || currentBoard.anonymousEnabled !== board.anonymousEnabled
+      ) {
+        throw Errors.conflict("板块配置已变化，请刷新后重新发布");
+      }
       if (anonymous) {
         await consumeAnonymousCredit(userId, tx);
       }

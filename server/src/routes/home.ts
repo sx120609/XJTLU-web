@@ -13,6 +13,8 @@ import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 import { amountCentsToMoney } from "../services/epay";
 import { MARKET_PUBLIC_USER_SELECT } from "../services/marketPublicUser";
 import { refreshExpiredPromotions, serializeItemPromotions, serializeWantedPromotion } from "../services/promotion";
+import { detectLoginClient } from "../utils/loginClient";
+import { notificationTargetClientWhere } from "../services/notificationTargeting";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -37,11 +39,25 @@ homeRouter.get("/summary", async (req, res, next) => {
       } catch { /* ignore */ }
     }
 
-    const [user, personalUnread, globalReads, globalCount] = await Promise.all([
+    const clientTargetWhere = notificationTargetClientWhere(
+      detectLoginClient(req).client,
+    );
+    const [user, personalUnread, globalUnread] = await Promise.all([
       userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null),
-      userId ? prisma.notification.count({ where: { userId, readAt: null } }) : Promise.resolve(0),
-      userId ? prisma.notificationRead.findMany({ where: { userId }, select: { notificationId: true } }) : Promise.resolve([]),
-      userId ? prisma.notification.count({ where: { userId: null } }) : Promise.resolve(0),
+      userId
+        ? prisma.notification.count({
+          where: { userId, readAt: null, ...clientTargetWhere },
+        })
+        : Promise.resolve(0),
+      userId
+        ? prisma.notification.count({
+          where: {
+            userId: null,
+            ...clientTargetWhere,
+            reads: { none: { userId } },
+          },
+        })
+        : Promise.resolve(0),
     ]);
     const forumAccessEnabled = user ? (isForumStaffRole(user.role) || user.forumEnabled) : await resolveForumAccess(userId, role);
     const trust = user ? buildUserTrustSnapshot(user) : null;
@@ -146,7 +162,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       .map((item: any) => decodeTopicForViewer(item, { userId, role })) : [];
     const mergedHotTopics = [...promotedHotTopics, ...naturalHotTopics].slice(0, 8);
 
-    const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
+    const unreadCount = personalUnread + globalUnread;
 
     ok(res, {
       identity: user ? {

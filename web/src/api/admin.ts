@@ -12,6 +12,53 @@ export type AnnouncementSyncStatus = {
   count: number;
 };
 
+export type AnnouncementTargetClient =
+  | "ios"
+  | "android"
+  | "harmony"
+  | "web";
+
+export type AnnouncementLevel = "strong" | "normal" | "weak";
+
+export type AdminAnnouncement = {
+  id: number;
+  userId: null;
+  category: "system";
+  targetClient: string | null;
+  level: AnnouncementLevel;
+  title: string;
+  content: string;
+  payload: string;
+  link: string | null;
+  source: string | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type AdminAnnouncementCreate = {
+  title: string;
+  content: string;
+  level?: AnnouncementLevel;
+  link?: string;
+  source?: string;
+  targetClient?:
+    | "all"
+    | AnnouncementTargetClient
+    | AnnouncementTargetClient[];
+};
+
+export type AdminAnnouncementPatch = {
+  title?: string;
+  content?: string;
+  level?: AnnouncementLevel;
+  link?: string | null;
+  source?: string | null;
+  targetClient?:
+    | "all"
+    | AnnouncementTargetClient
+    | AnnouncementTargetClient[];
+};
+
 export type SiteConfig = {
   siteName: string;
   siteSubtitle: string;
@@ -24,12 +71,16 @@ export type SiteConfig = {
   aiReviewModel: string;
   aiReviewFallbackModels: string;
   aiReviewApiKey: string;
+  hasAiReviewApiKey: boolean;
+  aiReviewApiKeyMasked: string;
   qqGroupAdReviewEnabled: boolean;
   qqGroupAdReviewProvider: string;
   qqGroupAdReviewApiUrl: string;
   qqGroupAdReviewModel: string;
   qqGroupAdReviewFallbackModels: string;
   qqGroupAdReviewApiKey: string;
+  hasQqGroupAdReviewApiKey: boolean;
+  qqGroupAdReviewApiKeyMasked: string;
   qqGroupAdReviewSystemPrompt: string;
   qqGroupAdReviewUserPrompt: string;
   imageReviewEnabled: boolean;
@@ -37,6 +88,8 @@ export type SiteConfig = {
   imageReviewModel: string;
   imageReviewFallbackModels: string;
   imageReviewApiKey: string;
+  hasImageReviewApiKey: boolean;
+  imageReviewApiKeyMasked: string;
   imageReviewSystemPrompt: string;
   imageReviewUserPrompt: string;
   imageReviewConcurrency: number;
@@ -46,6 +99,8 @@ export type SiteConfig = {
   videoReviewModel: string;
   videoReviewFallbackModels: string;
   videoReviewApiKey: string;
+  hasVideoReviewApiKey: boolean;
+  videoReviewApiKeyMasked: string;
   videoReviewSystemPrompt: string;
   videoReviewUserPrompt: string;
   videoReviewConcurrency: number;
@@ -91,6 +146,9 @@ export type MediaStorageConfig = {
   oneDriveChinaRefreshTokenConfigured: boolean;
   oneDriveChinaAuthorizedAt: string;
   oneDriveChinaLastError: string;
+  remoteReady: boolean;
+  oneDriveChinaCallbackUrl: string;
+  oneDriveChinaCallbackError: string;
 };
 
 export type FilestoreStorageConfig = {
@@ -259,6 +317,164 @@ export type ForumVideoSweepResult = {
 };
 
 export type ReviewTargetKind = "topic" | "reply";
+export type AdminTopicReviewStatus =
+  | "none"
+  | "checking"
+  | "auto_passed"
+  | "blocked_ai"
+  | "blocked_force"
+  | "manual_requested"
+  | "manual_reviewing"
+  | "approved_manual"
+  | "rejected_manual";
+
+export type AdminTopicAuthor = {
+  id: number | null;
+  username?: string | null;
+  nickname: string;
+  role: string;
+  anonymous?: boolean;
+};
+
+export type AdminTopicRow = {
+  id: number;
+  boardId: number;
+  authorId: number | null;
+  title: string;
+  aiReviewStatus: AdminTopicReviewStatus;
+  aiRiskScore: number | null;
+  isAnonymous: boolean;
+  pinned: boolean;
+  globalPinned: boolean;
+  locked: boolean;
+  hidden: boolean;
+  replyCount: number;
+  likeCount: number;
+  createdAt: string;
+  board: {
+    id: number;
+    slug: string;
+    name: string;
+  };
+  author: AdminTopicAuthor;
+  realAuthor?: AdminTopicAuthor;
+};
+
+export type AdminTopicPatch = {
+  hidden?: boolean;
+  pinned?: boolean;
+  globalPinned?: boolean;
+  locked?: boolean;
+  boardSlug?: string;
+  aiReviewStatus?: "manual_reviewing" | "approved_manual" | "rejected_manual";
+  manualReviewNote?: string;
+};
+
+export type AdminTopicUpdateResult = {
+  id: number;
+  hidden: boolean;
+  pinned: boolean;
+  globalPinned: boolean;
+  locked: boolean;
+  boardId: number;
+  aiReviewStatus: AdminTopicReviewStatus;
+};
+
+export type AdminReplyUpdateResult = {
+  id: number;
+  topicId: number;
+  hidden: boolean;
+  floor: number;
+  aiReviewStatus: AdminTopicReviewStatus;
+  manualReviewedById: number | null;
+  manualReviewedAt: string | null;
+  manualReviewNote: string | null;
+};
+
+export type AdminTopicDeleteResult = {
+  ok: true;
+  hard: boolean;
+  deletedReplies: number;
+  deletedRatings: number;
+};
+
+export type AdminReviewTarget = {
+  kind: ReviewTargetKind;
+  id: number;
+  title: string;
+  aiReviewStatus: AdminTopicReviewStatus;
+  hidden: boolean;
+  topicId?: number;
+  reviewable: boolean;
+};
+
+export type AdminBoardType = "normal" | "question" | "market" | "coursereview";
+export type AdminBoardSection = "general" | "study" | "social";
+
+export type AdminBoard = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  order: number;
+  type: AdminBoardType;
+  section: AdminBoardSection | null;
+  readOnly: boolean;
+  anonymousEnabled: boolean;
+  topicCount: number;
+  feedSourceId: number | null;
+  feedSource: { id: number; name: string } | null;
+  systemManaged: boolean;
+};
+
+export type AdminBoardWriteInput = {
+  slug: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  order?: number;
+  type: AdminBoardType;
+  section?: AdminBoardSection | null;
+  anonymousEnabled?: boolean;
+};
+
+export type AdminBoardPatchInput = Partial<AdminBoardWriteInput>;
+
+export type AdminFeedSource = {
+  id: number;
+  slug: string;
+  name: string;
+  homepage: string;
+  listUrl: string;
+  pageSize: number;
+  maxPages: number;
+  parser: string;
+  cronMinutes: number;
+  enabled: boolean;
+  botUserId: number;
+  lastRunAt: string | null;
+  lastRunOk: boolean | null;
+  lastError: string | null;
+  board: {
+    id: number;
+    slug: string;
+    name: string;
+    topicCount: number;
+  } | null;
+};
+
+export type AdminFeedRunResult = {
+  ok: boolean;
+  newCount: number;
+  error: string | null;
+};
+
+export type AdminFeedRunListItem = AdminFeedRunResult & {
+  slug: string;
+};
 
 export type ForumImageReviewAsset = {
   id: number;
@@ -336,6 +552,140 @@ export type AdminOverview = {
     date: string;
     count: number;
   }>;
+};
+
+export type AdminUserRole = "user" | "mod" | "admin" | "bot";
+export type AdminUserStatus = "active" | "banned" | "muted";
+export type AdminLoginClient = "ios" | "android" | "harmony" | "web" | "unknown";
+
+export type AdminUserReputationLevel = {
+  level: number;
+  name: string;
+  minReputation: number;
+  nextLevel: null | {
+    level: number;
+    name: string;
+    minReputation: number;
+    need: number;
+  };
+};
+
+export type AdminUserAnonymousState = {
+  eligible: boolean;
+  minReputation: number;
+  weeklyQuota: number;
+  availableCredits: number;
+  storedCredits: number;
+  frozen: boolean;
+  weekKey: string;
+  staleWeek: boolean;
+  nextResetAt: string;
+  nextTier: null | {
+    reputation: number;
+    weeklyQuota: number;
+    need: number;
+  };
+};
+
+export type AdminUser = {
+  id: number;
+  username: string;
+  nickname: string;
+  email: string | null;
+  avatar: string | null;
+  college: string | null;
+  enrollYear: number | null;
+  role: AdminUserRole;
+  studentSso: boolean;
+  status: AdminUserStatus;
+  mutedUntil: string | null;
+  postCount: number;
+  replyCount: number;
+  reputation: number;
+  reputationLevel: AdminUserReputationLevel;
+  reputationBreakdown: {
+    total: number;
+    accountAgeDays: number;
+    agePoints: number;
+    postPoints: number;
+    replyPoints: number;
+    forumPoints: number;
+    caps: {
+      agePoints: number;
+      postPoints: number;
+      replyPoints: number;
+    };
+  };
+  forumEnabled: boolean;
+  forumEnabledAt: string | null;
+  anonymousCredits: number;
+  anonymousWeekKey: string | null;
+  anonymousCreditsFrozen: boolean;
+  anonymousState: AdminUserAnonymousState;
+  aiReviewWhitelisted: boolean;
+  lastSeenAt: string;
+  lastLoginAt: string | null;
+  lastLoginClient: AdminLoginClient | null;
+  usedIosClient: boolean;
+  usedAndroidClient: boolean;
+  usedHarmonyClient: boolean;
+  createdAt: string;
+};
+
+export type AdminUserPatch = {
+  status?: AdminUserStatus;
+  role?: AdminUserRole;
+  nickname?: string;
+  aiReviewWhitelisted?: boolean;
+  mutedUntil?: string | null;
+  anonymousCredits?: number;
+  anonymousCreditsFrozen?: boolean;
+};
+
+export type AdminUserPatchResult = Pick<
+  AdminUser,
+  | "id"
+  | "role"
+  | "status"
+  | "mutedUntil"
+  | "nickname"
+  | "aiReviewWhitelisted"
+  | "anonymousCredits"
+  | "anonymousCreditsFrozen"
+  | "anonymousState"
+  | "reputation"
+  | "reputationLevel"
+>;
+
+export type AdminUserCreateInput = {
+  username: string;
+  password: string;
+  nickname: string;
+  role?: AdminUserRole;
+  college?: string;
+  enrollYear?: number;
+};
+
+export type AdminUserCreateResult = Pick<
+  AdminUser,
+  "id" | "username" | "nickname" | "role" | "college" | "enrollYear" | "createdAt"
+>;
+
+export type AdminUserListParams = {
+  q?: string;
+  role?: AdminUserRole;
+  status?: AdminUserStatus;
+  forumEnabled?: "0" | "1";
+  loginClient?: "all" | "none" | AdminLoginClient;
+  usedClient?: "ios" | "android" | "harmony";
+  usedIosClient?: "0" | "1";
+  usedAndroidClient?: "0" | "1";
+  usedHarmonyClient?: "0" | "1";
+  loginFrom?: string;
+  loginTo?: string;
+  sort?: "login-desc" | "id-desc" | "id-asc";
+  page?: number;
+  size?: number;
 };
 
 export type WeiwallSyncConfig = {
@@ -519,6 +869,74 @@ export type SponsorConfig = {
   allowMessage: boolean;
 };
 
+export type SponsorOrderStatus = "pending" | "paid" | "closed";
+export type SponsorDisplayMode = "public" | "anonymous" | "hidden";
+
+export type AdminSponsorOrder = {
+  id: number;
+  outTradeNo: string;
+  tradeNo: string | null;
+  payType: string;
+  amount: string;
+  amountCents: number;
+  message: string;
+  displayMode: SponsorDisplayMode;
+  status: SponsorOrderStatus;
+  expiresAt: string | null;
+  paidAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: number;
+    username?: string;
+    nickname: string;
+    avatar: string | null;
+  };
+};
+
+export type SponsorOverview = {
+  totalAmount: string;
+  totalPaidOrders: number;
+  todayAmount: string;
+  todayPaidOrders: number;
+  monthAmount: string;
+  monthPaidOrders: number;
+  pendingOrders: number;
+  closedOrders: number;
+  sponsorCount: number;
+  payTypes: Array<{
+    payType: string;
+    count: number;
+    amount: string;
+  }>;
+};
+
+export type SponsorPaymentLog = {
+  id: number;
+  orderId: number | null;
+  outTradeNo: string | null;
+  provider: string;
+  event: string;
+  rawPayload: string;
+  signOk: boolean;
+  handled: boolean;
+  result: string | null;
+  createdAt: string;
+  order?: {
+    id: number;
+    amountCents: number;
+    status: SponsorOrderStatus;
+  } | null;
+};
+
+export type SponsorOrderPatch = {
+  status?: "paid" | "closed";
+  message?: string;
+  displayMode?: SponsorDisplayMode;
+  adminNote?: string;
+};
+
 export type QqBotConfig = {
   id: number;
   enabled: boolean;
@@ -574,6 +992,19 @@ export type JwxtAgentConnection = {
   crawlEnabled: boolean;
 };
 
+export type JwxtQueryPoolNode = {
+  id: string;
+  name: string;
+  kind: "local" | "agent";
+  weight: number;
+  inFlight: number;
+  cooldownRemainingMs: number;
+  consecutiveFailures: number;
+  connection: Omit<JwxtAgentConnection, "maxConcurrent"> & {
+    maxConcurrent: number | null;
+  };
+};
+
 export type JwxtAgentAdminItem = {
   id: string;
   name: string;
@@ -584,15 +1015,7 @@ export type JwxtAgentAdminItem = {
   maxConcurrent: number;
   tokenConfigured: boolean;
   connection: JwxtAgentConnection;
-  pool: null | {
-    id: string;
-    name: string;
-    kind: "local" | "agent";
-    weight: number;
-    inFlight: number;
-    cooldownRemainingMs: number;
-    consecutiveFailures: number;
-  };
+  pool: JwxtQueryPoolNode | null;
   loginPool: JwxtLoginPoolNode | null;
 };
 
@@ -614,7 +1037,7 @@ export type JwxtAgentsAdminConfig = {
   localJwxtEnabled: boolean;
   localJwxtWeight: number;
   crawlAgentId: string;
-  local: unknown | null;
+  local: JwxtQueryPoolNode | null;
   localLoginPool: JwxtLoginPoolNode | null;
   loginPool: {
     dedicated: boolean;
@@ -661,39 +1084,14 @@ export const adminApi = {
     request.post<DatabaseRestoreResult>("/admin/database/restore", formData, options),
   // 用户
   users: (
-    params: {
-      q?: string;
-      role?: string;
-      status?: string;
-      forumEnabled?: string;
-      loginClient?: string;
-      usedClient?: string;
-      usedIosClient?: string;
-      usedAndroidClient?: string;
-      usedHarmonyClient?: string;
-      loginFrom?: string;
-      loginTo?: string;
-      sort?: string;
-      page?: number;
-      size?: number;
-    },
+    params: AdminUserListParams,
     options?: RequestOptions,
   ) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/users", params, options),
-  updateUser: (id: number, patch: {
-    status?: string;
-    role?: string;
-    nickname?: string;
-    aiReviewWhitelisted?: boolean;
-    mutedUntil?: string | null;
-    anonymousCredits?: number;
-    anonymousCreditsFrozen?: boolean;
-  }) =>
-    request.patch<any>(`/admin/users/${id}`, patch),
-  createUser: (data: {
-    username: string; password: string; nickname: string;
-    role?: string; college?: string; enrollYear?: number;
-  }) => request.post<any>("/admin/users", data),
+    request.get<{ page: number; size: number; total: number; list: AdminUser[] }>("/admin/users", params, options),
+  updateUser: (id: number, patch: AdminUserPatch) =>
+    request.patch<AdminUserPatchResult>(`/admin/users/${id}`, patch),
+  createUser: (data: AdminUserCreateInput) =>
+    request.post<AdminUserCreateResult>("/admin/users", data),
   resetUserPassword: (id: number, newPassword: string) =>
     request.patch<{ ok: true }>(`/admin/users/${id}/password`, { newPassword }),
   deleteUser: (id: number) =>
@@ -739,8 +1137,18 @@ export const adminApi = {
     request.get<MediaStorageAdminInventory>("/admin/media-storage/files", undefined, { timeout: 120000, ...options }),
   migrateMediaStorageFiles: (payload?: { limit?: number; excludePaths?: string[] }) =>
     request.post<MediaStorageMigrationResult>("/admin/media-storage/migrate", payload ?? {}, { timeout: 10 * 60 * 1000 }),
-  cleanupMediaStorageLocalFiles: () =>
-    request.post<MediaStorageCleanupResult>("/admin/media-storage/cleanup-local", {}, { timeout: 10 * 60 * 1000 }),
+  previewMediaStorageLocalCleanup: () =>
+    request.post<{
+      eligible: number;
+      confirmationToken: string;
+      expiresAt: string;
+    }>("/admin/media-storage/cleanup-local/preview", {}),
+  cleanupMediaStorageLocalFiles: (confirmationToken: string) =>
+    request.post<MediaStorageCleanupResult>(
+      "/admin/media-storage/cleanup-local",
+      { confirmationToken },
+      { timeout: 10 * 60 * 1000 },
+    ),
   updateSiteConfig: (patch: {
     siteName?: string;
     siteSubtitle?: string;
@@ -753,12 +1161,14 @@ export const adminApi = {
     aiReviewModel?: string;
     aiReviewFallbackModels?: string;
     aiReviewApiKey?: string;
+    clearAiReviewApiKey?: boolean;
     qqGroupAdReviewEnabled?: boolean;
     qqGroupAdReviewProvider?: string;
     qqGroupAdReviewApiUrl?: string;
     qqGroupAdReviewModel?: string;
     qqGroupAdReviewFallbackModels?: string;
     qqGroupAdReviewApiKey?: string;
+    clearQqGroupAdReviewApiKey?: boolean;
     qqGroupAdReviewSystemPrompt?: string;
     qqGroupAdReviewUserPrompt?: string;
     imageReviewEnabled?: boolean;
@@ -766,6 +1176,7 @@ export const adminApi = {
     imageReviewModel?: string;
     imageReviewFallbackModels?: string;
     imageReviewApiKey?: string;
+    clearImageReviewApiKey?: boolean;
     imageReviewSystemPrompt?: string;
     imageReviewUserPrompt?: string;
     imageReviewConcurrency?: number;
@@ -775,6 +1186,7 @@ export const adminApi = {
     videoReviewModel?: string;
     videoReviewFallbackModels?: string;
     videoReviewApiKey?: string;
+    clearVideoReviewApiKey?: boolean;
     videoReviewSystemPrompt?: string;
     videoReviewUserPrompt?: string;
     videoReviewConcurrency?: number;
@@ -827,10 +1239,8 @@ export const adminApi = {
   previewEpayPayment: (payload: {
     outTradeNo: string;
     name: string;
-    money: string;
+    money: string | number;
     type?: "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
-    notifyUrl?: string;
-    returnUrl?: string;
     clientIp?: string;
     device?: string;
     param?: string;
@@ -838,13 +1248,13 @@ export const adminApi = {
   sponsorConfig: () => request.get<SponsorConfig>("/admin/sponsor-config"),
   updateSponsorConfig: (payload: Partial<SponsorConfig>) =>
     request.patch<SponsorConfig>("/admin/sponsor-config", payload),
-  sponsorOverview: () => request.get<any>("/admin/sponsor-overview"),
-  sponsorOrders: (params: { q?: string; status?: string; page?: number; size?: number }) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-orders", params),
-  updateSponsorOrder: (id: number, payload: { status?: "pending" | "paid" | "closed"; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
-    request.patch<any>(`/admin/sponsor-orders/${id}`, payload),
+  sponsorOverview: () => request.get<SponsorOverview>("/admin/sponsor-overview"),
+  sponsorOrders: (params: { q?: string; status?: "all" | SponsorOrderStatus; page?: number; size?: number }) =>
+    request.get<{ page: number; size: number; total: number; list: AdminSponsorOrder[] }>("/admin/sponsor-orders", params),
+  updateSponsorOrder: (id: number, payload: SponsorOrderPatch) =>
+    request.patch<AdminSponsorOrder>(`/admin/sponsor-orders/${id}`, payload),
   sponsorLogs: (params: { q?: string; signOk?: "0" | "1"; page?: number; size?: number }) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-logs", params),
+    request.get<{ page: number; size: number; total: number; list: SponsorPaymentLog[] }>("/admin/sponsor-logs", params),
   // QQBot / NapCat
   qqBotConfig: (options?: RequestOptions) => request.get<QqBotConfig>("/admin/qqbot/config", undefined, options),
   updateQqBotConfig: (payload: Partial<{
@@ -892,27 +1302,26 @@ export const adminApi = {
   createQqBotBindToken: () => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token"),
   // 帖子
   topics: (
-    params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number },
+    params: {
+      q?: string;
+      board?: string;
+      hidden?: "0" | "1";
+      reviewStatus?: AdminTopicReviewStatus | "";
+      page?: number;
+      size?: number;
+    },
     options?: RequestOptions,
   ) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params, options),
-  updateTopic: (id: number, patch: {
-    hidden?: boolean;
-    pinned?: boolean;
-    globalPinned?: boolean;
-    locked?: boolean;
-    boardSlug?: string;
-    aiReviewStatus?: "manual_reviewing" | "approved_manual" | "rejected_manual";
-    manualReviewNote?: string;
-  }) =>
-    request.patch<any>(`/admin/topics/${id}`, patch),
+    request.get<{ page: number; size: number; total: number; list: AdminTopicRow[] }>("/admin/topics", params, options),
+  updateTopic: (id: number, patch: AdminTopicPatch) =>
+    request.patch<AdminTopicUpdateResult>(`/admin/topics/${id}`, patch),
   updateReply: (id: number, patch: {
-    aiReviewStatus?: "manual_reviewing" | "approved_manual" | "rejected_manual";
+    aiReviewStatus: "manual_reviewing" | "approved_manual" | "rejected_manual";
     manualReviewNote?: string;
   }) =>
-    request.patch<any>(`/admin/replies/${id}`, patch),
+    request.patch<AdminReplyUpdateResult>(`/admin/replies/${id}`, patch),
   reviewTarget: (kind: ReviewTargetKind, id: number) =>
-    request.get<{ kind: ReviewTargetKind; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean }>(`/admin/review-targets/${kind}/${id}`),
+    request.get<AdminReviewTarget>(`/admin/review-targets/${kind}/${id}`),
   reviewTargetImages: (kind: ReviewTargetKind, id: number) =>
     request.get<{ kind: ReviewTargetKind; id: number; topicId?: number; list: ForumImageReviewAsset[] }>(`/admin/review-targets/${kind}/${id}/images`),
   reviewTargetVideos: (kind: ReviewTargetKind, id: number) =>
@@ -936,40 +1345,23 @@ export const adminApi = {
     manualReviewNote?: string;
   }) =>
     request.patch<ForumVideoReviewAsset>(`/admin/forum-videos/${id}`, patch),
-  deleteTopic: (id: number) => request.delete<any>(`/admin/topics/${id}`),
-  destroyTopic: (id: number) => request.delete<any>(`/admin/topics/${id}?hard=1`),
+  deleteTopic: (id: number) => request.delete<AdminTopicDeleteResult>(`/admin/topics/${id}`),
+  destroyTopic: (id: number) => request.delete<AdminTopicDeleteResult>(`/admin/topics/${id}?hard=1`),
   // 板块
-  boards: (options?: RequestOptions) => request.get<any[]>("/admin/boards", undefined, options),
-  createBoard: (payload: {
-    slug: string;
-    name: string;
-    description?: string;
-    icon?: string;
-    color?: string;
-    order?: number;
-    type: "normal" | "question" | "market" | "coursereview";
-    section?: "general" | "study" | "social" | null;
-    anonymousEnabled?: boolean;
-  }) => request.post<any>("/admin/boards", payload),
-  updateBoard: (id: number, payload: Partial<{
-    slug: string;
-    name: string;
-    description: string;
-    icon: string;
-    color: string;
-    order: number;
-    type: "normal" | "question" | "market" | "coursereview";
-    section: "general" | "study" | "social" | null;
-    anonymousEnabled: boolean;
-  }>) => request.patch<any>(`/admin/boards/${id}`, payload),
-  deleteBoard: (id: number) => request.delete<any>(`/admin/boards/${id}`),
+  boards: (options?: RequestOptions) => request.get<AdminBoard[]>("/admin/boards", undefined, options),
+  createBoard: (payload: AdminBoardWriteInput) =>
+    request.post<AdminBoard>("/admin/boards", payload),
+  updateBoard: (id: number, payload: AdminBoardPatchInput) =>
+    request.patch<AdminBoard>(`/admin/boards/${id}`, payload),
+  deleteBoard: (id: number) =>
+    request.delete<{ ok: true; deletedBoardId: number }>(`/admin/boards/${id}`),
   // 爬虫
-  feeds: (options?: RequestOptions) => request.get<any[]>("/admin/feeds", undefined, options),
+  feeds: (options?: RequestOptions) => request.get<AdminFeedSource[]>("/admin/feeds", undefined, options),
   updateFeed: (id: number, patch: { enabled?: boolean; cronMinutes?: number; maxPages?: number }) =>
-    request.patch<any>(`/admin/feeds/${id}`, patch),
-  runFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/run`),
-  resetRunFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/reset-run`),
-  runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
+    request.patch<AdminFeedSource>(`/admin/feeds/${id}`, patch),
+  runFeed: (id: number) => request.post<AdminFeedRunResult>(`/admin/feeds/${id}/run`),
+  resetRunFeed: (id: number) => request.post<AdminFeedRunResult>(`/admin/feeds/${id}/reset-run`),
+  runAllFeeds: () => request.post<AdminFeedRunListItem[]>("/admin/feeds/run-all"),
   // 逛逛同步
   weiwallSync: () => request.get<WeiwallSyncConfig>("/admin/weiwall-sync"),
   updateWeiwallSync: (patch: Partial<{
@@ -1002,10 +1394,12 @@ export const adminApi = {
     suppressErrorMessage: true,
   }),
   clearAnnouncementSyncAuthorization: () => request.delete<AnnouncementSyncStatus>("/admin/announcement-sync/authorization"),
-  announcements: (options?: RequestOptions) => request.get<any[]>("/admin/announcements", undefined, options),
-  createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" | "web" | Array<"ios" | "android" | "harmony" | "web"> }) =>
-    request.post<any>("/admin/announcements", p),
-  updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" | "harmony" | "web" | Array<"ios" | "android" | "harmony" | "web"> }) =>
-    request.patch<any>(`/admin/announcements/${id}`, p),
-  deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
+  announcements: (options?: RequestOptions) =>
+    request.get<AdminAnnouncement[]>("/admin/announcements", undefined, options),
+  createAnnouncement: (payload: AdminAnnouncementCreate) =>
+    request.post<AdminAnnouncement>("/admin/announcements", payload),
+  updateAnnouncement: (id: number, payload: AdminAnnouncementPatch) =>
+    request.patch<AdminAnnouncement>(`/admin/announcements/${id}`, payload),
+  deleteAnnouncement: (id: number) =>
+    request.delete<{ ok: true }>(`/admin/announcements/${id}`),
 };

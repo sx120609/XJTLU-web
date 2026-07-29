@@ -26,6 +26,16 @@ export function allowedOrigins(req: Request, configuredSiteOrigin = getSiteOrigi
   return values;
 }
 
+export function corsOptionsForRequest(req: Request, configuredSiteOrigin = getSiteOrigin()) {
+  const origin = String(req.get("origin") || "").trim();
+  return {
+    // Credentialed CORS responses must echo a trusted origin; "*" is invalid
+    // when the browser sends the opaque session cookie.
+    origin: Boolean(origin && allowedOrigins(req, configuredSiteOrigin).has(origin)),
+    credentials: true,
+  };
+}
+
 export async function browserSessionMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
     const loaded = await loadBrowserSession(req, res);

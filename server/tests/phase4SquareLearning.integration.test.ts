@@ -339,11 +339,15 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
   assert.equal((await call(`/market/items/${draftListing.id}`, "GET", undefined, false)).response.status, 404);
 
   const materialMeta = await api("/market/materials/meta");
+  assert.equal(materialMeta.commerce.paidEnabled, true);
+  await prisma.learningCreatorProfile.create({
+    data: { userId: user.id, status: "active" },
+  });
   const forumPostCountBeforeMaterial = (await prisma.user.findUnique({ where: { id: user.id }, select: { postCount: true } }))!.postCount;
   const draftMaterial = await api("/market/materials/items", "POST", {
     title: `阶段四独立学习资料草稿 ${suffix}`,
     description: "用于验证学习资料属于独立商品域，不会自动生成广场帖子。",
-    price: 0,
+    price: Number(materialMeta.commerce.minPrice),
     images: [],
     draft: true,
     profile: {
@@ -378,7 +382,7 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
   const blockedLearning = await call("/market/materials/items", "POST", {
     title: `教师课件合集 ${suffix}`,
     description: "未经授权的课堂文件",
-    price: 0,
+    price: Number(materialMeta.commerce.minPrice),
     profile: {},
     draft: true,
   });

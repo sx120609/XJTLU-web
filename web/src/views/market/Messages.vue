@@ -28,7 +28,7 @@
           <el-empty v-if="!messages.length" description="发送第一条消息，确认价格、地点和时间" />
         </div>
         <form class="composer" @submit.prevent="send">
-          <el-input v-model="draft" maxlength="1000" show-word-limit type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" placeholder="输入消息；请勿在平台外提前转账" @keydown.ctrl.enter.prevent="send" />
+          <el-input v-model="draft" maxlength="2000" show-word-limit type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" placeholder="输入消息；请勿在平台外提前转账" @keydown.ctrl.enter.prevent="send" />
           <el-button type="primary" native-type="submit" :loading="sending" :disabled="!draft.trim()">发送</el-button>
         </form>
       </main>
@@ -56,6 +56,8 @@ const draft = ref("");
 const messageList = ref<HTMLElement | null>(null);
 const mobileConversation = ref(false);
 let pollTimer = 0;
+let polling = false;
+let messageRequestId = 0;
 const activeConversation = computed(() => conversations.value.find((conversation) => conversation.id === selectedId.value) || null);
 
 function userInitial(user?: MarketUser) { return (user?.nickname || "?").slice(0, 1).toUpperCase(); }
@@ -63,16 +65,27 @@ function shortTime(value?: string | null) { if (!value) return ""; return new In
 function fullTime(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 async function scrollBottom() { await nextTick(); if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight; }
 
-async function loadConversations() {
-  const list = await marketApi.conversations({ suppressErrorMessage: true });
-  conversations.value = list;
-  const queryId = Number(route.query.conversation || 0);
-  if (!selectedId.value) selectedId.value = (queryId && list.some((item) => item.id === queryId) ? queryId : list[0]?.id) || 0;
+async function loadConversations(silent = false) {
+  try {
+    const list = await marketApi.conversations({ suppressErrorMessage: true });
+    conversations.value = list;
+    const queryId = Number(route.query.conversation || 0);
+    const selectedExists = list.some((item) => item.id === selectedId.value);
+    if (!selectedExists) {
+      selectedId.value = (queryId && list.some((item) => item.id === queryId) ? queryId : list[0]?.id) || 0;
+      messages.value = [];
+    }
+  } catch (error) {
+    if (!silent) ElMessage.error(error instanceof Error ? error.message : "会话加载失败");
+  }
 }
 async function loadMessages(silent = false) {
   if (!selectedId.value) return;
+  const conversationId = selectedId.value;
+  const requestId = ++messageRequestId;
   try {
-    const list = await marketApi.messages(selectedId.value, { suppressErrorMessage: true });
+    const list = await marketApi.messages(conversationId, { suppressErrorMessage: true });
+    if (requestId !== messageRequestId || conversationId !== selectedId.value) return;
     const changed = list.length !== messages.value.length || list.at(-1)?.id !== messages.value.at(-1)?.id;
     messages.value = list;
     if (changed) await scrollBottom();
@@ -82,6 +95,7 @@ async function loadMessages(silent = false) {
 }
 async function selectConversation(id: number) {
   selectedId.value = id;
+  messageRequestId += 1;
   mobileConversation.value = true;
   messages.value = [];
   await router.replace({ query: { ...route.query, conversation: String(id) } });
@@ -92,17 +106,26 @@ async function send() {
   if (!content || !selectedId.value || sending.value) return;
   sending.value = true;
   try {
-    const message = await marketApi.sendMessage(selectedId.value, content);
-    messages.value.push(message);
+    await marketApi.sendMessage(selectedId.value, content);
     draft.value = "";
-    await Promise.all([scrollBottom(), loadConversations()]);
+    await Promise.all([loadMessages(), loadConversations()]);
   } finally { sending.value = false; }
+}
+
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try {
+    await Promise.all([loadMessages(true), loadConversations(true)]);
+  } finally {
+    polling = false;
+  }
 }
 
 onMounted(async () => {
   loading.value = true;
-  try { await loadConversations(); await loadMessages(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "会话加载失败"); } finally { loading.value = false; }
-  pollTimer = window.setInterval(() => { void loadMessages(true); void loadConversations(); }, 3000);
+  try { await loadConversations(); await loadMessages(); } finally { loading.value = false; }
+  pollTimer = window.setInterval(() => { void poll(); }, 3000);
 });
 onBeforeUnmount(() => window.clearInterval(pollTimer));
 </script>

@@ -156,7 +156,7 @@ const selectedOrder = ref<MarketOrder | null>(null);
 const meetup = reactive<{ time: Date | null; location: string; note: string }>({ time: null, location: "", note: "" });
 const payout = reactive({ method: "alipay" as "alipay" | "wxpay" | "bank", account: "", realName: "" });
 const data = reactive<MarketSellerDashboard>({
-  config: { commissionBps: 0, commissionRate: 0, learningMaterialCommissionBps: 500, learningMaterialCommissionRate: 5, updatedAt: "" },
+  config: { commissionBps: 0, commissionRate: 0, learningMaterialCommissionBps: 0, learningMaterialCommissionRate: 0, updatedAt: "" },
   stats: { activeListings: 0, reservedListings: 0, soldListings: 0, pendingDeliveryOrders: 0, pendingSettlementOrders: 0 },
   balance: { grossCents: 0, commissionCents: 0, pendingCents: 0, frozenCents: 0, availableCents: 0, settledCents: 0 },
   items: [], orders: [], settlements: [], timeline: [], payoutProfile: null,

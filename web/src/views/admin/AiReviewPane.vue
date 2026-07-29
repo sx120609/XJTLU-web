@@ -64,7 +64,19 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">API Key</span>
-          <el-input v-model="form.aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+          <el-input
+            v-model="form.aiReviewApiKey"
+            maxlength="240"
+            show-password
+            :placeholder="form.hasAiReviewApiKey ? `已配置 ${form.aiReviewApiKeyMasked}，留空保持不变` : 'sk-...'"
+          />
+          <el-button
+            v-if="form.hasAiReviewApiKey"
+            text
+            type="danger"
+            :disabled="saving"
+            @click="clearApiKey('text')"
+          >清空并关闭文字审核</el-button>
         </div>
         <div class="ai-row">
           <span class="ai-label">文字审核阈值</span>
@@ -155,7 +167,19 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">API Key</span>
-          <el-input v-model="form.qqGroupAdReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+          <el-input
+            v-model="form.qqGroupAdReviewApiKey"
+            maxlength="240"
+            show-password
+            :placeholder="form.hasQqGroupAdReviewApiKey ? `已配置 ${form.qqGroupAdReviewApiKeyMasked}，留空保持不变` : 'sk-...'"
+          />
+          <el-button
+            v-if="form.hasQqGroupAdReviewApiKey"
+            text
+            type="danger"
+            :disabled="saving"
+            @click="clearApiKey('qq-group-ad')"
+          >清空并关闭广告过滤</el-button>
         </div>
         <div class="ai-row">
           <span class="ai-label">拦截阈值</span>
@@ -219,7 +243,19 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">图片审核 API Key</span>
-          <el-input v-model="form.imageReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+          <el-input
+            v-model="form.imageReviewApiKey"
+            maxlength="240"
+            show-password
+            :placeholder="form.hasImageReviewApiKey ? `已配置 ${form.imageReviewApiKeyMasked}，留空保持不变` : 'sk-...'"
+          />
+          <el-button
+            v-if="form.hasImageReviewApiKey"
+            text
+            type="danger"
+            :disabled="saving"
+            @click="clearApiKey('image')"
+          >清空并关闭图片审核</el-button>
         </div>
         <div class="ai-row">
           <span class="ai-label">并发请求数</span>
@@ -293,7 +329,19 @@
         </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">视频审核 API Key</span>
-          <el-input v-model="form.videoReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+          <el-input
+            v-model="form.videoReviewApiKey"
+            maxlength="240"
+            show-password
+            :placeholder="form.hasVideoReviewApiKey ? `已配置 ${form.videoReviewApiKeyMasked}，留空保持不变` : 'sk-...'"
+          />
+          <el-button
+            v-if="form.hasVideoReviewApiKey"
+            text
+            type="danger"
+            :disabled="saving"
+            @click="clearApiKey('video')"
+          >清空并关闭视频审核</el-button>
         </div>
         <div class="ai-row">
           <span class="ai-label">并发请求数</span>
@@ -517,12 +565,16 @@ const form = reactive<SiteConfig>({
   aiReviewModel: "deepseek-v4-flash",
   aiReviewFallbackModels: "",
   aiReviewApiKey: "",
+  hasAiReviewApiKey: false,
+  aiReviewApiKeyMasked: "",
   qqGroupAdReviewEnabled: false,
   qqGroupAdReviewProvider: "deepseek",
   qqGroupAdReviewApiUrl: "https://api.deepseek.com/chat/completions",
   qqGroupAdReviewModel: "deepseek-v4-flash",
   qqGroupAdReviewFallbackModels: "",
   qqGroupAdReviewApiKey: "",
+  hasQqGroupAdReviewApiKey: false,
+  qqGroupAdReviewApiKeyMasked: "",
   qqGroupAdReviewSystemPrompt: "",
   qqGroupAdReviewUserPrompt: "",
   imageReviewEnabled: false,
@@ -530,6 +582,8 @@ const form = reactive<SiteConfig>({
   imageReviewModel: "gpt-4o-mini",
   imageReviewFallbackModels: "",
   imageReviewApiKey: "",
+  hasImageReviewApiKey: false,
+  imageReviewApiKeyMasked: "",
   imageReviewSystemPrompt: "",
   imageReviewUserPrompt: "",
   imageReviewConcurrency: 2,
@@ -539,6 +593,8 @@ const form = reactive<SiteConfig>({
   videoReviewModel: "gpt-4o-mini",
   videoReviewFallbackModels: "",
   videoReviewApiKey: "",
+  hasVideoReviewApiKey: false,
+  videoReviewApiKeyMasked: "",
   videoReviewSystemPrompt: "",
   videoReviewUserPrompt: "",
   videoReviewConcurrency: 1,
@@ -614,26 +670,32 @@ async function saveConfig() {
   if (saving.value || configLoadError.value) return;
   saving.value = true;
   try {
-    Object.assign(form, await adminApi.updateSiteConfig({
+    const updated = await adminApi.updateSiteConfig({
       aiReviewEnabled: form.aiReviewEnabled,
       aiReviewProvider: form.aiReviewProvider,
       aiReviewApiUrl: form.aiReviewApiUrl,
       aiReviewModel: form.aiReviewModel,
       aiReviewFallbackModels: form.aiReviewFallbackModels,
-      aiReviewApiKey: form.aiReviewApiKey,
+      ...(form.aiReviewApiKey.trim()
+        ? { aiReviewApiKey: form.aiReviewApiKey.trim() }
+        : {}),
       qqGroupAdReviewEnabled: form.qqGroupAdReviewEnabled,
       qqGroupAdReviewProvider: form.qqGroupAdReviewProvider,
       qqGroupAdReviewApiUrl: form.qqGroupAdReviewApiUrl,
       qqGroupAdReviewModel: form.qqGroupAdReviewModel,
       qqGroupAdReviewFallbackModels: form.qqGroupAdReviewFallbackModels,
-      qqGroupAdReviewApiKey: form.qqGroupAdReviewApiKey,
+      ...(form.qqGroupAdReviewApiKey.trim()
+        ? { qqGroupAdReviewApiKey: form.qqGroupAdReviewApiKey.trim() }
+        : {}),
       qqGroupAdReviewSystemPrompt: form.qqGroupAdReviewSystemPrompt,
       qqGroupAdReviewUserPrompt: form.qqGroupAdReviewUserPrompt,
       imageReviewEnabled: form.imageReviewEnabled,
       imageReviewApiUrl: form.imageReviewApiUrl,
       imageReviewModel: form.imageReviewModel,
       imageReviewFallbackModels: form.imageReviewFallbackModels,
-      imageReviewApiKey: form.imageReviewApiKey,
+      ...(form.imageReviewApiKey.trim()
+        ? { imageReviewApiKey: form.imageReviewApiKey.trim() }
+        : {}),
       imageReviewSystemPrompt: form.imageReviewSystemPrompt,
       imageReviewUserPrompt: form.imageReviewUserPrompt,
       imageReviewConcurrency: form.imageReviewConcurrency,
@@ -642,7 +704,9 @@ async function saveConfig() {
       videoReviewApiUrl: form.videoReviewApiUrl,
       videoReviewModel: form.videoReviewModel,
       videoReviewFallbackModels: form.videoReviewFallbackModels,
-      videoReviewApiKey: form.videoReviewApiKey,
+      ...(form.videoReviewApiKey.trim()
+        ? { videoReviewApiKey: form.videoReviewApiKey.trim() }
+        : {}),
       videoReviewSystemPrompt: form.videoReviewSystemPrompt,
       videoReviewUserPrompt: form.videoReviewUserPrompt,
       videoReviewConcurrency: form.videoReviewConcurrency,
@@ -657,8 +721,61 @@ async function saveConfig() {
       aiReplyReviewUserPrompt: form.aiReplyReviewUserPrompt,
       aiEditSimilaritySystemPrompt: form.aiEditSimilaritySystemPrompt,
       aiEditSimilarityUserPrompt: form.aiEditSimilarityUserPrompt,
-    }));
+    });
+    Object.assign(form, updated);
     ElMessage.success("审核配置已保存");
+  } finally {
+    saving.value = false;
+  }
+}
+
+type AiSecretKind = "text" | "qq-group-ad" | "image" | "video";
+
+async function clearApiKey(kind: AiSecretKind) {
+  if (saving.value) return;
+  const label = kind === "text"
+    ? "文字审核"
+    : kind === "qq-group-ad"
+      ? "QQ群广告过滤"
+      : kind === "image"
+        ? "图片审核"
+        : "视频审核";
+  try {
+    await ElMessageBox.confirm(
+      `确认清空${label} API Key？对应审核会同时关闭。`,
+      "清空审核密钥",
+      {
+        type: "warning",
+        confirmButtonText: "清空并关闭",
+        cancelButtonText: "取消",
+      },
+    );
+  } catch {
+    return;
+  }
+  saving.value = true;
+  try {
+    const updated = kind === "text"
+      ? await adminApi.updateSiteConfig({
+        aiReviewEnabled: false,
+        clearAiReviewApiKey: true,
+      })
+      : kind === "qq-group-ad"
+        ? await adminApi.updateSiteConfig({
+          qqGroupAdReviewEnabled: false,
+          clearQqGroupAdReviewApiKey: true,
+        })
+        : kind === "image"
+          ? await adminApi.updateSiteConfig({
+            imageReviewEnabled: false,
+            clearImageReviewApiKey: true,
+          })
+          : await adminApi.updateSiteConfig({
+            videoReviewEnabled: false,
+            clearVideoReviewApiKey: true,
+          });
+    Object.assign(form, updated);
+    ElMessage.success(`${label} API Key 已清空`);
   } finally {
     saving.value = false;
   }

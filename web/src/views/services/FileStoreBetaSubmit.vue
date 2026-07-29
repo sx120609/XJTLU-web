@@ -13,7 +13,7 @@
           <span class="submit-brand-tag">校园工具</span>
         </div>
         <div class="submit-hero">
-          <p class="eyebrow">{{ task?.status === "closed" ? "靠浦 · 已停止提交" : "靠浦 · 文件提交" }}</p>
+          <p class="eyebrow">{{ task?.status === "open" ? "靠浦 · 文件提交" : task?.status === "draft" ? "靠浦 · 暂未开放" : "靠浦 · 已停止提交" }}</p>
           <h1>{{ task?.title || (loading ? "加载任务中" : "无法提交") }}</h1>
           <p>{{ task ? submitDescription : (error || "请稍候。") }}</p>
           <p v-if="task?.deadline" class="hint hero-deadline">截止时间：{{ formatDateTime(task.deadline) }}</p>
@@ -175,6 +175,9 @@
             <button type="reset" :disabled="submitting">重填</button>
           </div>
         </form>
+        <div v-else-if="task" class="submit-empty-state">
+          {{ task.status === "draft" ? "该任务仍在准备中，暂未开放提交。" : "该任务已停止接收新文件。" }}
+        </div>
         <p :class="['message', messageType, 'submit-form']">{{ submitMessage }}</p>
       </section>
     </main>
@@ -653,6 +656,7 @@ async function submitRemote(files: File[], overwrite: boolean) {
   if (localEntries.length) {
     const form = new FormData();
     form.append("submissionId", String(prepared.submissionId));
+    form.append("completionToken", prepared.completionToken);
     form.append("remoteFileIds", JSON.stringify(remoteEntries.map((entry) => entry.preparedFile.id)));
     form.append("localFileIds", JSON.stringify(localEntries.map((entry) => entry.preparedFile.id)));
     form.append("overwrite", overwrite ? "true" : "false");
@@ -664,6 +668,7 @@ async function submitRemote(files: File[], overwrite: boolean) {
   }
   return filestoreBetaApi.completeRemote(slug.value, {
     submissionId: prepared.submissionId,
+    completionToken: prepared.completionToken,
     remoteFileIds: remoteEntries.map((entry) => entry.preparedFile.id),
     overwrite,
   });

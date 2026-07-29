@@ -39,7 +39,7 @@ const visible = computed({
 const actions = [
   { title: "出售物品", description: "发布校内闲置，和同学当面交易", to: "/publish/listing", icon: Goods, tone: "teal" },
   { title: "发布求购", description: "说明预算与需求，等待卖方响应", to: "/publish/wanted", icon: Search, tone: "amber" },
-  { title: "分享免费原创", description: "上传原创学习资料，始终免费", to: "/learning/free/publish", icon: Reading, tone: "rose" },
+  { title: "发布付费资料", description: "创作者认证、人工审核后上架", to: "/learning/materials/publish", icon: Reading, tone: "rose" },
   { title: "发起讨论", description: "在校园广场提问或分享观点", to: "/publish/post", icon: ChatLineRound, tone: "violet" },
   { title: "分享校园信息", description: "发布活动、提醒与校园生活信息", to: "/publish/post?kind=info", icon: Bell, tone: "blue" },
 ] as const;

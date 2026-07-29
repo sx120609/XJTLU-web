@@ -8,11 +8,13 @@
       <el-button @click="load">刷新</el-button>
     </div>
 
+    <LearningCommerceAdminPane />
+
     <el-alert
       type="warning"
       :closable="false"
       show-icon
-      title="学生商品支付、退款、结算、提现及付费数字资料已冻结；历史交易记录仅供审计查看。"
+      title="实体学生商品仍由买卖双方直接交易，平台不代收；历史平台支付、退款、结算与提现记录仅供审计查看。"
     />
 
     <section class="category-card">
@@ -117,7 +119,7 @@
       </el-tab-pane>
 
       <el-tab-pane label="内容规则" name="rules">
-        <div class="table-toolbar"><div><h3>关键词与风险规则</h3><p>规则保存在数据库中，可分别用于市集、广场和免费原创；禁止类直接拦截，风险类进入人工复核。</p></div><el-button type="primary" size="small" @click="openRule()">新增规则</el-button></div>
+        <div class="table-toolbar"><div><h3>关键词与风险规则</h3><p>规则保存在数据库中，可分别用于市集、广场和付费学习资料；禁止类直接拦截，风险类进入人工复核。</p></div><el-button type="primary" size="small" @click="openRule()">新增规则</el-button></div>
         <el-table :data="overview.safetyRules || []" stripe><el-table-column prop="keyword" label="关键词" min-width="130" /><el-table-column label="作用范围" width="110"><template #default="{ row }">{{ ruleScopeLabel(row.scope) }}</template></el-table-column><el-table-column prop="category" label="风险分类" min-width="150" /><el-table-column label="动作" width="100"><template #default="{ row }"><el-tag :type="row.action === 'block' ? 'danger' : 'warning'">{{ row.action === 'block' ? '禁止发布' : '人工复核' }}</el-tag></template></el-table-column><el-table-column prop="note" label="说明" min-width="220" show-overflow-tooltip /><el-table-column label="状态" width="90"><template #default="{ row }"><el-switch :model-value="row.enabled" @change="toggleRule(row, $event)" /></template></el-table-column><el-table-column label="操作" width="130"><template #default="{ row }"><el-button link type="primary" @click="openRule(row)">编辑</el-button><el-button link type="danger" @click="removeRule(row)">删除</el-button></template></el-table-column></el-table>
       </el-tab-pane>
 
@@ -159,7 +161,7 @@
         <el-button type="primary" :loading="savingCategory" @click="saveCategory">保存</el-button>
       </template>
     </el-dialog>
-    <el-dialog v-model="ruleOpen" :title="editingRuleId ? '编辑内容规则' : '新增内容规则'" width="500px"><el-form label-position="top"><el-form-item label="关键词"><el-input v-model="ruleForm.keyword" maxlength="80" /></el-form-item><div class="category-form-grid"><el-form-item label="作用范围"><el-select v-model="ruleForm.scope"><el-option label="市集" value="market" /><el-option label="广场" value="forum" /><el-option label="免费原创" value="learning" /><el-option label="全部" value="all" /></el-select></el-form-item><el-form-item label="风险分类"><el-input v-model="ruleForm.category" maxlength="80" /></el-form-item><el-form-item label="处理动作"><el-select v-model="ruleForm.action"><el-option label="禁止发布" value="block" /><el-option label="人工复核" value="review" /></el-select></el-form-item></div><el-form-item label="规则说明"><el-input v-model="ruleForm.note" maxlength="500" /></el-form-item><el-switch v-model="ruleForm.enabled" active-text="启用规则" inactive-text="停用规则" /></el-form><template #footer><el-button @click="ruleOpen = false">取消</el-button><el-button type="primary" @click="saveRule">保存</el-button></template></el-dialog>
+    <el-dialog v-model="ruleOpen" :title="editingRuleId ? '编辑内容规则' : '新增内容规则'" width="500px"><el-form label-position="top"><el-form-item label="关键词"><el-input v-model="ruleForm.keyword" maxlength="80" /></el-form-item><div class="category-form-grid"><el-form-item label="作用范围"><el-select v-model="ruleForm.scope"><el-option label="市集" value="market" /><el-option label="广场" value="forum" /><el-option label="付费学习资料" value="learning" /><el-option label="全部" value="all" /></el-select></el-form-item><el-form-item label="风险分类"><el-input v-model="ruleForm.category" maxlength="80" /></el-form-item><el-form-item label="处理动作"><el-select v-model="ruleForm.action"><el-option label="禁止发布" value="block" /><el-option label="人工复核" value="review" /></el-select></el-form-item></div><el-form-item label="规则说明"><el-input v-model="ruleForm.note" maxlength="500" /></el-form-item><el-switch v-model="ruleForm.enabled" active-text="启用规则" inactive-text="停用规则" /></el-form><template #footer><el-button @click="ruleOpen = false">取消</el-button><el-button type="primary" @click="saveRule">保存</el-button></template></el-dialog>
     <el-dialog v-model="violationOpen" title="新增市集信用处理" width="520px"><el-form label-position="top"><el-form-item label="用户 ID"><el-input-number v-model="violationForm.userId" :min="1" controls-position="right" /></el-form-item><div class="category-form-grid"><el-form-item label="违规类型"><el-input v-model="violationForm.type" maxlength="80" placeholder="例如：禁售物品、交易骚扰" /></el-form-item><el-form-item label="处理等级"><el-select v-model="violationForm.level"><el-option label="提醒" value="warning" /><el-option label="一般" value="moderate" /><el-option label="严重" value="serious" /></el-select></el-form-item></div><div class="category-form-grid"><el-form-item label="处理措施"><el-select v-model="violationForm.action"><el-option label="警告" value="warning" /><el-option label="限制发布" value="restrict_publish" /><el-option label="限制交易" value="restrict_trade" /></el-select></el-form-item><el-form-item label="限制天数（0 为长期）"><el-input-number v-model="violationForm.days" :min="0" :max="3650" controls-position="right" /></el-form-item></div><el-form-item label="处理原因"><el-input v-model="violationForm.reason" type="textarea" :rows="4" maxlength="500" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="violationOpen = false">取消</el-button><el-button type="primary" @click="createViolation">确认处理</el-button></template></el-dialog>
   </div>
 </template>
@@ -167,11 +169,36 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, type MarketCategoryOption, type MarketSafetyRule } from "@/api/market";
+import LearningCommerceAdminPane from "./LearningCommerceAdminPane.vue";
+import {
+  marketApi,
+  type MarketAdminOverview,
+  type MarketAppeal,
+  type MarketCategoryOption,
+  type MarketItem,
+  type MarketItemStatus,
+  type MarketReport,
+  type MarketSafetyRule,
+  type MarketViolation,
+  type WantedPost,
+} from "@/api/market";
 
 const loading = ref(false);
 const tab = ref("moderation");
-const overview = reactive<any>({ counts: {}, reviewItems: [], expiredItems: [], wantedModeration: [], reports: [], orders: [], safetyRules: [], violations: [], appeals: [], actionLogs: [] });
+const overview = reactive<MarketAdminOverview>({
+  counts: {},
+  reviewItems: [],
+  expiredItems: [],
+  wantedModeration: [],
+  reports: [],
+  refunds: [],
+  settlements: [],
+  orders: [],
+  safetyRules: [],
+  violations: [],
+  appeals: [],
+  actionLogs: [],
+});
 const categories = ref<MarketCategoryOption[]>([]);
 const categoryOpen = ref(false);
 const editingCategoryId = ref(0);
@@ -192,9 +219,9 @@ const categoryForm = reactive({
   sort: 0,
 });
 
-const pendingReports = computed(() => overview.reports.filter((row: any) => row.status === "pending").length);
-const pendingAppeals = computed(() => overview.appeals.filter((row: any) => row.status === "pending").length);
-const pendingReview = computed(() => (overview.reviewItems?.length || 0) + (overview.wantedModeration?.filter((row: any) => row.status === "reviewing").length || 0));
+const pendingReports = computed(() => overview.reports.filter((row) => row.status === "pending").length);
+const pendingAppeals = computed(() => overview.appeals.filter((row) => row.status === "pending").length);
+const pendingReview = computed(() => (overview.reviewItems?.length || 0) + (overview.wantedModeration?.filter((row) => row.status === "reviewing").length || 0));
 const labels: Record<string, string> = {
   pending: "待处理",
   approved: "已批准",
@@ -248,20 +275,20 @@ async function load() {
   }
 }
 
-function reportRoute(row: any) { if (row.itemId) return `/market/item/${row.itemId}`; if (row.wantedPostId) return `/market/wanted/${row.wantedPostId}`; if (row.reportedUserId) return `/market/seller/${row.reportedUserId}`; return ""; }
-function reportTarget(row: any) { return row.item?.title || row.wantedPost?.title || row.reportedUser?.nickname || (row.order ? `交易 ${row.order.outTradeNo}` : `举报 #${row.id}`); }
+function reportRoute(row: MarketReport) { if (row.itemId) return `/market/item/${row.itemId}`; if (row.wantedPostId) return `/market/wanted/${row.wantedPostId}`; if (row.reportedUserId) return `/market/seller/${row.reportedUserId}`; return ""; }
+function reportTarget(row: MarketReport) { return row.item?.title || row.wantedPost?.title || row.reportedUser?.nickname || (row.order ? `交易 ${row.order.outTradeNo}` : `举报 #${row.id}`); }
 function reportType(value: string) { return ({ listing: "商品", wanted: "求购", user: "用户", trade: "交易" } as Record<string, string>)[value] || value; }
 function violationLevel(value: string) { return ({ warning: "提醒", moderate: "一般", serious: "严重" } as Record<string, string>)[value] || value; }
 function violationAction(value: string) { return ({ warning: "警告", restrict_publish: "限制发布", restrict_trade: "限制交易" } as Record<string, string>)[value] || value; }
 
-function ruleScopeLabel(scope: MarketSafetyRule["scope"]) { return ({ market: "市集", forum: "广场", learning: "免费原创", all: "全部" } as const)[scope] || scope; }
+function ruleScopeLabel(scope: MarketSafetyRule["scope"]) { return ({ market: "市集", forum: "广场", learning: "付费学习资料", all: "全部" } as const)[scope] || scope; }
 function openRule(row?: MarketSafetyRule) { editingRuleId.value = row?.id || 0; Object.assign(ruleForm, row ? { keyword: row.keyword, scope: row.scope, category: row.category, action: row.action, enabled: row.enabled, note: row.note } : { keyword: "", scope: "market", category: "prohibited", action: "block", enabled: true, note: "" }); ruleOpen.value = true; }
 async function saveRule() { if (!ruleForm.keyword.trim() || !ruleForm.category.trim()) return void ElMessage.warning("请填写关键词和风险分类"); if (editingRuleId.value) await marketApi.adminUpdateSafetyRule(editingRuleId.value, ruleForm); else await marketApi.adminCreateSafetyRule(ruleForm); ruleOpen.value = false; ElMessage.success("安全规则已保存"); await load(); }
 async function toggleRule(row: MarketSafetyRule, value: boolean | string | number) { await marketApi.adminUpdateSafetyRule(row.id, { enabled: Boolean(value) }); await load(); }
 async function removeRule(row: MarketSafetyRule) { await ElMessageBox.confirm(`确认删除关键词规则“${row.keyword}”？`, "删除安全规则", { type: "warning" }); await marketApi.adminDeleteSafetyRule(row.id); ElMessage.success("规则已删除"); await load(); }
 async function createViolation() { if (!violationForm.userId || violationForm.reason.trim().length < 2) return void ElMessage.warning("请填写用户 ID 和处理原因"); const expiresAt = violationForm.days > 0 ? new Date(Date.now() + violationForm.days * 86400000).toISOString() : null; await marketApi.adminCreateViolation({ userId: violationForm.userId, type: violationForm.type, level: violationForm.level, action: violationForm.action, reason: violationForm.reason, expiresAt }); violationOpen.value = false; violationForm.reason = ""; ElMessage.success("信用处理已生效"); await load(); }
-async function revokeViolation(row: any) { const { value } = await ElMessageBox.prompt("请填写撤销原因", "撤销市集处理", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminRevokeViolation(row.id, value); ElMessage.success("处理已撤销"); await load(); }
-async function handleAppeal(row: any, status: "approved" | "rejected") { const { value } = await ElMessageBox.prompt("请填写申诉处理结论和依据", status === "approved" ? "通过申诉" : "驳回申诉", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminHandleAppeal(row.id, { status, note: value }); ElMessage.success("申诉已处理"); await load(); }
+async function revokeViolation(row: MarketViolation) { const { value } = await ElMessageBox.prompt("请填写撤销原因", "撤销市集处理", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminRevokeViolation(row.id, value); ElMessage.success("处理已撤销"); await load(); }
+async function handleAppeal(row: MarketAppeal, status: "approved" | "rejected") { const { value } = await ElMessageBox.prompt("请填写申诉处理结论和依据", status === "approved" ? "通过申诉" : "驳回申诉", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminHandleAppeal(row.id, { status, note: value }); ElMessage.success("申诉已处理"); await load(); }
 
 function openCategory(row?: MarketCategoryOption) {
   if (row?.fulfillmentType === "digital") return;
@@ -330,7 +357,7 @@ async function removeCategory(row: MarketCategoryOption) {
   await load();
 }
 
-async function handleReport(row: any, hideItem: boolean) {
+async function handleReport(row: MarketReport, hideItem: boolean) {
   const action = hideItem ? "resolved" : "rejected";
   const { value } = await ElMessageBox.prompt(hideItem ? "填写处置说明" : "填写驳回说明", "处理市集举报", {
     inputValue: "",
@@ -341,14 +368,14 @@ async function handleReport(row: any, hideItem: boolean) {
   await load();
 }
 
-async function moderateItem(row: any, status: string) {
+async function moderateItem(row: MarketItem, status: MarketItemStatus) {
   const { value } = await ElMessageBox.prompt(status === "active" ? "可填写审核说明（选填）" : "请填写移除原因", status === "active" ? "通过商品" : "移除商品", { inputValue: "", inputPattern: status === "active" ? undefined : /\S+/, inputErrorMessage: "请填写移除原因" });
   await marketApi.adminUpdateItem(row.id, { status, note: value });
   ElMessage.success("商品状态已更新");
   await load();
 }
 
-async function moderateWanted(row: any, status: "active" | "removed") {
+async function moderateWanted(row: WantedPost, status: "active" | "removed") {
   const { value } = await ElMessageBox.prompt(status === "active" ? "可填写审核说明（选填）" : "请填写移除原因", status === "active" ? "通过求购" : "移除求购", { inputValue: "", inputPattern: status === "active" ? undefined : /\S+/, inputErrorMessage: "请填写移除原因" });
   await marketApi.adminUpdateWanted(row.id, { status, note: value });
   ElMessage.success("求购状态已更新");

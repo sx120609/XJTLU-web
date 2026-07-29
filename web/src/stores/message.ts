@@ -7,7 +7,7 @@ export const useMessageStore = defineStore("message", {
     async refresh() {
       try {
         const list = await messageApi.list();
-        this.unreadCount = list.filter((n: any) => !n.readAt).length;
+        this.unreadCount = list.filter((notification) => !notification.readAt).length;
       } catch { /* ignore */ }
     },
   },

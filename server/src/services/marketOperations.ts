@@ -143,7 +143,7 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     },
     {
       key: "learning",
-      label: "免费原创",
+      label: "付费学习资料",
       note: "资料建档 → 版本发布 → 获得访问 → 下载使用",
       stages: [stage("资料建档", freeMaterials), stage("版本发布", activeVersions), stage("获得访问", materialAccesses), stage("下载次数", materialDownloads._sum.downloadCount || 0)],
     },

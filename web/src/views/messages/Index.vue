@@ -219,7 +219,11 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowRight, Bell } from "@element-plus/icons-vue";
 import MessageList from "@/components/messages/MessageList.vue";
-import { messageApi } from "@/api/message";
+import {
+  messageApi,
+  type MessageNotification,
+  type MessageSettings,
+} from "@/api/message";
 import { topicApi } from "@/api/topic";
 import { authApi, type QqBotProfile } from "@/api/auth";
 import { useMessageStore } from "@/stores/message";
@@ -227,6 +231,10 @@ import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
+import {
+  isExternalNotificationLink,
+  safeNotificationLink,
+} from "@/utils/notificationLink";
 
 const route = useRoute();
 const router = useRouter();
@@ -235,8 +243,8 @@ const auth = useAuthStore();
 
 const messageTabs = new Set(["all", "reply", "like", "system", "service-tool", "settings"]);
 const tab = ref(normalizeMessageTab(route.query.tab));
-const list = ref<any[]>([]);
-const settings = ref<any>(null);
+const list = ref<MessageNotification[]>([]);
+const settings = ref<MessageSettings | null>(null);
 const qqBotProfile = ref<QqBotProfile | null>(null);
 const qqBotLoading = ref(false);
 const qqBotProfileError = ref("");
@@ -245,7 +253,7 @@ const pageError = ref("");
 const saving = ref(false);
 const markingAll = ref(false);
 const detailOpen = ref(false);
-const activeNotice = ref<any | null>(null);
+const activeNotice = ref<MessageNotification | null>(null);
 const reviewing = ref(false);
 const requestingManualReview = ref(false);
 const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean } | null>(null);
@@ -485,7 +493,7 @@ async function loadPage() {
   }
 }
 
-async function openNotification(item: any) {
+async function openNotification(item: MessageNotification) {
   if (disposed) return;
   activeNotice.value = item;
   reviewTarget.value = null;
@@ -531,9 +539,14 @@ const reviewStateText = computed(() => {
 });
 
 function goNoticeLink() {
-  if (!activeNoticeTargetLink.value) return;
+  const target = activeNoticeTargetLink.value;
+  if (!target) return;
   detailOpen.value = false;
-  router.push(activeNoticeTargetLink.value);
+  if (isExternalNotificationLink(target)) {
+    window.open(target, "_blank", "noopener,noreferrer");
+    return;
+  }
+  router.push(target);
 }
 
 async function requestManualReviewFromNotice() {
@@ -614,12 +627,12 @@ async function rejectFromNotice() {
   }
 }
 
-function getReviewTargetFromNotice(item: any): { kind: "topic" | "reply"; id: number } | null {
-  const type = item?.payload?.type;
-  if (type === "topic-manual-review-admin" && item?.payload?.topicId) {
+function getReviewTargetFromNotice(item: MessageNotification): { kind: "topic" | "reply"; id: number } | null {
+  const type = item.payload.type;
+  if (type === "topic-manual-review-admin" && item.payload.topicId) {
     return { kind: "topic", id: Number(item.payload.topicId) };
   }
-  if (type === "reply-manual-review-admin" && item?.payload?.replyId) {
+  if (type === "reply-manual-review-admin" && item.payload.replyId) {
     return { kind: "reply", id: Number(item.payload.replyId) };
   }
   return null;
@@ -635,8 +648,8 @@ function reviewLabel(status?: string) {
   return "未审核";
 }
 
-function resolveNoticeLink(item: any) {
-  if (item?.link) return String(item.link);
+function resolveNoticeLink(item: MessageNotification | null) {
+  if (item?.link) return safeNotificationLink(item.link);
   const payload = item?.payload;
   const topicId = Number(payload?.topicId || 0);
   const replyId = Number(payload?.replyId || 0);
@@ -669,10 +682,10 @@ function normalizeMessageActionError(error: unknown, fallback: string) {
   return message || fallback;
 }
 
-function normalizeMessageSettings(value: any) {
+function normalizeMessageSettings(value: MessageSettings): MessageSettings {
   return {
     ...value,
-    qqBotNotifyEnabled: value?.qqBotNotifyEnabled !== false,
+    qqBotNotifyEnabled: value.qqBotNotifyEnabled !== false,
   };
 }
 </script>

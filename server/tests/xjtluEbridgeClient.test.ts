@@ -4,11 +4,22 @@ import test from "node:test";
 process.env.REDIS_ENABLED = "false";
 process.env.JWT_SECRET = "xjtlu-ebridge-test-secret";
 
-const portalHtml = `<!doctype html><html><head><title>e:Vision Portal</title></head><body>
-  <div>Test Student (<a href="SIW_LGN_LOGOUT.start_url?logout">Logout</a>)</div>
-  <a href="siw_portal.url?home">Home Page</a>
-  <a href="siw_portal.url?records">Academic Records</a>
-  <a href="siw_portal.url?timetable">Timetables</a>
+const portalHtml = `<!doctype html><html><head><title>XJTLU e-Bridge</title></head><body>
+  <div>Test Student (<a href="SIW_LGN_LOGOUT.start_url?logout">Sign out</a>)</div>
+  <a href="siw_portal.url?registration">Registration</a>
+  <a href="siw_portal.url?research">Research Support</a>
+</body></html>`;
+
+const registrationHtml = `<!doctype html><html><head><title>XJTLU e-Bridge · Registration</title></head><body>
+  <div>Test Student (<a href="SIW_LGN_LOGOUT.start_url?logout">Sign out</a>)</div>
+  <a href="siw_portal.url?home">Home</a>
+  <a href="siw_portal.url?records"><img alt="My Academic Record"></a>
+  <a href="siw_portal.url?timetable" aria-label="Class Timetable"></a>
+</body></html>`;
+
+const portalLandingHtml = `<!doctype html><html><head><title>e:Vision Portal</title></head><body>
+  <div>Test Student (<a href="SIW_LGN_LOGOUT.start_url?logout">Sign out</a>)</div>
+  <a href="siw_portal.url?home">Continue to XJTLU e-Bridge</a>
 </body></html>`;
 
 const recordsHtml = `<!doctype html><html><body>
@@ -46,6 +57,11 @@ const timetableHtml = `<!doctype html><html><body>
   <tbody><tr><td>MTH102</td><td>Engineering Mathematics II</td><td>06 Jun 2026</td><td>Saturday</td><td>9:30AM</td><td>10:00AM</td><td>2h</td><td>South Campus</td><td>S14</td><td>Green-3</td><td>Ground floor</td></tr></tbody></table>
 </body></html>`;
 
+const unpublishedTimetableHtml = `<!doctype html><html><head><title>XJTLU e-Bridge</title></head><body>
+  <div>Test Student (<a href="SIW_LGN_LOGOUT.start_url?logout">Sign out</a>)</div>
+  <h1>Timetables</h1><p>The personal class timetable has not been published.</p>
+</body></html>`;
+
 const timetableHash = "Aa".repeat(32);
 const personalTimetableHtml = `<!doctype html><html><body>
   <h1>My Timetable</h1>
@@ -71,6 +87,7 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
   let fetchCount = 0;
   let activeHomeRequests = 0;
   let maxActiveHomeRequests = 0;
+  let personalTimetablePublished = true;
 
   globalThis.fetch = async (input, init = {}) => {
     fetchCount += 1;
@@ -99,8 +116,11 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
     }
     if (url.pathname.endsWith("/siw_sso.openid_response")) {
       assert.match(cookies, /EBRIDGE_SESSION=ready/);
-      return new Response(`<html><head><title>User Redirect</title></head><body><script>window.location.href="siw_portal.url?home";</script></body></html>`);
+      return new Response(`<html><head><title>User Redirect</title></head><body><script>
+        window.location.href='"+location+"';
+      </script><a href="siw_portal.url?landing">Continue</a></body></html>`);
     }
+    if (url.search === "?landing") return new Response(portalLandingHtml);
     if (url.search === "?home") {
       activeHomeRequests += 1;
       maxActiveHomeRequests = Math.max(maxActiveHomeRequests, activeHomeRequests);
@@ -108,8 +128,12 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
       activeHomeRequests -= 1;
       return new Response(portalHtml);
     }
+    if (url.search === "?registration") return new Response(registrationHtml);
+    if (url.search === "?research") return new Response(portalHtml);
     if (url.search === "?records") return new Response(recordsHtml);
-    if (url.search === "?timetable") return new Response(timetableHtml);
+    if (url.search === "?timetable") {
+      return new Response(personalTimetablePublished ? timetableHtml : unpublishedTimetableHtml);
+    }
     if (url.search === "?personal") return new Response(personalTimetableHtml);
     if (url.search === "?full-records") return new Response(fullRecordsHtml);
     if (url.search === "?component-marks") return new Response(componentMarksHtml);
@@ -208,6 +232,7 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
     area: "Green-3",
     entrance: "Ground floor",
   });
+  assert.equal(schedule.available, true);
   assert.equal(schedule.parsed.currentSemester, "2025/26-S2");
   assert.equal(schedule.parsed.weeks.length, 13);
   assert.equal(schedule.calendar.semesterStart, "2026-03-02");
@@ -228,11 +253,33 @@ test("XJTLU eBridge exchanges SSO and parses academic records and exams", async 
     }],
   }]);
   assert.doesNotMatch(JSON.stringify(schedule), new RegExp(timetableHash));
+  personalTimetablePublished = false;
+  const unpublishedSchedule = await getXjtluAcademicSchedule(1991);
+  assert.equal(unpublishedSchedule.available, false);
+  assert.equal(unpublishedSchedule.message, "eBridge 当前暂未发布个人课表");
+  assert.deepEqual(unpublishedSchedule.parsed, {
+    semesters: [],
+    weeks: [],
+    currentSemester: "",
+    currentWeek: "",
+    cells: [],
+  });
+  personalTimetablePublished = true;
   const fetchCountAfterFirstLoad = fetchCount;
   await getXjtluAcademicSchedule(1991);
   assert.ok(fetchCount > fetchCountAfterFirstLoad, "academic timetable should always use live school data");
   await clearXjtluEbridgeSession(1991);
   assert.deepEqual(await getXjtluEbridgeStatus(1991), { active: false });
+  await assert.rejects(
+    () => getXjtluAcademicOverview(1991),
+    (error: unknown) => {
+      const value = error as { status?: number; code?: number; message?: string };
+      assert.equal(value.status, 409);
+      assert.equal(value.code, 4601);
+      assert.match(value.message || "", /eBridge 会话不存在/);
+      return true;
+    },
+  );
 });
 
 test("XJTLU eBridge rejects redirects outside its authentication allowlist", async (t) => {

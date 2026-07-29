@@ -19,6 +19,7 @@ const EBRIDGE_LOGIN_URL = `${EBRIDGE_ORIGIN}${EBRIDGE_RUN_PREFIX}SIW_LGN`;
 const EBRIDGE_SSO_URL = `${EBRIDGE_ORIGIN}${EBRIDGE_RUN_PREFIX}siw_sso.openid`;
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
+const EBRIDGE_SESSION_EXPIRED_CODE = 4601;
 const SESSION_PREFIX = buildRedisKey("school-auth", "xjtlu", "ebridge-session");
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36";
 const sessionOperationTails = new Map<number, Promise<void>>();
@@ -31,6 +32,14 @@ interface EbridgeSession {
   displayName: string;
   homeUrl: string;
   createdAt: number;
+}
+
+function ebridgeSessionExpired(message = "eBridge 会话已失效，请重新使用 XJTLU 账号登录") {
+  return new HttpError(409, EBRIDGE_SESSION_EXPIRED_CODE, message);
+}
+
+function isEbridgeSessionExpired(error: unknown) {
+  return error instanceof HttpError && error.code === EBRIDGE_SESSION_EXPIRED_CODE;
 }
 
 export interface XjtluAcademicGrade {
@@ -273,13 +282,32 @@ function normalizeText(input: string) {
 }
 
 function isPortalHtml(html: string) {
-  const text = normalizeText(cheerio.load(html)("body").text());
-  return text.includes("Logout") && text.includes("Home Page");
+  const $ = cheerio.load(html);
+  const text = normalizeText($("body").text());
+  let hasLogoutControl = false;
+  let hasPortalControl = false;
+  $("a[href], form[action]").each((_, element) => {
+    const value = String($(element).attr("href") || $(element).attr("action") || "").toLowerCase();
+    if (/siw_lgn_logout|(?:^|[?&/_.-])logout(?:[=&/?_.-]|$)/i.test(value)) hasLogoutControl = true;
+    if (/siw_portal\.url/i.test(value)) hasPortalControl = true;
+  });
+  const hasLogoutText = /\b(?:log\s*out|sign\s*out)\b/i.test(text);
+  const hasHomeText = /\bhome(?:\s+page)?\b/i.test(text);
+  return (hasLogoutControl || hasLogoutText) && (hasPortalControl || hasHomeText);
 }
 
 function parseDisplayName(html: string) {
-  const text = normalizeText(cheerio.load(html)("body").text());
-  const match = text.match(/(?:Skip navigation\s+)?([A-Za-z][A-Za-z .'-]{1,80})\s*\(\s*Logout\s*\)/i);
+  const $ = cheerio.load(html);
+  let controlText = "";
+  $("a[href], form[action]").each((_, element) => {
+    if (controlText) return;
+    const value = String($(element).attr("href") || $(element).attr("action") || "");
+    if (/siw_lgn_logout|logout/i.test(value)) {
+      controlText = normalizeText($(element).parent().text());
+    }
+  });
+  const text = controlText || normalizeText($("body").text());
+  const match = text.match(/(?:Skip navigation\s+)?([A-Za-z][A-Za-z .'-]{1,80}?)\s*\(?\s*(?:Log\s*out|Sign\s*out)\s*\)?/i);
   return match?.[1]?.trim() || "";
 }
 
@@ -294,6 +322,35 @@ function transitionUrl(value: string, current: URL) {
   }
 }
 
+function staticScriptTransitionValue(value: string) {
+  const candidate = value.trim();
+  if (!candidate) return "";
+  // SITS occasionally renders server-side JavaScript templates such as
+  // `location.href='"+location+"'`. The quoted fragment is not a URL and must
+  // never be requested literally as `/+location+`.
+  if (
+    candidate.startsWith("+")
+    || candidate.endsWith("+")
+    || candidate.includes("${")
+    || candidate.includes("<%")
+  ) {
+    return "";
+  }
+  return candidate.replace(/\\\//g, "/");
+}
+
+function findPortalHomeUrl(html: string, current: URL): URL | null {
+  const $ = cheerio.load(html);
+  let target: URL | null = null;
+  $("a[href]").each((_, element) => {
+    if (target) return;
+    const href = String($(element).attr("href") || "");
+    if (!/siw_portal\.url/i.test(href)) return;
+    target = transitionUrl(href, current);
+  });
+  return target;
+}
+
 function extractHtmlTransition(html: string, current: URL): HtmlTransition | null {
   const $ = cheerio.load(html);
   const meta = $("meta[http-equiv]").filter((_, element) => String($(element).attr("http-equiv") || "").toLowerCase() === "refresh").first();
@@ -304,28 +361,17 @@ function extractHtmlTransition(html: string, current: URL): HtmlTransition | nul
     if (url) return { url };
   }
 
-  const scripts = $("script").map((_, element) => $(element).html() || "").get().join("\n");
-  const patterns = [
-    /(?:window\.|document\.|top\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i,
-    /(?:window\.|document\.|top\.)?location\.(?:replace|assign)\(\s*["']([^"']+)["']/i,
-  ];
-  for (const pattern of patterns) {
-    const match = scripts.match(pattern);
-    if (!match?.[1]) continue;
-    const url = transitionUrl(match[1], current);
-    if (url) return { url };
-  }
-
-  const form = $("form[action]").first();
-  if (form.length) {
-    const url = transitionUrl(String(form.attr("action") || ""), current);
+  const forms = $("form[action]").toArray();
+  for (const form of forms) {
+    const element = $(form);
+    const url = transitionUrl(String(element.attr("action") || ""), current);
     if (url) {
       const params = new URLSearchParams();
-      form.find("input[name]").each((_, element) => {
-        const name = String($(element).attr("name") || "");
-        if (name) params.append(name, String($(element).attr("value") || ""));
+      element.find("input[name]").each((_, input) => {
+        const name = String($(input).attr("name") || "");
+        if (name) params.append(name, String($(input).attr("value") || ""));
       });
-      const method = String(form.attr("method") || "GET").toUpperCase();
+      const method = String(element.attr("method") || "GET").toUpperCase();
       if (method === "POST") {
         return {
           url,
@@ -336,7 +382,7 @@ function extractHtmlTransition(html: string, current: URL): HtmlTransition | nul
           },
         };
       }
-      url.search = params.toString();
+      params.forEach((value, name) => url.searchParams.append(name, value));
       return { url };
     }
   }
@@ -346,8 +392,26 @@ function extractHtmlTransition(html: string, current: URL): HtmlTransition | nul
     const href = String($(element).attr("href") || "");
     if (!portalHref && /siw_portal\.url/i.test(href)) portalHref = href;
   });
-  const url = portalHref ? transitionUrl(portalHref, current) : null;
-  return url ? { url } : null;
+  const portalUrl = portalHref ? transitionUrl(portalHref, current) : null;
+  if (portalUrl) return { url: portalUrl };
+
+  // Script navigation is deliberately last. SITS includes generic JavaScript
+  // helpers on otherwise normal pages; those helpers must not override an
+  // actual form or portal link rendered in the HTML.
+  const scripts = $("script").map((_, element) => $(element).html() || "").get().join("\n");
+  const patterns = [
+    /(?:window\.|document\.|top\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/gi,
+    /(?:window\.|document\.|top\.)?location\.(?:replace|assign)\(\s*["']([^"']+)["']/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of scripts.matchAll(pattern)) {
+      const candidate = staticScriptTransitionValue(match[1] || "");
+      if (!candidate) continue;
+      const url = transitionUrl(candidate, current);
+      if (url) return { url };
+    }
+  }
+  return null;
 }
 
 export async function establishXjtluEbridgeSession(
@@ -362,12 +426,21 @@ export async function establishXjtluEbridgeSession(
   let current = new URL(EBRIDGE_SSO_URL);
   let referer = EBRIDGE_LOGIN_URL;
   let init: RequestInit = {};
+  let followedPortalHome = false;
+  const hopTrace: Array<{ hop: number; origin: string; path: string; status: number; title: string }> = [];
 
   for (let hop = 0; hop < 16; hop += 1) {
     if (!isAllowedAuthUrl(current)) throw Errors.server("eBridge 返回了非预期登录跳转");
     const result = await request(current.toString(), jars[current.origin], {
       ...init,
       headers: { Referer: referer, ...(init.headers ?? {}) },
+    });
+    hopTrace.push({
+      hop,
+      origin: current.origin,
+      path: current.pathname,
+      status: result.response.status,
+      title: normalizeText(cheerio.load(result.text)("title").text()).slice(0, 80),
     });
     init = {};
     if (result.response.status >= 300 && result.response.status < 400) {
@@ -383,8 +456,28 @@ export async function establishXjtluEbridgeSession(
       current = target;
       continue;
     }
-    if (result.response.status < 200 || result.response.status >= 300) throw Errors.server("eBridge 登录失败");
+    if (result.response.status < 200 || result.response.status >= 300) {
+      const title = normalizeText(cheerio.load(result.text)("title").text()).slice(0, 120);
+      console.warn("[xjtlu-ebridge] login request rejected", {
+        status: result.response.status,
+        origin: current.origin,
+        path: current.pathname,
+        hop,
+        title,
+      });
+      throw new HttpError(502, 5603, `eBridge 登录失败（学校端返回 ${result.response.status}）`);
+    }
     if (current.origin === EBRIDGE_ORIGIN && isPortalHtml(result.text)) {
+      // The OpenID callback can already render logout/home controls while it is
+      // still only an authenticated landing page. Follow its portal link once
+      // so later academic lookups start from the real e:Vision dashboard.
+      const portalHome = findPortalHomeUrl(result.text, current);
+      if (!followedPortalHome && portalHome && portalHome.toString() !== current.toString()) {
+        followedPortalHome = true;
+        referer = current.toString();
+        current = portalHome;
+        continue;
+      }
       const session: EbridgeSession = {
         cookies: jars[EBRIDGE_ORIGIN],
         username: expectedUsername.trim().toLowerCase(),
@@ -401,12 +494,13 @@ export async function establishXjtluEbridgeSession(
     current = transition.url;
     init = transition.init ?? {};
   }
+  console.warn("[xjtlu-ebridge] login hop limit reached", hopTrace);
   throw Errors.server("eBridge 登录跳转次数过多");
 }
 
 async function requireSession(userId: number) {
   const session = await loadSession(userId);
-  if (!session) throw Errors.unauthorized("eBridge 会话不存在，请退出后重新使用 XJTLU 账号登录");
+  if (!session) throw ebridgeSessionExpired("eBridge 会话不存在，请重新使用 XJTLU 账号登录");
   return session;
 }
 
@@ -429,19 +523,98 @@ async function fetchPage(session: EbridgeSession, input: string) {
       } catch {
         throw Errors.server("eBridge 返回了无效页面跳转");
       }
+      if (
+        target.origin === UIM_ORIGIN
+        || (target.origin === EBRIDGE_ORIGIN && target.pathname.toLowerCase().endsWith("/siw_lgn"))
+      ) {
+        throw ebridgeSessionExpired();
+      }
       if (!isAllowedEbridgeUrl(target)) throw Errors.server("eBridge 返回了非预期页面跳转");
       referer = current.toString();
       current = target;
       continue;
     }
+    if (result.response.status === 401 || result.response.status === 403) {
+      throw ebridgeSessionExpired();
+    }
     if (result.response.status < 200 || result.response.status >= 300) throw Errors.server("eBridge 页面暂时不可用");
     const title = normalizeText(cheerio.load(result.text)("title").text());
     if (/log in to the portal/i.test(title) || /Portal Login/.test(result.text)) {
-      throw Errors.unauthorized("eBridge 会话已失效，请重新登录");
+      throw ebridgeSessionExpired();
     }
     return { html: result.text, url: current.toString() };
   }
   throw Errors.server("eBridge 页面跳转次数过多");
+}
+
+async function fetchPortalDashboard(session: EbridgeSession) {
+  let page = await fetchPage(session, session.homeUrl);
+  const title = normalizeText(cheerio.load(page.html)("title").text());
+  if (/XJTLU\s+e-?Bridge/i.test(title)) return page;
+  const portalHome = findPortalHomeUrl(page.html, new URL(page.url));
+  if (!portalHome || portalHome.toString() === page.url) return page;
+  // Legacy sessions may still point at the generic e:Vision landing page.
+  // Follow exactly one link to the XJTLU dashboard; category navigation is
+  // resolved separately and must not be mistaken for another home redirect.
+  page = await fetchPage(session, portalHome.toString());
+  return page;
+}
+
+const LINK_LABEL_ALIASES: Record<string, string[]> = {
+  "Academic Records": ["Academic Records", "Academic Record", "My Academic Records", "Student Records"],
+  Timetables: ["Timetables", "Timetable", "My Timetable", "Class Timetable"],
+  "Full Academic Records": ["Full Academic Records", "Full Academic Record", "Full Records"],
+  "Component Marks": ["Component Marks", "Assessment Marks", "Module Marks"],
+  "My Personal Class Timetable": [
+    "My Personal Class Timetable",
+    "Personal Class Timetable",
+    "My Class Timetable",
+    "Personal Timetable",
+  ],
+};
+
+function comparableLinkText(value: string) {
+  return normalizeText(value).toLocaleLowerCase("en").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function linkSearchText($: cheerio.CheerioAPI, element: any) {
+  const item = $(element);
+  const descendants = item.find("[alt], [title], [aria-label]").toArray().map((child) => {
+    const node = $(child);
+    return `${node.attr("alt") || ""} ${node.attr("title") || ""} ${node.attr("aria-label") || ""}`;
+  }).join(" ");
+  return comparableLinkText([
+    item.text(),
+    item.attr("title"),
+    item.attr("aria-label"),
+    descendants,
+  ].filter(Boolean).join(" "));
+}
+
+function matchesLinkLabel(searchText: string, label: string) {
+  const aliases = LINK_LABEL_ALIASES[label] || [label];
+  return aliases.some((alias) => {
+    const comparable = comparableLinkText(alias);
+    return searchText === comparable || searchText.includes(comparable);
+  });
+}
+
+function logMissingPortalLink(html: string, label: string) {
+  const $ = cheerio.load(html);
+  const links = $("a[href]").toArray().slice(0, 24).map((element) => {
+    let path = "";
+    try {
+      path = new URL(String($(element).attr("href") || ""), EBRIDGE_ORIGIN).pathname;
+    } catch {
+      path = "invalid";
+    }
+    return { text: linkSearchText($, element).slice(0, 80), path };
+  });
+  console.warn("[xjtlu-ebridge] portal entry not found", {
+    requested: label,
+    title: normalizeText($("title").text()).slice(0, 100),
+    links,
+  });
 }
 
 function findLink(html: string, baseUrl: string, label: string) {
@@ -449,10 +622,14 @@ function findLink(html: string, baseUrl: string, label: string) {
   let href = "";
   $("a[href]").each((_, element) => {
     if (href) return;
-    const text = normalizeText($(element).text());
-    if (text === label || text.includes(label)) href = String($(element).attr("href") || "");
+    if (matchesLinkLabel(linkSearchText($, element), label)) {
+      href = String($(element).attr("href") || "");
+    }
   });
-  if (!href) throw Errors.server(`eBridge 未返回${label}入口`);
+  if (!href) {
+    logMissingPortalLink(html, label);
+    throw Errors.server(`eBridge 未返回${label}入口`);
+  }
   const url = new URL(href, baseUrl);
   if (!isAllowedEbridgeUrl(url)) throw Errors.server(`eBridge 返回了无效的${label}入口`);
   return url.toString();
@@ -465,28 +642,119 @@ function findLinkDetails(html: string, baseUrl: string, label: string) {
   $("a[href]").each((_, element) => {
     if (href) return;
     const candidate = normalizeText($(element).text());
-    if (candidate === label || candidate.includes(label)) {
+    if (matchesLinkLabel(linkSearchText($, element), label)) {
       href = String($(element).attr("href") || "");
       text = candidate;
     }
   });
-  if (!href) throw Errors.server(`eBridge 未返回 ${label} 入口`);
+  if (!href) {
+    logMissingPortalLink(html, label);
+    throw Errors.server(`eBridge 未返回 ${label} 入口`);
+  }
   const url = new URL(href, baseUrl);
   if (!isAllowedEbridgeUrl(url)) throw Errors.server(`eBridge 返回了无效的 ${label} 入口`);
   return { url: url.toString(), label: text };
 }
 
 function findOptionalLink(html: string, baseUrl: string, label: string) {
+  return findOptionalLinkDetails(html, baseUrl, label)?.url || "";
+}
+
+function findOptionalLinkDetails(html: string, baseUrl: string, label: string) {
   const $ = cheerio.load(html);
   let href = "";
+  let text = "";
   $("a[href]").each((_, element) => {
     if (href) return;
-    const candidate = normalizeText($(element).text());
-    if (candidate === label || candidate.includes(label)) href = String($(element).attr("href") || "");
+    if (matchesLinkLabel(linkSearchText($, element), label)) {
+      href = String($(element).attr("href") || "");
+      const item = $(element);
+      text = normalizeText([
+        item.text(),
+        item.attr("title"),
+        item.attr("aria-label"),
+        item.find("[alt]").toArray().map((child) => $(child).attr("alt") || "").join(" "),
+      ].filter(Boolean).join(" "));
+    }
   });
-  if (!href) return "";
+  if (!href) return null;
   const url = new URL(href, baseUrl);
-  return isAllowedEbridgeUrl(url) ? url.toString() : "";
+  return isAllowedEbridgeUrl(url) ? { url: url.toString(), label: text || label } : null;
+}
+
+function portalNavigationUrls(html: string, baseUrl: string) {
+  const $ = cheerio.load(html);
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  $("a[href]").each((_, element) => {
+    const href = String($(element).attr("href") || "");
+    if (!/siw_portal\.url/i.test(href)) return;
+    try {
+      const url = new URL(href, baseUrl);
+      const value = url.toString();
+      if (isAllowedEbridgeUrl(url) && !seen.has(value)) {
+        seen.add(value);
+        urls.push(value);
+      }
+    } catch {
+      // Ignore malformed navigation controls rendered by the upstream portal.
+    }
+  });
+  return urls;
+}
+
+async function resolvePortalEntries(
+  session: EbridgeSession,
+  startPage: { html: string; url: string },
+  labels: string[],
+  required = true,
+) {
+  const resolved = new Map<string, { url: string; label: string }>();
+  const visited = new Set<string>();
+  const queue: Array<{ url: string; depth: number }> = [];
+  const scannedPages: Array<{ title: string; controls: string[] }> = [];
+
+  const inspect = (page: { html: string; url: string }, depth: number) => {
+    visited.add(page.url);
+    const $ = cheerio.load(page.html);
+    scannedPages.push({
+      title: normalizeText($("title").text()).slice(0, 80),
+      controls: $("a[href]").toArray().map((element) => linkSearchText($, element))
+        .filter(Boolean)
+        .slice(0, 20),
+    });
+    for (const label of labels) {
+      if (resolved.has(label)) continue;
+      const details = findOptionalLinkDetails(page.html, page.url, label);
+      if (details) resolved.set(label, details);
+    }
+    if (depth >= 2) return;
+    for (const url of portalNavigationUrls(page.html, page.url)) {
+      if (!visited.has(url) && !queue.some((candidate) => candidate.url === url)) {
+        queue.push({ url, depth: depth + 1 });
+      }
+    }
+  };
+
+  inspect(startPage, 0);
+  while (queue.length && resolved.size < labels.length && visited.size < 12) {
+    const candidate = queue.shift()!;
+    if (visited.has(candidate.url)) continue;
+    const page = await fetchPage(session, candidate.url);
+    inspect(page, candidate.depth);
+  }
+
+  for (const label of labels) {
+    if (resolved.has(label)) continue;
+    if (!required) continue;
+    console.warn(
+      "[xjtlu-ebridge] portal search exhausted",
+      JSON.stringify({ requested: label, scannedPages }, null, 2),
+    );
+    logMissingPortalLink(startPage.html, label);
+    throw Errors.server(`eBridge 未返回${label}入口`);
+  }
+  return Object.fromEntries(resolved);
 }
 
 function extractTimetableReference(html: string): TimetableReference {
@@ -943,7 +1211,7 @@ export async function getXjtluEbridgeStatus(userId: number, verify = false) {
     return { active: true as const, username: session.username, displayName: session.displayName };
   }
   try {
-    const home = await fetchPage(session, session.homeUrl);
+    const home = await fetchPortalDashboard(session);
     if (!isPortalHtml(home.html)) {
       await deleteEphemeralValue(sessionKey(userId));
       return { active: false as const };
@@ -953,7 +1221,7 @@ export async function getXjtluEbridgeStatus(userId: number, verify = false) {
     await saveSession(userId, session);
     return { active: true as const, username: session.username, displayName: session.displayName };
   } catch (error) {
-    if (error instanceof HttpError && error.status === 401) {
+    if (isEbridgeSessionExpired(error)) {
       await deleteEphemeralValue(sessionKey(userId));
       return { active: false as const };
     }
@@ -964,10 +1232,11 @@ export async function getXjtluEbridgeStatus(userId: number, verify = false) {
 async function getXjtluAcademicOverviewUnlocked(userId: number) {
   const session = await requireSession(userId);
   try {
-    const home = await fetchPage(session, session.homeUrl);
+    const home = await fetchPortalDashboard(session);
     session.homeUrl = home.url;
-    const recordsUrl = findLink(home.html, home.url, "Academic Records");
-    const timetableUrl = findLink(home.html, home.url, "Timetables");
+    const entrances = await resolvePortalEntries(session, home, ["Academic Records", "Timetables"]);
+    const recordsUrl = entrances["Academic Records"].url;
+    const timetableUrl = entrances.Timetables.url;
     const recordsPage = await fetchPage(session, recordsUrl);
     const fullRecordsUrl = findLink(recordsPage.html, recordsPage.url, "Full Academic Records");
     const componentMarksUrl = findOptionalLink(recordsPage.html, recordsPage.url, "Component Marks");
@@ -995,7 +1264,7 @@ async function getXjtluAcademicOverviewUnlocked(userId: number) {
     await saveSession(userId, session);
     return overview;
   } catch (error) {
-    if (error instanceof HttpError && error.status === 401) await deleteEphemeralValue(sessionKey(userId));
+    if (isEbridgeSessionExpired(error)) await deleteEphemeralValue(sessionKey(userId));
     throw error;
   }
 }
@@ -1003,15 +1272,43 @@ async function getXjtluAcademicOverviewUnlocked(userId: number) {
 async function getXjtluAcademicScheduleUnlocked(userId: number) {
   const session = await requireSession(userId);
   try {
-    const home = await fetchPage(session, session.homeUrl);
+    const home = await fetchPortalDashboard(session);
     session.homeUrl = home.url;
-    const timetablesUrl = findLink(home.html, home.url, "Timetables");
+    const entrances = await resolvePortalEntries(session, home, ["Timetables"]);
+    const timetablesUrl = entrances.Timetables.url;
     const timetablesPage = await fetchPage(session, timetablesUrl);
-    const personalLink = findLinkDetails(
-      timetablesPage.html,
-      timetablesPage.url,
-      "My Personal Class Timetable",
+    const personalEntrances = await resolvePortalEntries(
+      session,
+      timetablesPage,
+      ["My Personal Class Timetable"],
+      false,
     );
+    const personalLink = personalEntrances["My Personal Class Timetable"];
+    if (!personalLink) {
+      await saveSession(userId, session);
+      return {
+        available: false,
+        message: "eBridge 当前暂未发布个人课表",
+        parsed: {
+          semesters: [],
+          weeks: [],
+          currentSemester: "",
+          currentWeek: "",
+          cells: [],
+        },
+        calendar: {
+          currentWeek: 0,
+          semesterStart: "",
+          semesterEnd: "",
+          weeks: [],
+        },
+        source: {
+          fetchedAt: new Date().toISOString(),
+          semesterLabel: "",
+          activityCount: 0,
+        },
+      };
+    }
     const personalPage = await fetchPage(session, personalLink.url);
     const reference = extractTimetableReference(personalPage.html);
     const activities = await fetchTimetableActivities(reference);
@@ -1029,6 +1326,7 @@ async function getXjtluAcademicScheduleUnlocked(userId: number) {
       },
     );
     const schedule = {
+      available: true,
       parsed: {
         semesters: [{ value: semester.value, label: semester.display, current: true }],
         weeks,
@@ -1055,7 +1353,7 @@ async function getXjtluAcademicScheduleUnlocked(userId: number) {
     await saveSession(userId, session);
     return schedule;
   } catch (error) {
-    if (error instanceof HttpError && error.status === 401) await deleteEphemeralValue(sessionKey(userId));
+    if (isEbridgeSessionExpired(error)) await deleteEphemeralValue(sessionKey(userId));
     throw error;
   }
 }

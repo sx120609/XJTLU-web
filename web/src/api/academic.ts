@@ -4,6 +4,8 @@ import type { CalendarResult, ScheduleResult } from "@/views/schedule/types";
 export interface AcademicStatus {
   active: boolean;
   connecting?: boolean;
+  connectionFailed?: boolean;
+  connectionError?: string;
   username?: string;
   displayName?: string;
 }
@@ -54,6 +56,8 @@ export interface AcademicOverview {
 }
 
 export interface AcademicSchedule {
+  available?: boolean;
+  message?: string;
   parsed: ScheduleResult;
   calendar: CalendarResult;
   source: {

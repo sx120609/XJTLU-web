@@ -56,6 +56,7 @@ test("stage 4 routes and pages expose linked discussions and the four-part learn
   const homeRoute = readFileSync(new URL("../src/routes/home.ts", import.meta.url), "utf8");
   const topicRoute = readFileSync(new URL("../src/routes/topic.ts", import.meta.url), "utf8");
   const marketRoute = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
+  const marketItemWriteService = readFileSync(new URL("../src/services/marketItemWriteService.ts", import.meta.url), "utf8");
   const learningMaterialsRoute = readFileSync(new URL("../src/routes/learningMaterials.ts", import.meta.url), "utf8");
   const searchRoute = readFileSync(new URL("../src/routes/search.ts", import.meta.url), "utf8");
   const post = readFileSync(new URL("../../web/src/views/forum/Post.vue", import.meta.url), "utf8");
@@ -67,18 +68,26 @@ test("stage 4 routes and pages expose linked discussions and the four-part learn
   assert.match(homeRoute, /section:\s*\{ not: null \}/);
   assert.match(topicRoute, /section:\s*\{ not: null \}/);
   assert.match(searchRoute, /section:\s*\{ not: null \}/);
-  assert.match(marketRoute, /condition:\s*z\.enum\(ITEM_CONDITIONS\)/);
-  assert.doesNotMatch(marketRoute, /tx\.topic\.create/);
+  assert.match(marketItemWriteService, /condition:\s*z\.enum\(ITEM_CONDITIONS\)/);
+  assert.doesNotMatch(`${marketRoute}\n${marketItemWriteService}`, /tx\.topic\.create/);
   assert.doesNotMatch(learningMaterialsRoute, /tx\.topic\.create/);
   assert.match(post, /关联市集信息/);
   assert.match(topic, /关联商品/);
-  for (const title of ["学习好物", "学习交流", "免费原创", "官方学习资源"]) assert.match(hub, new RegExp(title));
+  for (const title of ["学习好物", "学习交流", "付费学习资料", "官方学习资源"]) assert.match(hub, new RegExp(title));
   assert.match(router, /path: "learning"[^\n]+views\/learning\/Hub\.vue/);
-  assert.match(router, /path: "learning\/free"[^\n]+LearningMaterials\.vue/);
+  assert.match(router, /path: "learning\/materials"[^\n]+LearningMaterials\.vue/);
 });
 
 test("structured wanted demands expose anonymous publishing without leaking identity", () => {
-  const marketRoute = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
+  const marketRoute = [
+    readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketCatalog.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketWantedCatalog.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketWantedWrite.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketCatalogService.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketWantedService.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketWantedWriteService.ts", import.meta.url), "utf8"),
+  ].join("\n");
   const wantedTopic = readFileSync(new URL("../src/services/wantedDemandTopic.ts", import.meta.url), "utf8");
   const wantedPublish = readFileSync(new URL("../../web/src/views/market/WantedPublish.vue", import.meta.url), "utf8");
   const square = readFileSync(new URL("../../web/src/views/forum/Index.vue", import.meta.url), "utf8");
@@ -112,9 +121,14 @@ test("market item decoupling migration archives historical auto-topics without d
 });
 
 test("physical sale form and filters share required category, condition, delivery and sale-price semantics", () => {
-  const marketRoute = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
-  const itemSchemaStart = marketRoute.indexOf("const itemInputSchema");
-  const itemSchema = marketRoute.slice(itemSchemaStart, marketRoute.indexOf("const itemPatchSchema", itemSchemaStart));
+  const marketItemWriteService = readFileSync(new URL("../src/services/marketItemWriteService.ts", import.meta.url), "utf8");
+  const marketCatalogRoute = readFileSync(new URL("../src/routes/marketCatalog.ts", import.meta.url), "utf8");
+  const marketCatalogService = readFileSync(new URL("../src/services/marketCatalogService.ts", import.meta.url), "utf8");
+  const itemSchemaStart = marketItemWriteService.indexOf("export const marketItemInputSchema");
+  const itemSchema = marketItemWriteService.slice(
+    itemSchemaStart,
+    marketItemWriteService.indexOf("export const marketItemPatchSchema", itemSchemaStart),
+  );
   const publish = readFileSync(new URL("../../web/src/views/market/Publish.vue", import.meta.url), "utf8");
   const publishTemplate = publish.slice(0, publish.indexOf("<script setup"));
   const index = readFileSync(new URL("../../web/src/views/market/Index.vue", import.meta.url), "utf8");
@@ -134,11 +148,11 @@ test("physical sale form and filters share required category, condition, deliver
     assert.match(itemSchema, new RegExp(`${optionalField}:[^\\n]+optional\\(\\)`));
   }
   assert.doesNotMatch(itemSchema, /expiryDays/);
-  assert.match(marketRoute, /const TRADE_MODES = \["meetup", "shipping", "online", "any"\]/);
-  assert.match(marketRoute, /where\.priceCents =/);
-  assert.doesNotMatch(marketRoute, /where\.originalPriceCents/);
-  assert.match(marketRoute, /tradeMode && tradeMode !== "any"/);
-  assert.match(marketRoute, /expiresAt: null/);
+  assert.match(marketCatalogService, /TRADE_MODES = \["meetup", "shipping", "online", "any"\]/);
+  assert.match(marketCatalogRoute, /where\.priceCents =/);
+  assert.doesNotMatch(marketCatalogRoute, /where\.originalPriceCents/);
+  assert.match(marketCatalogRoute, /tradeMode && tradeMode !== "any"/);
+  assert.match(marketItemWriteService, /expiresAt: null/);
 
   assert.match(publish, /label="商品品类" required/);
   assert.doesNotMatch(publishTemplate, /expiryDays|自动过期/);
@@ -146,7 +160,7 @@ test("physical sale form and filters share required category, condition, deliver
   assert.match(publish, /label="校区（选填）"/);
   assert.match(publish, /v-model="form\.campus" clearable/);
   assert.doesNotMatch(publish, /isMarketCampus\(form\.campus\)|请选择 SIP 或 TC 校区/);
-  assert.doesNotMatch(marketRoute, /!input\.draft && !input\.campus|finalStatus === "active" && !\(input\.campus/);
+  assert.doesNotMatch(marketItemWriteService, /!input\.draft && !input\.campus|requestedStatus === "active" && !\(input\.campus/);
   assert.match(index, /placeholder="任意交付方式"/);
   assert.match(index, /tradeMode: "any"/);
   assert.match(marketApi, /any: "任意交付方式"/);

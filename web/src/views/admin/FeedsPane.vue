@@ -124,10 +124,13 @@
 import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Refresh, MoreFilled } from "@element-plus/icons-vue";
-import { adminApi } from "@/api/admin";
+import {
+  adminApi,
+  type AdminFeedSource,
+} from "@/api/admin";
 import { fmtRelative } from "@/utils/format";
 
-const list = ref<any[]>([]);
+const list = ref<AdminFeedSource[]>([]);
 const loading = ref(false);
 const loadError = ref("");
 const runningAll = ref(false);
@@ -155,16 +158,16 @@ async function reload(force = false) {
   }
 }
 
-function handleFeedCommand(command: string, row: any) {
+function handleFeedCommand(command: string, row: AdminFeedSource) {
   if (command === "run") return runOne(row);
   if (command === "reset") return resetRun(row);
 }
 
-function isFeedBusy(row: any) {
+function isFeedBusy(row: AdminFeedSource) {
   return runningId.value === row.id || resettingId.value === row.id || togglingId.value === row.id;
 }
 
-async function toggleEnabled(row: any) {
+async function toggleEnabled(row: AdminFeedSource) {
   if (isFeedBusy(row) || runningAll.value) return;
   togglingId.value = row.id;
   try {
@@ -176,17 +179,18 @@ async function toggleEnabled(row: any) {
   }
 }
 
-async function runOne(row: any) {
+async function runOne(row: AdminFeedSource) {
   if (isFeedBusy(row) || runningAll.value) return;
   runningId.value = row.id;
   try {
     const r = await adminApi.runFeed(row.id);
-    ElMessage.success(`同步完成，新增 ${r?.newCount ?? 0} 条`);
+    if (r.ok) ElMessage.success(`同步完成，新增 ${r.newCount} 条`);
+    else ElMessage.error(r.error || "同步失败");
     await reload();
   } finally { runningId.value = null; }
 }
 
-async function resetRun(row: any) {
+async function resetRun(row: AdminFeedSource) {
   if (isFeedBusy(row) || runningAll.value) return;
   resettingId.value = row.id;
   try {
@@ -201,7 +205,8 @@ async function resetRun(row: any) {
   }
   try {
     const r = await adminApi.resetRunFeed(row.id);
-    ElMessage.success(`重爬完成，新增 ${r?.newCount ?? 0} 条`);
+    if (r.ok) ElMessage.success(`重爬完成，新增 ${r.newCount} 条`);
+    else ElMessage.error(r.error || "重爬失败");
     await reload();
   } finally { resettingId.value = null; }
 }
@@ -211,8 +216,13 @@ async function runAll() {
   runningAll.value = true;
   try {
     const r = await adminApi.runAllFeeds();
-    const total = (r as any[]).reduce((s, x) => s + (x.newCount ?? 0), 0);
-    ElMessage.success(`全量同步完成，共新增 ${total} 条`);
+    const total = r.reduce((sum, item) => sum + item.newCount, 0);
+    const failed = r.filter((item) => !item.ok);
+    if (failed.length) {
+      ElMessage.warning(`同步完成，新增 ${total} 条，${failed.length} 个源失败`);
+    } else {
+      ElMessage.success(`全量同步完成，共新增 ${total} 条`);
+    }
     runningAll.value = false;
     await reload(true);
   } finally {

@@ -38,7 +38,8 @@
       </el-table-column>
       <el-table-column label="状态" width="180">
         <template #default="{ row }">
-          <el-tag v-if="row.readOnly || row.feedSourceId" type="warning" size="small">公告同步</el-tag>
+          <el-tag v-if="row.systemManaged" type="info" size="small">系统目录</el-tag>
+          <el-tag v-else-if="row.readOnly || row.feedSourceId" type="warning" size="small">公告同步</el-tag>
           <el-tag v-else type="success" size="small">可维护</el-tag>
           <el-tag v-if="row.anonymousEnabled" type="info" size="small" effect="plain">支持匿名</el-tag>
           <span class="topic-count">{{ row.topicCount }} 帖</span>
@@ -47,7 +48,7 @@
       <el-table-column label="操作" width="108" fixed="right" align="center">
         <template #default="{ row }">
           <el-dropdown trigger="click" @command="handleBoardCommand($event, row)">
-            <el-button text size="small" class="action-trigger" :loading="isBoardBusy(row)" :disabled="row.readOnly || row.feedSourceId || isBoardBusy(row)">
+            <el-button text size="small" class="action-trigger" :loading="isBoardBusy(row)" :disabled="row.systemManaged || row.readOnly || Boolean(row.feedSourceId) || isBoardBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
@@ -75,11 +76,12 @@
           <span>{{ row.type }}</span>
           <span>{{ sectionLabel(row.section) }}</span>
           <span>{{ row.topicCount }} 帖</span>
+          <span v-if="row.systemManaged">系统目录</span>
           <span v-if="row.anonymousEnabled">支持匿名</span>
         </div>
         <div class="board-actions">
           <el-dropdown trigger="click" @command="handleBoardCommand($event, row)">
-            <el-button plain size="small" class="mobile-action-trigger" :loading="isBoardBusy(row)" :disabled="row.readOnly || row.feedSourceId || isBoardBusy(row)">
+            <el-button plain size="small" class="mobile-action-trigger" :loading="isBoardBusy(row)" :disabled="row.systemManaged || row.readOnly || Boolean(row.feedSourceId) || isBoardBusy(row)">
               操作<el-icon class="more-icon"><MoreFilled /></el-icon>
             </el-button>
             <template #dropdown>
@@ -150,7 +152,11 @@
 import { reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { MoreFilled } from "@element-plus/icons-vue";
-import { adminApi } from "@/api/admin";
+import {
+  adminApi,
+  type AdminBoard,
+  type AdminBoardWriteInput,
+} from "@/api/admin";
 
 const loading = ref(false);
 const loadError = ref("");
@@ -158,7 +164,7 @@ const saving = ref(false);
 const boardBusyId = ref<number | null>(null);
 const dialogOpen = ref(false);
 const editingId = ref<number | null>(null);
-const list = ref<any[]>([]);
+const list = ref<AdminBoard[]>([]);
 let boardLoadSeq = 0;
 
 const form = reactive({
@@ -199,13 +205,14 @@ function requestMessage(error: unknown) {
   return error instanceof Error ? error.message : "";
 }
 
-function handleBoardCommand(command: string, row: any) {
+function handleBoardCommand(command: string, row: AdminBoard) {
   if (boardBusyId.value !== null) return;
+  if (row.systemManaged || row.readOnly || row.feedSourceId) return;
   if (command === "edit") return openEdit(row);
   if (command === "delete") return removeBoard(row);
 }
 
-function isBoardBusy(row: any) {
+function isBoardBusy(row: AdminBoard) {
   return boardBusyId.value === row.id;
 }
 
@@ -226,7 +233,7 @@ function openCreate() {
   dialogOpen.value = true;
 }
 
-function openEdit(row: any) {
+function openEdit(row: AdminBoard) {
   if (saving.value || boardBusyId.value !== null) return;
   editingId.value = row.id;
   Object.assign(form, {
@@ -249,12 +256,12 @@ async function submitBoard() {
   if (!form.name.trim()) { ElMessage.warning("请填写板块名称"); return; }
   saving.value = true;
   try {
-    const payload = {
+    const payload: AdminBoardWriteInput = {
       slug: form.slug.trim(),
       name: form.name.trim(),
-      description: form.description.trim() || undefined,
-      icon: form.icon.trim() || undefined,
-      color: form.color.trim() || undefined,
+      description: form.description.trim() || null,
+      icon: form.icon.trim() || null,
+      color: form.color.trim() || null,
       order: Number(form.order || 0),
       type: form.type,
       section: form.section || null,
@@ -277,8 +284,9 @@ function sectionLabel(section: unknown) {
   return "独立入口";
 }
 
-async function removeBoard(row: any) {
+async function removeBoard(row: AdminBoard) {
   if (boardBusyId.value !== null) return;
+  if (row.systemManaged || row.readOnly || row.feedSourceId) return;
   boardBusyId.value = row.id;
   try {
     const confirmed = await ElMessageBox.confirm(`确认删除板块「${row.name}」？仅空板块可删除。`, "删除板块", { type: "warning" })

@@ -8,7 +8,8 @@ import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettin
 import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
 import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
-import { refreshUserReplyCount } from "../services/forumStats";
+import { refreshTopicReplyStats, refreshUserReplyCount } from "../services/forumStats";
+import { acquireForumTopicLock } from "../services/forumTopicLockService";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
@@ -98,6 +99,33 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       });
       if (aiResult.status === "blocked_ai") {
         const blockedReply = await prisma.$transaction(async (tx) => {
+          await acquireForumTopicLock(tx, topicId);
+          const currentTopic = await tx.topic.findUnique({
+            where: { id: topicId },
+            select: { id: true, hidden: true, locked: true },
+          });
+          if (
+            !currentTopic
+            || (currentTopic.hidden && !canSeeHiddenTopic)
+          ) {
+            throw Errors.notFound("帖子不存在");
+          }
+          if (currentTopic.locked) {
+            throw Errors.forbidden("帖子已锁定，无法回复");
+          }
+          if (parentReplyId) {
+            const currentParent = await tx.reply.findUnique({
+              where: { id: parentReplyId },
+              select: { topicId: true, hidden: true },
+            });
+            if (
+              !currentParent
+              || currentParent.hidden
+              || currentParent.topicId !== topicId
+            ) {
+              throw Errors.badRequest("引用的回复不存在");
+            }
+          }
           if (shouldConsumeAnonymousCredit) {
             await consumeAnonymousCredit(userId, tx);
           }
@@ -136,14 +164,40 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       }
     }
 
-    // 当前楼层
-    const last = await prisma.reply.findFirst({
-      where: { topicId },
-      orderBy: { floor: "desc" },
-      select: { floor: true },
-    });
-    const floor = (last?.floor ?? 0) + 1;
     const reply = await prisma.$transaction(async (tx) => {
+      await acquireForumTopicLock(tx, topicId);
+      const currentTopic = await tx.topic.findUnique({
+        where: { id: topicId },
+        select: { id: true, hidden: true, locked: true },
+      });
+      if (
+        !currentTopic
+        || (currentTopic.hidden && !canSeeHiddenTopic)
+      ) {
+        throw Errors.notFound("帖子不存在");
+      }
+      if (currentTopic.locked) {
+        throw Errors.forbidden("帖子已锁定，无法回复");
+      }
+      if (parentReplyId) {
+        const currentParent = await tx.reply.findUnique({
+          where: { id: parentReplyId },
+          select: { topicId: true, hidden: true },
+        });
+        if (
+          !currentParent
+          || currentParent.hidden
+          || currentParent.topicId !== topicId
+        ) {
+          throw Errors.badRequest("引用的回复不存在");
+        }
+      }
+      const last = await tx.reply.findFirst({
+        where: { topicId },
+        orderBy: [{ floor: "desc" }, { id: "desc" }],
+        select: { floor: true },
+      });
+      const floor = Math.max(0, last?.floor ?? 0) + 1;
       if (shouldConsumeAnonymousCredit) {
         await consumeAnonymousCredit(userId, tx);
       }
@@ -274,12 +328,29 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
       await ensureUserCanSpeak(req.user!.userId);
     }
-    const updated = await prisma.reply.update({
-      where: { id },
-      data: { content: req.body.content },
-      include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      await acquireForumTopicLock(tx, reply.topicId);
+      const current = await tx.reply.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          hidden: true,
+          topic: { select: { hidden: true, locked: true } },
+        },
+      });
+      if (!current || !current.topic || current.hidden || current.topic.hidden) {
+        throw Errors.notFound("回复不存在");
+      }
+      if (current.topic.locked && !isMod) {
+        throw Errors.forbidden("帖子已锁定，无法修改回复");
+      }
+      return tx.reply.update({
+        where: { id },
+        data: { content: req.body.content },
+        include: {
+          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        },
+      });
     });
     await Promise.all([
       ensureForumImageAssetsForContent(req.body.content, req.user!.userId).catch(() => null),
@@ -310,25 +381,16 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
     if (!isMod && !isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.$transaction(async (tx) => {
+      await acquireForumTopicLock(tx, r.topicId);
+      const current = await tx.reply.findUnique({
+        where: { id },
+        select: { id: true, topicId: true, authorId: true, hidden: true },
+      });
+      if (!current) throw Errors.notFound("回复不存在");
       await tx.reply.update({ where: { id }, data: { hidden: true } });
-      if (!r.hidden) {
-        const [replyCount, lastReply] = await Promise.all([
-          tx.reply.count({ where: { topicId: r.topicId, hidden: false } }),
-          tx.reply.findFirst({
-            where: { topicId: r.topicId, hidden: false },
-            orderBy: { createdAt: "desc" },
-            select: { createdAt: true, authorId: true },
-          }),
-        ]);
-        await tx.topic.update({
-          where: { id: r.topicId },
-          data: {
-            replyCount,
-            lastReplyAt: lastReply?.createdAt ?? r.topic?.createdAt ?? null,
-            lastReplyById: lastReply?.authorId ?? r.topic?.authorId ?? null,
-          },
-        });
-        await refreshUserReplyCount(r.authorId, tx);
+      if (!current.hidden) {
+        await refreshTopicReplyStats(current.topicId, tx);
+        await refreshUserReplyCount(current.authorId, tx);
       }
     });
     await invalidateForumCaches();
