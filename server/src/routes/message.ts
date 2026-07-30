@@ -6,6 +6,7 @@ import {
   notificationTargetClientWhere,
   notificationVisibleToClient,
 } from "../services/notificationTargeting";
+import { localizeNotification, requestLocale } from "../i18n";
 
 export const messageRouter = Router();
 
@@ -34,11 +35,12 @@ messageRouter.get("/", async (req, res, next) => {
     ]);
     const readSet = new Map<number, Date>();
     reads.forEach((r) => readSet.set(r.notificationId, r.readAt));
-    ok(res, list.filter((n) => notificationVisibleToClient(n, client)).map((n) => ({
+    const locale = requestLocale(req);
+    ok(res, list.filter((n) => notificationVisibleToClient(n, client)).map((n) => localizeNotification({
       ...n,
       payload: safeJson((n as any).payload),
       readAt: n.userId === null ? readSet.get(n.id) ?? null : n.readAt,
-    })));
+    }, locale)));
   } catch (e) { next(e); }
 });
 

@@ -2,15 +2,15 @@
   <div class="services-page">
     <header class="page-head">
       <span>CAMPUS TOOLS</span>
-      <h1>校园工具</h1>
-      <p>教务、常用工具和校内服务入口集中在这里。</p>
+      <h1>{{ t("tools.title") }}</h1>
+      <p>{{ t("tools.subtitle") }}</p>
     </header>
 
     <section class="entry-card cpu-card" aria-labelledby="campus-entry-title">
       <div class="entry-head">
         <div>
           <span>CAMPUS RESOURCES</span>
-          <h2 id="campus-entry-title">校园资源</h2>
+          <h2 id="campus-entry-title">{{ t("tools.resources") }}</h2>
         </div>
       </div>
       <div class="entry-grid">
@@ -25,11 +25,15 @@
 </template>
 
 <script setup lang="ts">
-const serviceEntries = [
-  { to: "/academic", icon: "🎓", title: "我的教务", description: "需校内身份登录" },
-  { to: "/services/tools", icon: "🧰", title: "校园工具", description: "常用办事小工具" },
-  { to: "/services/resources", icon: "🧭", title: "校园资源", description: "服务与信息导航" },
-] as const;
+import { computed } from "vue";
+import { useLocale } from "@/i18n";
+
+const { t } = useLocale();
+const serviceEntries = computed(() => [
+  { to: "/academic", icon: "🎓", title: t("tools.academic"), description: t("tools.academicDesc") },
+  { to: "/services/tools", icon: "🧰", title: t("tools.toolbox"), description: t("tools.toolboxDesc") },
+  { to: "/services/resources", icon: "🧭", title: t("tools.resources"), description: t("tools.resourcesDesc") },
+] as const);
 </script>
 
 <style scoped>

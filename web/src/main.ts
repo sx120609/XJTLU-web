@@ -10,6 +10,7 @@ import { isFlutterNativeShell } from "./utils/clientInfo";
 import { clearJwxtToken } from "./api/jwxt";
 import { clearLegacyCpuSiteToken } from "./api/request";
 import { purgeLegacyCpuCreds } from "./utils/credCrypto";
+import { initializeLocale } from "./i18n";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
@@ -191,6 +192,7 @@ installFeedbackLayerGuard();
 installIosNativeImageBridge();
 installNativeAppMarker();
 applyInitialAppearance();
+initializeLocale();
 
 // 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）
 // 不满足时 beforeinstallprompt 不会触发，"添加到主屏幕"按钮就不会出现

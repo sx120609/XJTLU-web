@@ -77,6 +77,7 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
       method,
       signal: AbortSignal.timeout(20_000),
       headers: {
+        "Accept-Language": "zh-CN",
         ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         ...(payload === undefined ? {} : { "Content-Type": "application/json" }),
       },

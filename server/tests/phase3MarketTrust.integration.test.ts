@@ -77,7 +77,7 @@ test("stage 3 real routes enforce direct-chat privacy, trust restrictions, repor
   async function call(path: string, bearer?: string, method = "GET", payload?: unknown) {
     const response = await fetch(`${baseUrl}${path}`, {
       method,
-      headers: { ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}), ...(payload === undefined ? {} : { "Content-Type": "application/json" }) },
+      headers: { "Accept-Language": "zh-CN", ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}), ...(payload === undefined ? {} : { "Content-Type": "application/json" }) },
       body: payload === undefined ? undefined : JSON.stringify(payload),
     });
     const rawBody = await response.text();

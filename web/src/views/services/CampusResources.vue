@@ -3,20 +3,20 @@
     <header class="page-head">
       <div>
         <span>CAMPUS RESOURCES</span>
-        <h1>校园资源</h1>
-        <p>连接 XJTLU 融合门户，集中查看校内服务与信息入口。</p>
+        <h1>{{ isEnglish ? "Campus Resources" : "校园资源" }}</h1>
+        <p>{{ isEnglish ? "Connect to the XJTLU e-Hall for campus services and information." : "连接 XJTLU 融合门户，集中查看校内服务与信息入口。" }}</p>
       </div>
-      <a href="https://ehall.xjtlu.edu.cn/default/index.html#/apps" target="_blank" rel="noopener noreferrer">打开官方融合门户 →</a>
+      <a href="https://ehall.xjtlu.edu.cn/default/index.html#/apps" target="_blank" rel="noopener noreferrer">{{ isEnglish ? "Open official e-Hall" : "打开官方融合门户" }} →</a>
     </header>
 
     <EhallServicesPane v-if="auth.isLoggedIn" />
     <section v-else class="login-card cpu-card">
       <span class="lock-icon"><el-icon><Lock /></el-icon></span>
       <div>
-        <h2>登录后连接融合门户</h2>
-        <p>使用 XJTLU 统一认证登录后，系统会自动建立短期门户会话；学校密码不会保存。</p>
+        <h2>{{ isEnglish ? "Sign in to connect to e-Hall" : "登录后连接融合门户" }}</h2>
+        <p>{{ isEnglish ? "After XJTLU single sign-on, the system creates a short-lived portal session. Your university password is never stored." : "使用 XJTLU 统一认证登录后，系统会自动建立短期门户会话；学校密码不会保存。" }}</p>
       </div>
-      <el-button type="primary" @click="$router.push({ name: 'login', query: { redirect: '/services/resources' } })">前往登录</el-button>
+      <el-button type="primary" @click="$router.push({ name: 'login', query: { redirect: '/services/resources' } })">{{ isEnglish ? "Sign in" : "前往登录" }}</el-button>
     </section>
   </div>
 </template>
@@ -26,8 +26,10 @@ import { onMounted } from "vue";
 import { Lock } from "@element-plus/icons-vue";
 import EhallServicesPane from "@/components/xjtlu/EhallServicesPane.vue";
 import { useAuthStore } from "@/stores/auth";
+import { useLocale } from "@/i18n";
 
 const auth = useAuthStore();
+const { isEnglish } = useLocale();
 onMounted(() => auth.hydrate());
 </script>
 

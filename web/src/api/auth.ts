@@ -23,6 +23,7 @@ export interface UserInfo {
   replyCount: number;
   reputation: number;
   points?: number;
+  preferredLocale?: "en-US" | "zh-CN";
   sponsorTotalCents?: number;
   sponsorAmount?: number;
   lastSeenAt?: string;

@@ -2,9 +2,9 @@
   <div class="feed-page">
     <div class="feed-head">
       <div>
-        <h2 class="title">{{ isHot ? "热榜 Top 10" : "最新内容" }}</h2>
+        <h2 class="title">{{ isHot ? (isEnglish ? "Trending Top 10" : "热榜 Top 10") : (isEnglish ? "Latest" : "最新内容") }}</h2>
         <p class="desc">
-          {{ isHot ? "这里展示近 24 小时讨论最活跃的内容。" : "这里按照发布时间查看近期更新。" }}
+          {{ isHot ? (isEnglish ? "The most active discussions from the past 24 hours." : "这里展示近 24 小时讨论最活跃的内容。") : (isEnglish ? "Recent updates in chronological order." : "这里按照发布时间查看近期更新。") }}
         </p>
       </div>
     </div>
@@ -12,7 +12,7 @@
     <section class="cpu-card" v-loading="loading">
       <div v-if="error && !loading" class="feed-error">
         <el-empty :description="error">
-          <el-button type="primary" @click="load">重试</el-button>
+          <el-button type="primary" @click="load">{{ isEnglish ? "Try again" : "重试" }}</el-button>
         </el-empty>
       </div>
 
@@ -32,8 +32,8 @@
             <div class="rank-title">{{ item.title }}</div>
             <div class="rank-meta">
               <span>{{ item.board?.name }}</span>
-              <span>{{ item.replyCount }} 回</span>
-              <span>{{ item.likeCount }} 赞</span>
+              <span>{{ item.replyCount }} {{ isEnglish ? "replies" : "回" }}</span>
+              <span>{{ item.likeCount }} {{ isEnglish ? "likes" : "赞" }}</span>
               <span>{{ fmtRelative(item.lastReplyAt || item.createdAt) }}</span>
             </div>
           </div>
@@ -44,20 +44,20 @@
       <template v-else>
         <div v-if="pinnedList.length" class="pin-section">
           <div class="section-head">
-            <h3>全局置顶</h3>
-            <span>{{ pinnedList.length }} 条</span>
+            <h3>{{ isEnglish ? "Globally pinned" : "全局置顶" }}</h3>
+            <span>{{ pinnedList.length }} {{ isEnglish ? "posts" : "条" }}</span>
           </div>
           <TopicListItem v-for="t in pinnedList" :key="`pin-${t.id}`" :topic="t" />
         </div>
         <div class="section-head" v-if="latestList.length || latestTotal">
-          <h3>最新内容</h3>
-          <span>已显示 {{ latestList.length }} / {{ latestTotal }}</span>
+          <h3>{{ isEnglish ? "Latest" : "最新内容" }}</h3>
+          <span>{{ isEnglish ? "Showing" : "已显示" }} {{ latestList.length }} / {{ latestTotal }}</span>
         </div>
         <TopicListItem v-for="t in latestList" :key="t.id" :topic="t" />
         <div v-if="latestTotal > latestSize" class="latest-actions">
           <div v-if="loadMoreError" class="auto-load-sentinel error">
             <span>{{ loadMoreError }}</span>
-            <el-button text size="small" :loading="loadingMore" @click="loadMore">重试</el-button>
+            <el-button text size="small" :loading="loadingMore" @click="loadMore">{{ isEnglish ? "Try again" : "重试" }}</el-button>
           </div>
           <div
             v-else-if="canLoadMore"
@@ -65,18 +65,18 @@
             class="auto-load-sentinel"
             :class="{ loading: loadingMore }"
           >
-            {{ loadingMore ? "正在加载更多…" : "继续下滑自动加载更多" }}
+            {{ loadingMore ? (isEnglish ? "Loading more…" : "正在加载更多…") : (isEnglish ? "Scroll down to load more" : "继续下滑自动加载更多") }}
           </div>
           <div v-else-if="latestList.length" class="auto-load-sentinel done">
-            已加载全部内容
+            {{ isEnglish ? "All content loaded" : "已加载全部内容" }}
           </div>
           <el-button v-if="latestList.length > latestSize" text @click="backToTop">
-            回到顶部
+            {{ isEnglish ? "Back to top" : "回到顶部" }}
           </el-button>
         </div>
       </template>
 
-      <el-empty v-if="!error && !loading && !currentList.length" description="暂无内容" />
+      <el-empty v-if="!error && !loading && !currentList.length" :description="isEnglish ? 'No content yet' : '暂无内容'" />
     </section>
   </div>
 </template>
@@ -88,6 +88,7 @@ import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi } from "@/api/home";
 import { fmtRelative } from "@/utils/format";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
+import { useLocale } from "@/i18n";
 
 type LatestFeedRestoreState = {
   scrollY: number;
@@ -97,6 +98,7 @@ type LatestFeedRestoreState = {
 
 const route = useRoute();
 const router = useRouter();
+const { isEnglish } = useLocale();
 const isHot = computed(() => route.name === "forum-hot");
 const loading = ref(false);
 const loadingMore = ref(false);
@@ -261,9 +263,9 @@ function dedupeTopicsById(items: any[]) {
 function normalizeFeedError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status && status < 500) {
-    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "内容加载失败";
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || (isEnglish.value ? "Could not load content" : "内容加载失败");
   }
-  return "内容加载失败，请稍后再试";
+  return isEnglish.value ? "Could not load content. Please try again later." : "内容加载失败，请稍后再试";
 }
 
 async function restoreScrollIfNeeded() {

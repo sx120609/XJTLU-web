@@ -1,9 +1,9 @@
 <template>
-  <el-config-provider :locale="zhCn" :z-index="5000">
+  <el-config-provider :locale="elementLocale" :z-index="5000">
     <router-view />
     <el-dialog
       v-model="dataAuthOpen"
-      title="XJTLU 身份登录说明"
+      :title="isEnglish ? 'XJTLU identity sign-in notice' : 'XJTLU 身份登录说明'"
       width="480"
       class="data-auth-dialog"
       append-to-body
@@ -13,31 +13,37 @@
     >
       <div class="data-auth">
         <div class="auth-head">
-          <el-tag size="small" type="warning" effect="plain">首次使用</el-tag>
-          <span class="auth-sub">请先阅读后继续</span>
+          <el-tag size="small" type="warning" effect="plain">{{ locale.t("app.firstUse") }}</el-tag>
+          <span class="auth-sub">{{ locale.t("app.readFirst") }}</span>
         </div>
         <p>
-          你正在使用 XJTLU 统一身份认证登录本站。当前版本只验证学校身份，不读取课表、成绩、考试或培养方案。
+          {{ isEnglish
+            ? "You are signing in with XJTLU authentication. This version verifies only your university identity and does not read your timetable, grades, exams, or programme data."
+            : "你正在使用 XJTLU 统一身份认证登录本站。当前版本只验证学校身份，不读取课表、成绩、考试或培养方案。" }}
         </p>
         <p>
-          学校密码和验证码不会保存到本站；如勾选“记住登录信息”，学校账号和密码也只会保存在当前设备浏览器中，不会上传到本站。请勿在公共设备上使用。
+          {{ isEnglish
+            ? "Your university password and verification codes are not stored by this site. If you choose to remember your credentials, they are encrypted and kept only in this browser. Do not use this option on a shared device."
+            : "学校密码和验证码不会保存到本站；如勾选“记住登录信息”，学校账号和密码也只会保存在当前设备浏览器中，不会上传到本站。请勿在公共设备上使用。" }}
         </p>
         <p>
-          继续点击同意，表示你已了解以上说明。
+          {{ isEnglish
+            ? "By continuing, you confirm that you understand this notice."
+            : "继续点击同意，表示你已了解以上说明。" }}
         </p>
       </div>
       <template #footer>
         <div class="data-auth-footer">
-          <span class="read-hint">请先阅读 {{ dataAuthReadSeconds }}s</span>
+          <span class="read-hint">{{ locale.t("app.readSeconds", { seconds: dataAuthReadSeconds }) }}</span>
           <el-button type="primary" :disabled="dataAuthReadSeconds > 0" @click="acceptDataAuth">
-            {{ dataAuthReadSeconds > 0 ? `请先阅读 ${dataAuthReadSeconds}s` : "同意并继续" }}
+            {{ dataAuthReadSeconds > 0 ? locale.t("app.readSeconds", { seconds: dataAuthReadSeconds }) : locale.t("app.agree") }}
           </el-button>
         </div>
       </template>
     </el-dialog>
     <el-dialog
       v-model="strongNoticeOpen"
-      title="站务强提醒"
+      :title="locale.t('app.strongNotice')"
       width="420"
       class="strong-notice-dialog"
       append-to-body
@@ -47,13 +53,13 @@
     >
       <div v-if="currentStrongNotice" class="strong-notice">
         <div class="strong-notice-head">
-          <el-tag size="small" type="danger" effect="plain">强提醒</el-tag>
-          <span class="strong-notice-source">{{ currentStrongNotice.source || "站务组" }}</span>
+          <el-tag size="small" type="danger" effect="plain">{{ locale.t("app.strongNotice") }}</el-tag>
+          <span class="strong-notice-source">{{ currentStrongNotice.source || locale.t("app.siteTeam") }}</span>
         </div>
         <h3 class="strong-notice-title">{{ currentStrongNotice.title }}</h3>
         <div class="strong-notice-content">{{ currentStrongNotice.content }}</div>
         <div v-if="currentStrongNotice.link" class="strong-notice-link">
-          <span>相关链接：</span>
+          <span>{{ isEnglish ? "Related link:" : "相关链接：" }}</span>
           <a :href="currentStrongNotice.link" target="_blank" rel="noopener noreferrer">{{ currentStrongNotice.link }}</a>
         </div>
       </div>
@@ -66,17 +72,17 @@
             :disabled="strongNoticeReadSeconds > 0"
             @click="openStrongNoticeLink"
           >
-            查看详情
+            {{ locale.t("app.details") }}
           </el-button>
           <el-button type="primary" :disabled="strongNoticeReadSeconds > 0" @click="ackStrongNotice">
-            {{ strongNoticeReadSeconds > 0 ? `请先阅读 ${strongNoticeReadSeconds}s` : "我知道了" }}
+            {{ strongNoticeReadSeconds > 0 ? locale.t("app.readSeconds", { seconds: strongNoticeReadSeconds }) : locale.t("app.understood") }}
           </el-button>
         </div>
       </template>
     </el-dialog>
     <el-dialog
       v-model="inAppTipOpen"
-      title="建议使用外部浏览器打开"
+      :title="locale.t('app.externalBrowser')"
       width="420"
       class="in-app-tip-dialog"
       append-to-body
@@ -86,18 +92,24 @@
     >
       <div class="in-app-tip">
         <p>
-          当前可能正在{{ inAppBrowserLabel }}内打开本站。部分学校系统、统一认证或外部跳转页面可能无法正常加载。
+          {{ isEnglish
+            ? `This site appears to be open inside ${inAppBrowserLabel}. Some university systems, authentication pages, or external links may not load correctly.`
+            : `当前可能正在${inAppBrowserLabel}内打开本站。部分学校系统、统一认证或外部跳转页面可能无法正常加载。` }}
         </p>
         <p>
-          建议点击右上角菜单，选择“在浏览器打开”或“用默认浏览器打开”后继续使用。
+          {{ isEnglish
+            ? "Use the menu in the top-right corner and choose “Open in browser” or “Open in default browser”."
+            : "建议点击右上角菜单，选择“在浏览器打开”或“用默认浏览器打开”后继续使用。" }}
         </p>
         <p class="muted">
-          如果只是浏览站内内容，也可以继续使用当前页面。
+          {{ isEnglish
+            ? "You can continue here if you only need to browse content on this site."
+            : "如果只是浏览站内内容，也可以继续使用当前页面。" }}
         </p>
       </div>
       <template #footer>
         <el-button type="primary" :disabled="inAppReadSeconds > 0" @click="dismissInAppTip">
-          {{ inAppReadSeconds > 0 ? `请先阅读 ${inAppReadSeconds}s` : "我知道了" }}
+          {{ inAppReadSeconds > 0 ? locale.t("app.readSeconds", { seconds: inAppReadSeconds }) : locale.t("app.understood") }}
         </el-button>
       </template>
     </el-dialog>
@@ -107,6 +119,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
+import en from "element-plus/es/locale/lang/en";
 import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
@@ -118,9 +131,13 @@ import {
   isExternalNotificationLink,
   safeNotificationLink,
 } from "@/utils/notificationLink";
+import { useLocale } from "@/i18n";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
+const locale = useLocale();
+const isEnglish = locale.isEnglish;
+const elementLocale = computed(() => isEnglish.value ? en : zhCn);
 const dataAuthOpen = ref(false);
 const dataAuthReadSeconds = ref(0);
 const inAppTipOpen = ref(false);
@@ -413,7 +430,7 @@ async function ackStrongNotice() {
       clearStrongNoticeTimer();
     }
   } catch {
-    ElMessage.error("已读标记失败，请稍后重试");
+    ElMessage.error(isEnglish.value ? "Could not mark the notice as read. Please try again later." : "已读标记失败，请稍后重试");
   }
 }
 

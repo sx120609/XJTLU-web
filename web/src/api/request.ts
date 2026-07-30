@@ -2,6 +2,7 @@ import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from "
 import { ElMessage } from "element-plus";
 import { detectClientPlatform } from "@/utils/clientInfo";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
+import { getActiveLocale, t } from "@/i18n";
 
 export interface ApiResponse<T> {
   code: number;
@@ -80,6 +81,7 @@ instance.interceptors.request.use((config) => {
   const csrf = getCsrfToken();
   if (csrf) config.headers["X-CSRF-Token"] = csrf;
   config.headers["X-CPU-Client"] = detectClientPlatform();
+  config.headers["Accept-Language"] = getActiveLocale();
   return config;
 });
 
@@ -89,8 +91,8 @@ instance.interceptors.response.use(
     const body = resp.data as ApiResponse<unknown>;
     if (body && typeof body.code === "number") {
       if (body.code !== 0) {
-        if (!config?.suppressErrorMessage) ElMessage.error(body.message || "请求失败");
-        return Promise.reject(new Error(body.message || "请求失败"));
+        if (!config?.suppressErrorMessage) ElMessage.error(body.message || t("request.failed"));
+        return Promise.reject(new Error(body.message || t("request.failed")));
       }
       return body.data;
     }
@@ -103,13 +105,13 @@ instance.interceptors.response.use(
       sessionStorage.removeItem("cpu-jwxt-token");
       clearJwxtDataCaches();
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-      if (!config?.suppressAuthMessage) ElMessage.warning("登录已过期，请重新登录");
+      if (!config?.suppressAuthMessage) ElMessage.warning(t("request.expired"));
       if (!config?.suppressAuthRedirect && window.location.pathname !== "/login") {
         const redirect = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.href = `/login?redirect=${redirect}`;
       }
     } else if (!config?.suppressErrorMessage) {
-      const message = err.response?.data?.message ?? err.message ?? "网络请求失败";
+      const message = err.response?.data?.message ?? err.message ?? t("request.network");
       ElMessage.error(message);
     }
     return Promise.reject(err);

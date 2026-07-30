@@ -6,24 +6,25 @@
           <el-icon><ArrowLeft /></el-icon>
           {{ reconnectReturnLabel }}
         </el-button>
+        <el-button text class="nav-btn" @click="toggleLocale">{{ isEnglish ? "中文" : "EN" }}</el-button>
       </div>
 
       <div class="brand">
         <div class="brand-logo"><img :src="site.siteLogoUrl || '/brand/kaopu-mark.svg'" alt="靠浦" /></div>
         <div>
           <h1>{{ site.siteName }}</h1>
-          <p>{{ site.siteSubtitle }}</p>
+          <p>{{ isEnglish ? "Reimagine campus life" : site.siteSubtitle }}</p>
         </div>
       </div>
 
       <p class="welcome">
-        <template v-if="reconnectMode">重新连接 <strong>学校服务</strong></template>
-        <template v-else>使用 <strong>学校统一认证</strong> 登录</template>
+        <template v-if="reconnectMode">{{ isEnglish ? "Reconnect " : "重新连接 " }}<strong>{{ isEnglish ? "university services" : "学校服务" }}</strong></template>
+        <template v-else>{{ isEnglish ? "Sign in with " : "使用 " }}<strong>{{ isEnglish ? "XJTLU authentication" : "学校统一认证" }}</strong>{{ isEnglish ? "" : " 登录" }}</template>
       </p>
       <p class="hint">{{ loginHint }}</p>
 
       <el-alert type="warning" :closable="false" show-icon class="safety">
-        账号仅用于学校身份验证；服务器不会保存密码。勾选“记住账号密码”后，凭据会加密保存在当前设备，用于掉线后自动恢复。
+        {{ isEnglish ? "Your account is used only to verify your XJTLU identity. This server does not store your password. If you choose to remember it, credentials are encrypted on this device for automatic reconnection." : "账号仅用于学校身份验证；服务器不会保存密码。勾选“记住账号密码”后，凭据会加密保存在当前设备，用于掉线后自动恢复。" }}
       </el-alert>
 
       <el-form
@@ -36,12 +37,12 @@
         @submit.prevent="auth.ssoMfa ? onMfaSubmit() : onSubmit()"
       >
         <el-form-item v-if="!auth.ssoMfa" prop="username">
-          <el-input v-model="form.username" name="username" autocomplete="username" placeholder="XJTLU 用户名" :disabled="auth.ssoLoading || captchaRefreshing">
+          <el-input v-model="form.username" name="username" autocomplete="username" :placeholder="isEnglish ? 'XJTLU username' : 'XJTLU 用户名'" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
         <el-form-item v-if="!auth.ssoMfa" prop="password">
-          <el-input v-model="form.password" name="password" type="password" show-password autocomplete="current-password" placeholder="密码" :disabled="auth.ssoLoading || captchaRefreshing">
+          <el-input v-model="form.password" name="password" type="password" show-password autocomplete="current-password" :placeholder="isEnglish ? 'Password' : '密码'" :disabled="auth.ssoLoading || captchaRefreshing">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
         </el-form-item>
@@ -49,13 +50,13 @@
           <div class="mfa-panel">
             <div class="mfa-head">
               <div>
-                <span class="mfa-kicker">学校安全验证</span>
-                <strong>完成二次身份验证</strong>
-                <span>检测到异常登录活动，请完成 XJTLU 二次认证</span>
+                <span class="mfa-kicker">{{ isEnglish ? "XJTLU security verification" : "学校安全验证" }}</span>
+                <strong>{{ isEnglish ? "Complete two-step verification" : "完成二次身份验证" }}</strong>
+                <span>{{ isEnglish ? "Unusual sign-in activity was detected. Complete XJTLU two-step verification." : "检测到异常登录活动，请完成 XJTLU 二次认证" }}</span>
               </div>
-              <el-button text :disabled="auth.ssoLoading" @click="restartPrimaryLogin">返回</el-button>
+              <el-button text :disabled="auth.ssoLoading" @click="restartPrimaryLogin">{{ t("common.back") }}</el-button>
             </div>
-            <p class="mfa-title">选择任意一种认证方式</p>
+            <p class="mfa-title">{{ isEnglish ? "Choose a verification method" : "选择任意一种认证方式" }}</p>
             <div class="mfa-methods">
               <button
                 v-for="method in auth.ssoMfa.methods"
@@ -69,12 +70,12 @@
                 <span class="mfa-method-icon">
                   <el-icon><Message v-if="method.type === 'email'" /><Key v-else-if="method.type === 'otp'" /><Cellphone v-else /></el-icon>
                 </span>
-                <span>{{ method.type === 'email' ? '邮箱验证码' : method.type === 'otp' ? '动态口令' : '短信验证码' }}</span>
+                <span>{{ method.type === 'email' ? (isEnglish ? 'Email code' : '邮箱验证码') : method.type === 'otp' ? (isEnglish ? 'Authenticator code' : '动态口令') : (isEnglish ? 'SMS code' : '短信验证码') }}</span>
               </button>
             </div>
             <div v-if="selectedMfaMethod" class="mfa-entry">
               <p v-if="selectedMfaMethod.destination" class="mfa-destination">
-                验证码将发送至 {{ selectedMfaMethod.destination }}
+                {{ isEnglish ? "The code will be sent to" : "验证码将发送至" }} {{ selectedMfaMethod.destination }}
               </p>
               <el-input
                 v-if="selectedMfaMethod.codeRequired"
@@ -83,7 +84,7 @@
                 autocomplete="one-time-code"
                 inputmode="numeric"
                 :maxlength="selectedMfaMethod.codeLength"
-                :placeholder="selectedMfaMethod.type === 'otp' ? '输入动态口令 OTP' : '输入验证码'"
+                :placeholder="selectedMfaMethod.type === 'otp' ? (isEnglish ? 'Enter authenticator OTP' : '输入动态口令 OTP') : (isEnglish ? 'Enter verification code' : '输入验证码')"
                 :disabled="auth.ssoLoading"
               >
                 <template #prefix><el-icon><Lock /></el-icon></template>
@@ -95,7 +96,7 @@
                 type="password"
                 show-password
                 autocomplete="current-password"
-                placeholder="该认证方式还需要 XJTLU 密码"
+                :placeholder="isEnglish ? 'This method also requires your XJTLU password' : '该认证方式还需要 XJTLU 密码'"
                 :disabled="auth.ssoLoading"
               />
               <div class="mfa-actions">
@@ -105,23 +106,23 @@
                   :disabled="auth.ssoLoading || mfaCooldown > 0"
                   @click="sendMfaCode"
                 >
-                  {{ mfaCooldown > 0 ? `${mfaCooldown}s 后可重发` : '发送验证码' }}
+                  {{ mfaCooldown > 0 ? (isEnglish ? `Resend in ${mfaCooldown}s` : `${mfaCooldown}s 后可重发`) : (isEnglish ? 'Send code' : '发送验证码') }}
                 </el-button>
-                <el-button native-type="submit" type="primary" :loading="auth.ssoLoading">验证并登录</el-button>
+                <el-button native-type="submit" type="primary" :loading="auth.ssoLoading">{{ isEnglish ? "Verify and sign in" : "验证并登录" }}</el-button>
               </div>
             </div>
           </div>
         </el-form-item>
         <el-form-item v-if="auth.ssoNeedCaptcha" prop="captcha">
           <div class="vcode-row">
-            <el-input v-model="form.captcha" placeholder="看图输入验证码" maxlength="8" style="flex:1" :disabled="auth.ssoLoading || captchaRefreshing" />
+            <el-input v-model="form.captcha" :placeholder="isEnglish ? 'Enter the code shown' : '看图输入验证码'" maxlength="8" style="flex:1" :disabled="auth.ssoLoading || captchaRefreshing" />
             <button
               v-if="auth.ssoCaptchaImage"
               type="button"
               class="vcode-img-button"
               :disabled="auth.ssoLoading || captchaRefreshing"
-              aria-label="刷新验证码"
-              title="刷新验证码"
+              :aria-label="isEnglish ? 'Refresh verification code' : '刷新验证码'"
+              :title="isEnglish ? 'Refresh verification code' : '刷新验证码'"
               @click="reloadCaptcha"
             >
               <img :src="auth.ssoCaptchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" />
@@ -132,8 +133,8 @@
         <el-form-item v-if="auth.ssoVerification?.type === 'slider'" class="slider-form-item">
           <div class="slider-challenge">
             <div class="slider-heading">
-              <span>第二步：拖动滑块完成拼图</span>
-              <span v-if="sliderChecking">正在校验…</span>
+              <span>{{ isEnglish ? "Step 2: drag the slider to complete the puzzle" : "第二步：拖动滑块完成拼图" }}</span>
+              <span v-if="sliderChecking">{{ isEnglish ? "Checking…" : "正在校验…" }}</span>
             </div>
             <div class="slider-picture">
               <img
@@ -157,25 +158,25 @@
               min="0"
               max="1000"
               step="1"
-              aria-label="拖动滑块完成拼图验证"
+              :aria-label="isEnglish ? 'Drag the slider to complete the puzzle' : '拖动滑块完成拼图验证'"
               :disabled="auth.ssoLoading || sliderChecking"
               @change="onSliderRelease"
             />
-            <p class="slider-tip">把拼图块拖到缺口位置，松开后会自动继续登录。</p>
+            <p class="slider-tip">{{ isEnglish ? "Drag the puzzle piece into the gap. Sign-in will continue when you release it." : "把拼图块拖到缺口位置，松开后会自动继续登录。" }}</p>
           </div>
         </el-form-item>
         <el-form-item v-if="auth.ssoError">
           <el-alert :title="auth.ssoError" type="error" :closable="false" show-icon />
         </el-form-item>
         <el-form-item v-if="!auth.ssoMfa">
-          <el-checkbox v-model="remember">记住账号密码并保持登录（仅当前设备）</el-checkbox>
+          <el-checkbox v-model="remember">{{ isEnglish ? "Remember credentials and keep me signed in on this device" : "记住账号密码并保持登录（仅当前设备）" }}</el-checkbox>
           <el-button v-if="savedCredsPresent" text type="danger" @click="forgetSavedCreds">
-            清除已保存信息
+            {{ isEnglish ? "Clear saved credentials" : "清除已保存信息" }}
           </el-button>
         </el-form-item>
         <el-form-item v-if="!auth.ssoMfa">
           <el-button native-type="submit" type="primary" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing || sliderChecking">
-            {{ reconnectMode ? "重新连接" : "登 录" }}
+            {{ reconnectMode ? (isEnglish ? "Reconnect" : "重新连接") : (isEnglish ? "Sign in" : "登 录") }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -184,14 +185,14 @@
 
       <!-- 仅开发环境保留本地测试账号，不作为生产登录方式。 -->
       <details v-if="isDev" class="dev-fallback">
-        <summary>🔑 开发账号登录</summary>
+        <summary>🔑 {{ isEnglish ? "Development account" : "开发账号登录" }}</summary>
         <div class="dev-tip">
-          仅用于本地开发与调试；生产环境固定使用 XJTLU 统一认证。
+          {{ isEnglish ? "For local development and testing only. Production uses XJTLU authentication." : "仅用于本地开发与调试；生产环境固定使用 XJTLU 统一认证。" }}
         </div>
         <el-form size="default" class="dev-form" autocomplete="on" @submit.prevent="onDevSubmit">
-          <el-input v-model="dev.username" name="username" autocomplete="username" placeholder="用户名" :disabled="dev.loading" />
-          <el-input v-model="dev.password" name="password" type="password" show-password autocomplete="current-password" placeholder="密码" :disabled="dev.loading" />
-          <el-button native-type="submit" :loading="dev.loading" :disabled="dev.loading">登录</el-button>
+          <el-input v-model="dev.username" name="username" autocomplete="username" :placeholder="isEnglish ? 'Username' : '用户名'" :disabled="dev.loading" />
+          <el-input v-model="dev.password" name="password" type="password" show-password autocomplete="current-password" :placeholder="isEnglish ? 'Password' : '密码'" :disabled="dev.loading" />
+          <el-button native-type="submit" :loading="dev.loading" :disabled="dev.loading">{{ t("common.login") }}</el-button>
         </el-form>
         <div class="dev-accounts">
           <button type="button" @click="fillDev('alice', '123456')">alice / 123456</button>
@@ -202,9 +203,9 @@
       </details>
 
       <div class="alt-actions">
-        <button type="button" @click="goHome">暂不登录，继续浏览</button>
+        <button type="button" @click="goHome">{{ isEnglish ? "Continue without signing in" : "暂不登录，继续浏览" }}</button>
         <span>·</span>
-        <span class="muted-note">多数同学可直接使用统一认证登录</span>
+        <span class="muted-note">{{ isEnglish ? "Most students can sign in directly with XJTLU authentication" : "多数同学可直接使用统一认证登录" }}</span>
       </div>
     </div>
   </div>
@@ -220,11 +221,13 @@ import { useSiteStore } from "@/stores/site";
 import { clearCreds, loadCreds, hasCreds } from "@/utils/credCrypto";
 import { resolveSafeRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import { useLocale } from "@/i18n";
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 const site = useSiteStore();
+const { t, isEnglish, toggle: toggleLocale } = useLocale();
 const formRef = ref<FormInstance>();
 const remember = ref(false);
 const savedCredsPresent = ref(hasCreds());
@@ -234,7 +237,9 @@ const reconnectSource = computed(() => (
 ));
 const reconnectMode = computed(() => ["ehall", "ebridge", "school"].includes(reconnectSource.value));
 const reconnectReturnLabel = computed(() => (
-  reconnectSource.value === "ebridge" ? "返回教务页" : reconnectMode.value ? "返回服务页" : "返回首页"
+  isEnglish.value
+    ? (reconnectSource.value === "ebridge" ? "Back to eBridge" : reconnectMode.value ? "Back to services" : "Back to Home")
+    : (reconnectSource.value === "ebridge" ? "返回教务页" : reconnectMode.value ? "返回服务页" : "返回首页")
 ));
 const captchaRefreshing = ref(false);
 const sliderValue = ref(0);
@@ -266,21 +271,25 @@ const sliderPuzzleStyle = computed<CSSProperties>(() => {
 });
 
 const form = reactive({ username: "", password: "", captcha: "" });
-const rules: FormRules = {
-  username: [{ required: true, message: "请输入学校账号" }],
-  password: [{ required: true, message: "请输入密码" }],
-};
+const rules = computed<FormRules>(() => ({
+  username: [{ required: true, message: isEnglish.value ? "Enter your XJTLU username" : "请输入学校账号" }],
+  password: [{ required: true, message: isEnglish.value ? "Enter your password" : "请输入密码" }],
+}));
 
 const dev = reactive({ username: "", password: "", loading: false });
 
 const loginHint = computed(() => {
   if (reconnectMode.value) {
-    return "站内账号仍保持登录；重新完成一次 XJTLU 学校认证，用于恢复融合门户与 eBridge 会话。";
+    return isEnglish.value
+      ? "Your site account remains signed in. Complete XJTLU authentication again to reconnect university services and eBridge."
+      : "站内账号仍保持登录；重新完成一次 XJTLU 学校认证，用于恢复融合门户与 eBridge 会话。";
   }
   const uses: string[] = [];
   if (site.features.forum) uses.push("发帖");
   uses.push("消息通知");
-  return `完成 XJTLU 统一认证后会自动创建站内账号，可用于${uses.join("、")}，并同步建立融合门户与 eBridge 教务会话。`;
+  return isEnglish.value
+    ? "XJTLU authentication creates your site account and connects supported university services."
+    : `完成 XJTLU 统一认证后会自动创建站内账号，可用于${uses.join("、")}，并同步建立融合门户与 eBridge 教务会话。`;
 });
 
 onMounted(async () => {
@@ -293,7 +302,7 @@ onMounted(async () => {
   try {
     await auth.ssoBegin();
   } catch (e: any) {
-    auth.ssoError = "XJTLU 统一认证暂时不可用，请稍后再试。";
+    auth.ssoError = isEnglish.value ? "XJTLU authentication is temporarily unavailable. Please try again later." : "XJTLU 统一认证暂时不可用，请稍后再试。";
   }
   // 已保存凭据时静默恢复；遇到验证码或二步认证则停留在当前页让用户继续完成。
   let justLoggedOut = false;
@@ -304,7 +313,7 @@ onMounted(async () => {
   if (!justLoggedOut && hasCreds() && !auth.ssoError) {
     const creds = await loadCreds().catch(() => null);
     if (creds && !auth.ssoNeedCaptcha) {
-      ElMessage.info("正在恢复学校登录…");
+      ElMessage.info(isEnglish.value ? "Restoring your XJTLU session…" : "正在恢复学校登录…");
       const ok = await auth.ssoLogin(creds.username, creds.password, undefined, true);
       if (ok) {
         ElMessage.success(loginSuccessMessage(auth.user?.nickname || creds.username));
@@ -323,14 +332,14 @@ onBeforeUnmount(clearMfaCooldown);
 async function reloadCaptcha() {
   if (auth.ssoLoading || captchaRefreshing.value) return;
   if (auth.ssoMfa) {
-    auth.ssoError = "请重新提交二次认证验证码以刷新安全验证";
+    auth.ssoError = isEnglish.value ? "Submit the two-step verification code again to refresh security verification." : "请重新提交二次认证验证码以刷新安全验证";
     return;
   }
   captchaRefreshing.value = true;
   try {
     await auth.ssoBegin();
   } catch {
-    auth.ssoError = "统一认证暂时不可用，请稍后再试";
+    auth.ssoError = isEnglish.value ? "XJTLU authentication is temporarily unavailable. Please try again later." : "统一认证暂时不可用，请稍后再试";
   } finally {
     captchaRefreshing.value = false;
   }
@@ -367,7 +376,9 @@ async function sendMfaCode() {
   const result = await auth.sendSsoMfaCode(method.type);
   if (!result.ok) return;
   startMfaCooldown(result.cooldownSeconds || method.cooldownSeconds || 60);
-  ElMessage.success(method.type === "email" ? "验证码已发送到绑定邮箱" : "验证码已发送到绑定手机");
+  ElMessage.success(method.type === "email"
+    ? (isEnglish.value ? "Verification code sent to your email" : "验证码已发送到绑定邮箱")
+    : (isEnglish.value ? "Verification code sent to your phone" : "验证码已发送到绑定手机"));
 }
 
 async function restartPrimaryLogin() {
@@ -383,19 +394,21 @@ async function restartPrimaryLogin() {
 async function onMfaSubmit() {
   const method = selectedMfaMethod.value;
   if (!method) {
-    ElMessage.warning("请选择一种二次认证方式");
+    ElMessage.warning(isEnglish.value ? "Choose a two-step verification method" : "请选择一种二次认证方式");
     return;
   }
   if (method.codeRequired && !mfaCode.value.trim()) {
-    ElMessage.warning(method.type === "otp" ? "请输入动态口令 OTP" : "请输入验证码");
+    ElMessage.warning(method.type === "otp"
+      ? (isEnglish.value ? "Enter your authenticator OTP" : "请输入动态口令 OTP")
+      : (isEnglish.value ? "Enter the verification code" : "请输入验证码"));
     return;
   }
   if (method.passwordRequired && !mfaPassword.value) {
-    ElMessage.warning("该认证方式还需要输入 XJTLU 密码");
+    ElMessage.warning(isEnglish.value ? "This method also requires your XJTLU password" : "该认证方式还需要输入 XJTLU 密码");
     return;
   }
   if (auth.ssoNeedCaptcha && !form.captcha) {
-    ElMessage.warning("请输入图片安全验证码");
+    ElMessage.warning(isEnglish.value ? "Enter the image security code" : "请输入图片安全验证码");
     return;
   }
   const ok = await auth.verifySsoMfa(
@@ -435,7 +448,7 @@ async function onSliderRelease() {
   const challenge = auth.ssoVerification;
   if (challenge?.type !== "slider" || sliderChecking.value || auth.ssoLoading) return;
   if (!sliderMetrics.sourceWidth || !sliderMetrics.puzzleWidth) {
-    ElMessage.warning("验证码图片尚未加载完成，请稍候");
+    ElMessage.warning(isEnglish.value ? "The verification image is still loading" : "验证码图片尚未加载完成，请稍候");
     return;
   }
   const maxX = Math.max(0, sliderMetrics.sourceWidth - sliderMetrics.puzzleWidth);
@@ -447,7 +460,7 @@ async function onSliderRelease() {
       sliderValue.value = 0;
       return;
     }
-    ElMessage.success("安全验证通过，正在继续登录");
+    ElMessage.success(isEnglish.value ? "Security verification passed. Continuing sign-in…" : "安全验证通过，正在继续登录");
     if (auth.ssoMfa) await onMfaSubmit();
     else await onSubmit();
   } finally {
@@ -460,7 +473,9 @@ function redirectTarget() {
 }
 
 function loginSuccessMessage(name: string) {
-  return reconnectMode.value ? "学校服务已重新连接" : `欢迎，${name}`;
+  return reconnectMode.value
+    ? (isEnglish.value ? "University services reconnected" : "学校服务已重新连接")
+    : (isEnglish.value ? `Welcome, ${name}` : `欢迎，${name}`);
 }
 
 function goHome() {
@@ -472,11 +487,11 @@ async function onSubmit() {
   if (auth.ssoLoading || captchaRefreshing.value) return;
   try { await formRef.value?.validate(); } catch { return; }
   if (auth.ssoNeedCaptcha && !form.captcha) {
-    ElMessage.warning("请输入验证码");
+    ElMessage.warning(isEnglish.value ? "Enter the verification code" : "请输入验证码");
     return;
   }
   if (auth.ssoVerification?.type === "slider" && !auth.ssoVerificationToken) {
-    ElMessage.warning("请先完成滑块安全验证");
+    ElMessage.warning(isEnglish.value ? "Complete slider verification first" : "请先完成滑块安全验证");
     return;
   }
   let ok = false;
@@ -498,7 +513,7 @@ function forgetSavedCreds() {
   clearCreds();
   savedCredsPresent.value = false;
   remember.value = false;
-  ElMessage.success("已清除当前设备保存的登录信息");
+  ElMessage.success(isEnglish.value ? "Saved credentials cleared from this device" : "已清除当前设备保存的登录信息");
 }
 
 function fillDev(u: string, p: string) {
@@ -509,13 +524,13 @@ function fillDev(u: string, p: string) {
 async function onDevSubmit() {
   if (dev.loading) return;
   if (!dev.username || !dev.password) {
-    ElMessage.warning("请填写账号和密码");
+    ElMessage.warning(isEnglish.value ? "Enter your username and password" : "请填写账号和密码");
     return;
   }
   dev.loading = true;
   try {
     await auth.login(dev.username, dev.password);
-    ElMessage.success(`欢迎，${auth.user?.nickname}`);
+    ElMessage.success(isEnglish.value ? `Welcome, ${auth.user?.nickname}` : `欢迎，${auth.user?.nickname}`);
     router.replace(redirectTarget());
   } catch { /* 拦截器已提示 */ }
   finally { dev.loading = false; }

@@ -3,15 +3,15 @@
     <template v-if="auth.canAccessForum">
       <div class="page-heading">
         <div>
-          <h2 class="page-title">校园广场</h2>
-          <p>围绕真实校园问题交流；交易仍在市集完成，广场只承载公开讨论。</p>
+          <h2 class="page-title">{{ t("square.title") }}</h2>
+          <p>{{ t("square.subtitle") }}</p>
         </div>
-        <el-button type="primary" @click="$router.push('/post')">发布帖子</el-button>
+        <el-button type="primary" @click="$router.push('/post')">{{ t("square.publish") }}</el-button>
       </div>
 
       <div v-if="error && !loading" class="cpu-card forum-error">
         <el-empty :description="error">
-          <el-button type="primary" @click="loadBoards">重试</el-button>
+          <el-button type="primary" @click="loadBoards">{{ t("common.retry") }}</el-button>
         </el-empty>
       </div>
 
@@ -19,10 +19,10 @@
         <button type="button" class="latest-entry cpu-card" @click="$router.push('/forum/latest')">
           <div class="latest-entry-icon">🆕</div>
           <div class="latest-entry-body">
-            <div class="latest-entry-title">最新内容</div>
-            <div class="latest-entry-desc">按时间看看最近有哪些新帖子和新回复</div>
+            <div class="latest-entry-title">{{ t("square.latest") }}</div>
+            <div class="latest-entry-desc">{{ t("square.latestDesc") }}</div>
           </div>
-          <span class="latest-entry-arrow">查看全部 →</span>
+          <span class="latest-entry-arrow">{{ t("square.viewAll") }}</span>
         </button>
 
         <div v-loading="loading" class="boards-content">
@@ -44,7 +44,7 @@
                 <div class="body">
                   <div class="name">{{ b.name }}</div>
                   <div class="desc">{{ b.description }}</div>
-                  <div class="meta"><span>{{ b.topicCount }} 帖</span><span>进入栏目 →</span></div>
+                  <div class="meta"><span>{{ b.topicCount }} {{ t("square.posts") }}</span><span>{{ t("square.enter") }}</span></div>
                 </div>
               </div>
             </div>
@@ -57,26 +57,28 @@
       <section class="gate-card">
         <div class="gate-head">
           <span class="gate-badge">XJTLU 校园社区</span>
-          <h2>登录后进入校园广场</h2>
+          <h2>{{ t("square.signInTitle") }}</h2>
         </div>
         <p class="gate-intro">
-          使用学校账号登录后即可浏览 12 个校园频道、发布帖子和参与回复，不再需要额外手动开启。
+          {{ isEnglish
+            ? "Sign in with your XJTLU account to browse 12 campus channels, publish posts, and join discussions. No additional activation is required."
+            : "使用学校账号登录后即可浏览 12 个校园频道、发布帖子和参与回复，不再需要额外手动开启。" }}
         </p>
         <div class="gate-points">
-          <div>💬 综合讨论：校园广场、求购需求、新生专区与问答互助</div>
-          <div>📚 学习交流：课程学习、2+2专区、雅思留学与课程点评</div>
-          <div>🎈 生活社交：校园生活、社团活动、树洞与交友扩列</div>
-          <div>🧾 求购需求使用完整需求表单发布，并可由同学提交商品响应</div>
+          <div>{{ isEnglish ? "💬 General: Campus Square, Wanted Requests, New Students, and Questions & Help" : "💬 综合讨论：校园广场、求购需求、新生专区与问答互助" }}</div>
+          <div>{{ isEnglish ? "📚 Study: Course Study, 2+2 Zone, IELTS & Study Abroad, and Course Reviews" : "📚 学习交流：课程学习、2+2专区、雅思留学与课程点评" }}</div>
+          <div>{{ isEnglish ? "🎈 Social: Campus Life, Clubs & Events, Tree Hole, and Meet People" : "🎈 生活社交：校园生活、社团活动、树洞与交友扩列" }}</div>
+          <div>{{ isEnglish ? "🧾 Wanted requests use a structured form and may be linked to matching items." : "🧾 求购需求使用完整需求表单发布，并可由同学提交商品响应" }}</div>
         </div>
         <div class="gate-actions">
-          <el-button type="primary" size="large" @click="goLogin">学校账号登录</el-button>
+          <el-button type="primary" size="large" @click="goLogin">{{ t("square.signIn") }}</el-button>
         </div>
         <PrivacyPolicyNotice v-if="!auth.isLoggedIn" align="left" />
       </section>
 
       <div class="footer-tip">
         <el-icon><InfoFilled /></el-icon>
-        <span>暂不登录也可浏览 <router-link to="/services">校园服务</router-link></span>
+        <span>{{ isEnglish ? "You can browse " : "暂不登录也可浏览 " }}<router-link to="/services">{{ isEnglish ? "campus services" : "校园服务" }}</router-link>{{ isEnglish ? " without signing in." : "" }}</span>
       </div>
     </template>
   </div>
@@ -90,10 +92,12 @@ import { boardApi, type Board } from "@/api/board";
 import { useAuthStore } from "@/stores/auth";
 import { resolveSafeRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import { useLocale } from "@/i18n";
 
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
+const { t, isEnglish } = useLocale();
 const all = ref<Board[]>([]);
 const loading = ref(false);
 const error = ref("");
@@ -116,13 +120,13 @@ onBeforeUnmount(() => {
   boardLoadSeq += 1;
 });
 
-const sectionMeta = [
-  { key: "general", title: "综合讨论", icon: "💬" },
-  { key: "study", title: "学习交流", icon: "📚" },
-  { key: "social", title: "生活社交", icon: "🎈" },
-] as const;
+const sectionMeta = computed(() => [
+  { key: "general", title: isEnglish.value ? "General Discussion" : "综合讨论", icon: "💬" },
+  { key: "study", title: isEnglish.value ? "Study" : "学习交流", icon: "📚" },
+  { key: "social", title: isEnglish.value ? "Campus Life" : "生活社交", icon: "🎈" },
+] as const);
 
-const forumSections = computed(() => sectionMeta.map((section) => ({
+const forumSections = computed(() => sectionMeta.value.map((section) => ({
   ...section,
   boards: all.value.filter((board) => board.section === section.key),
 })));
@@ -148,9 +152,9 @@ async function loadBoards() {
 function normalizeBoardListError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status && status < 500) {
-    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "板块列表加载失败";
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || t("square.loadError");
   }
-  return "板块列表加载失败，请稍后再试";
+  return t("square.loadError");
 }
 
 function goLogin() {

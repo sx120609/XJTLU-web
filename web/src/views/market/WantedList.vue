@@ -1,39 +1,39 @@
 <template>
   <div class="wanted-page">
     <section class="wanted-hero">
-      <div><span>KAOPU · WANTED</span><h1>校园求购</h1><p>把预算和要求说明白，让有合适物品的 XJTLUer 主动回应。</p></div>
-      <el-button v-if="auth.isLoggedIn" type="primary" size="large" @click="$router.push('/publish/wanted')"><el-icon><Plus /></el-icon> 发布求购</el-button>
-      <el-button v-else type="primary" size="large" @click="$router.push({ name: 'login', query: { redirect: '/publish/wanted' } })">登录后发布</el-button>
+      <div><span>KAOPU · WANTED</span><h1>{{ isEnglish ? "Campus Wanted" : "校园求购" }}</h1><p>{{ isEnglish ? "Describe your budget and requirements so students with a suitable item can respond." : "把预算和要求说明白，让有合适物品的 XJTLUer 主动回应。" }}</p></div>
+      <el-button v-if="auth.isLoggedIn" type="primary" size="large" @click="$router.push('/publish/wanted')"><el-icon><Plus /></el-icon> {{ isEnglish ? "Post request" : "发布求购" }}</el-button>
+      <el-button v-else type="primary" size="large" @click="$router.push({ name: 'login', query: { redirect: '/publish/wanted' } })">{{ isEnglish ? "Sign in to post" : "登录后发布" }}</el-button>
     </section>
 
     <section class="filter-bar cpu-card">
-      <el-input v-model="filters.q" clearable placeholder="搜索求购物品、品牌型号或交易地点" @keyup.enter="search"><template #prefix><el-icon><Search /></el-icon></template></el-input>
-      <el-select v-model="filters.category" clearable placeholder="全部分类"><el-option v-for="category in categories" :key="category.slug" :label="`${category.icon} ${category.name}`" :value="category.slug" /></el-select>
-      <el-select v-model="filters.campus" clearable placeholder="全部校区">
+      <el-input v-model="filters.q" clearable :placeholder="isEnglish ? 'Search wanted items, models, or locations' : '搜索求购物品、品牌型号或交易地点'" @keyup.enter="search"><template #prefix><el-icon><Search /></el-icon></template></el-input>
+      <el-select v-model="filters.category" clearable :placeholder="isEnglish ? 'All categories' : '全部分类'"><el-option v-for="category in categories" :key="category.slug" :label="`${category.icon} ${categoryName(category)}`" :value="category.slug" /></el-select>
+      <el-select v-model="filters.campus" clearable :placeholder="isEnglish ? 'All campuses' : '全部校区'">
         <el-option v-for="campus in MARKET_CAMPUSES" :key="campus" :label="campus" :value="campus" />
       </el-select>
-      <el-select v-model="filters.sort" aria-label="求购排序" @change="search">
-        <el-option label="最新发布" value="new" />
-        <el-option label="人气优先" value="popular" />
+      <el-select v-model="filters.sort" :aria-label="isEnglish ? 'Sort wanted requests' : '求购排序'" @change="search">
+        <el-option :label="isEnglish ? 'Newest' : '最新发布'" value="new" />
+        <el-option :label="isEnglish ? 'Most popular' : '人气优先'" value="popular" />
       </el-select>
-      <el-button type="primary" @click="search">筛选</el-button>
+      <el-button type="primary" @click="search">{{ isEnglish ? "Filter" : "筛选" }}</el-button>
     </section>
 
     <section class="wanted-content" v-loading="loading">
-      <div class="content-head"><div><h2>{{ filters.sort === 'popular' ? '热门求购' : '最新求购' }}</h2><span>{{ total }} 条有效需求</span></div><small>联系方式默认不公开 · 看中响应可直接私聊</small></div>
-      <el-alert v-if="error" type="error" :closable="false" show-icon :title="error"><template #default><el-button size="small" @click="load">重试</el-button></template></el-alert>
+      <div class="content-head"><div><h2>{{ filters.sort === 'popular' ? (isEnglish ? 'Popular requests' : '热门求购') : (isEnglish ? 'Latest requests' : '最新求购') }}</h2><span>{{ total }} {{ isEnglish ? "active requests" : "条有效需求" }}</span></div><small>{{ isEnglish ? "Contact details stay private · Start a chat from a response" : "联系方式默认不公开 · 看中响应可直接私聊" }}</small></div>
+      <el-alert v-if="error" type="error" :closable="false" show-icon :title="error"><template #default><el-button size="small" @click="load">{{ t("common.retry") }}</el-button></template></el-alert>
       <div v-else-if="posts.length" class="wanted-grid">
         <article v-for="post in posts" :key="post.id" :class="{ urgent: post.promotion.urgent, 'learning-wanted': post.category === 'learning_materials' }" @click="openPost(post)">
-          <header><span>{{ categoryIcon(post.category) }}</span><b v-if="post.category === 'learning_materials'" class="learning-badge">学习资料</b><em>{{ statusLabel(post.status) }}</em><time>{{ fmtRelative(post.createdAt) }}</time></header>
-          <PromotionLabel v-if="post.promotion.urgent" label="加急" kind="urgent" />
+          <header><span>{{ categoryIcon(post.category) }}</span><b v-if="post.category === 'learning_materials'" class="learning-badge">{{ t("home.learning") }}</b><em>{{ statusLabel(post.status) }}</em><time>{{ fmtRelative(post.createdAt) }}</time></header>
+          <PromotionLabel v-if="post.promotion.urgent" :label="t('home.urgent')" kind="urgent" />
           <h3>{{ post.title }}</h3>
           <p>{{ post.description }}</p>
-          <div class="budget"><small>预算</small><strong>¥{{ post.budgetMin }}<template v-if="post.budgetMax !== post.budgetMin">–{{ post.budgetMax }}</template></strong></div>
-          <div class="wanted-tags"><span v-if="post.brandModel">{{ post.brandModel }}</span><span v-if="post.condition">{{ post.condition }}</span><span>{{ post.campus || '校内' }}</span></div>
-          <footer><span><UserAvatar :size="25" :src="post.author?.avatar" :name="post.author?.nickname" /> {{ post.author?.nickname || '校园用户' }} <i>{{ post.isAnonymous ? '匿名发布' : '已认证' }}</i></span><b>{{ post.responseCount }} 个响应</b></footer>
+          <div class="budget"><small>{{ isEnglish ? "Budget" : "预算" }}</small><strong>¥{{ post.budgetMin }}<template v-if="post.budgetMax !== post.budgetMin">–{{ post.budgetMax }}</template></strong></div>
+          <div class="wanted-tags"><span v-if="post.brandModel">{{ post.brandModel }}</span><span v-if="post.condition">{{ post.condition }}</span><span>{{ post.campus || (isEnglish ? 'On campus' : '校内') }}</span></div>
+          <footer><span><UserAvatar :size="25" :src="post.author?.avatar" :name="post.author?.nickname" /> {{ post.author?.nickname || (isEnglish ? 'Campus user' : '校园用户') }} <i>{{ post.isAnonymous ? (isEnglish ? 'Anonymous' : '匿名发布') : (isEnglish ? 'Verified' : '已认证') }}</i></span><b>{{ post.responseCount }} {{ isEnglish ? "responses" : "个响应" }}</b></footer>
         </article>
       </div>
-      <el-empty v-else description="暂时没有符合条件的求购"><el-button type="primary" plain @click="$router.push('/publish/wanted')">发布求购</el-button></el-empty>
+      <el-empty v-else :description="isEnglish ? 'No matching wanted requests' : '暂时没有符合条件的求购'"><el-button type="primary" plain @click="$router.push('/publish/wanted')">{{ isEnglish ? "Post request" : "发布求购" }}</el-button></el-empty>
       <el-pagination v-if="total > pageSize" v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" background @current-change="load" />
     </section>
   </div>
@@ -48,9 +48,11 @@ import { useAuthStore } from "@/stores/auth";
 import { fmtRelative } from "@/utils/format";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import PromotionLabel from "@/components/market/PromotionLabel.vue";
+import { useLocale } from "@/i18n";
 
 const auth = useAuthStore();
 const router = useRouter();
+const { t, isEnglish } = useLocale();
 const categories = ref<MarketCategoryOption[]>([]);
 const posts = ref<WantedPost[]>([]);
 const filters = reactive<{ q: string; category: string; campus: MarketCampus | ""; sort: "new" | "popular" }>({ q: "", category: "", campus: "", sort: "new" });
@@ -82,13 +84,20 @@ async function load() {
   } catch (reason) {
     if (current !== sequence) return;
     posts.value = [];
-    error.value = reason instanceof Error ? reason.message : "求购加载失败";
+    error.value = reason instanceof Error ? reason.message : (isEnglish.value ? "Could not load wanted requests" : "求购加载失败");
   } finally { if (current === sequence) loading.value = false; }
 }
 function search() { page.value = 1; void load(); }
 function openPost(post: WantedPost) { if (post.promotion.urgent?.orderId) void marketApi.recordPromotionEvent(post.promotion.urgent.orderId, "click", { suppressErrorMessage: true }); void router.push(`/market/wanted/${post.id}`); }
 function categoryIcon(value: string) { return categories.value.find((entry) => entry.slug === value)?.icon || "📦"; }
-function statusLabel(value: string) { return ({ active: "求购中", responded: "已有响应", matched: "已匹配", completed: "已完成", expired: "已过期" } as Record<string, string>)[value] || value; }
+function categoryName(category: MarketCategoryOption) {
+  if (!isEnglish.value) return category.name;
+  return ({ learning_materials: "Learning materials", digital: "Electronics", books: "Books", dorm: "Dorm & Home", appliance: "Appliances", fashion: "Fashion", sports: "Sports", tickets: "Tickets", other: "Other" } as Record<string, string>)[category.slug] || category.name;
+}
+function statusLabel(value: string) {
+  if (isEnglish.value) return ({ active: "Open", responded: "Responses", matched: "Matched", completed: "Completed", expired: "Expired" } as Record<string, string>)[value] || value;
+  return ({ active: "求购中", responded: "已有响应", matched: "已匹配", completed: "已完成", expired: "已过期" } as Record<string, string>)[value] || value;
+}
 </script>
 
 <style scoped>

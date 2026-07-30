@@ -438,7 +438,7 @@ test("legacy intent contracts remain readable while the live product uses direct
   assert.match(webApi, /export interface MarketTradeIntentInput/);
   assert.match(webApi, /export interface MarketOfferInput/);
   assert.match(webApi, /createConversation: \(itemId: number/);
-  assert.match(detail, /@click="startChat">发起私聊/);
+  assert.match(detail, /@click="startChat"[\s\S]*Start chat[\s\S]*发起私聊/);
   assert.doesNotMatch(detail, /MarketTradeIntentInput/);
 });
 
@@ -706,7 +706,7 @@ test("market write routes require authentication and reject malformed ids before
   const token = signToken({ userId: 9, studentId: "test", role: "user", campus: "SIP" });
   const invalidPaymentId = await fetch(`http://127.0.0.1:${port}/api/market/orders/not-a-number/pay`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ payType: "alipay" }),
   });
   assert.equal(invalidPaymentId.status, 400);
@@ -716,7 +716,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidAdminCategoryId = await fetch(`http://127.0.0.1:${port}/api/market/admin/categories/not-a-number`, {
     method: "PATCH",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ enabled: false }),
   });
   assert.equal(invalidAdminCategoryId.status, 400);
@@ -726,7 +726,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidId = await fetch(`http://127.0.0.1:${port}/api/market/wanted/not-a-number/lifecycle`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ action: "cancel" }),
   });
   assert.equal(invalidId.status, 400);
@@ -736,7 +736,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidItemId = await fetch(`http://127.0.0.1:${port}/api/market/items/not-a-number`, {
     method: "PATCH",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ status: "draft" }),
   });
   assert.equal(invalidItemId.status, 400);
@@ -746,7 +746,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidWantedResponseId = await fetch(`http://127.0.0.1:${port}/api/market/wanted/not-a-number/responses`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({
       title: "二手显示器",
       price: 450,
@@ -762,7 +762,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidResponseActionId = await fetch(`http://127.0.0.1:${port}/api/market/wanted-responses/not-a-number`, {
     method: "PATCH",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ action: "cancel" }),
   });
   assert.equal(invalidResponseActionId.status, 400);
@@ -772,7 +772,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidTradeItemId = await fetch(`http://127.0.0.1:${port}/api/market/items/not-a-number/intents`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({
       price: 88,
       availableTime: "工作日晚上",
@@ -785,7 +785,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidTradeActionId = await fetch(`http://127.0.0.1:${port}/api/market/trade-intents/not-a-number`, {
     method: "PATCH",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ action: "cancel" }),
   });
   assert.equal(invalidTradeActionId.status, 400);
@@ -795,7 +795,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidOfferItemId = await fetch(`http://127.0.0.1:${port}/api/market/items/not-a-number/offers`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ price: 88 }),
   });
   assert.equal(invalidOfferItemId.status, 400);
@@ -805,7 +805,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidOfferActionId = await fetch(`http://127.0.0.1:${port}/api/market/offers/not-a-number`, {
     method: "PATCH",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ action: "reject" }),
   });
   assert.equal(invalidOfferActionId.status, 400);
@@ -815,7 +815,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidOrderActionId = await fetch(`http://127.0.0.1:${port}/api/market/orders/not-a-number`, {
     method: "PATCH",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ action: "cancel", reason: "测试" }),
   });
   assert.equal(invalidOrderActionId.status, 400);
@@ -825,7 +825,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidConversationItemId = await fetch(`http://127.0.0.1:${port}/api/market/items/not-a-number/conversations`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ message: "测试消息" }),
   });
   assert.equal(invalidConversationItemId.status, 400);
@@ -834,7 +834,7 @@ test("market write routes require authentication and reject malformed ids before
   assert.equal(invalidConversationItemBody.message, "商品 ID 不合法");
 
   const invalidConversationId = await fetch(`http://127.0.0.1:${port}/api/market/conversations/not-a-number/messages`, {
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
   });
   assert.equal(invalidConversationId.status, 400);
   const invalidConversationBody = await invalidConversationId.json() as any;
@@ -843,7 +843,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidMessageReportId = await fetch(`http://127.0.0.1:${port}/api/market/conversations/1/messages/not-a-number/report`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ reason: "测试举报" }),
   });
   assert.equal(invalidMessageReportId.status, 400);
@@ -853,21 +853,23 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidReviewOrderId = await fetch(`http://127.0.0.1:${port}/api/market/orders/not-a-number/reviews`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ rating: 5, content: "交易顺利" }),
   });
   assert.equal(invalidReviewOrderId.status, 400);
   const invalidReviewOrderBody = await invalidReviewOrderId.json() as any;
   assert.equal(invalidReviewOrderBody.message, "订单 ID 不合法");
 
-  const invalidTrustUserId = await fetch(`http://127.0.0.1:${port}/api/market/users/not-a-number/trust`);
+  const invalidTrustUserId = await fetch(`http://127.0.0.1:${port}/api/market/users/not-a-number/trust`, {
+    headers: { "accept-language": "zh-CN" },
+  });
   assert.equal(invalidTrustUserId.status, 400);
   const invalidTrustUserBody = await invalidTrustUserId.json() as any;
   assert.equal(invalidTrustUserBody.message, "用户 ID 不合法");
 
   const invalidReportItemId = await fetch(`http://127.0.0.1:${port}/api/market/items/not-a-number/reports`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ reason: "测试举报" }),
   });
   assert.equal(invalidReportItemId.status, 400);
@@ -876,7 +878,7 @@ test("market write routes require authentication and reject malformed ids before
 
   const invalidViolationId = await fetch(`http://127.0.0.1:${port}/api/market/admin/violations/not-a-number`, {
     method: "PATCH",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "accept-language": "zh-CN" },
     body: JSON.stringify({ status: "revoked", note: "测试" }),
   });
   assert.equal(invalidViolationId.status, 400);

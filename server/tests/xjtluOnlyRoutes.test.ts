@@ -48,7 +48,7 @@ test("XJTLU-only server does not expose CPU JWXT routes or course sync", async (
   const siteToken = signToken({ userId: 1, studentId: "student.name24", role: "user", campus: "" });
   const courseSync = await fetch(`${baseUrl}/api/courses/sync`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${siteToken}` },
+    headers: { Authorization: `Bearer ${siteToken}`, "Accept-Language": "zh-CN" },
   });
   assert.equal(courseSync.status, 501);
   const body = await courseSync.json() as { message?: string };

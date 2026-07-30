@@ -3,47 +3,47 @@
     <section class="learning-hero">
       <div>
         <span>KAOPU LEARNING</span>
-        <h1>学习中心</h1>
-        <p>把学习用品、同学交流、优质付费资料和学校官方资源放在一个清晰入口里。</p>
+        <h1>{{ t("learning.title") }}</h1>
+        <p>{{ t("learning.subtitle") }}</p>
       </div>
       <img src="/brand/kaopu-cloud.svg" alt="靠浦" />
     </section>
 
     <section class="hub-section">
       <header>
-        <div><span>STUDY GOODS</span><h2>学习好物</h2><p>教材、计算器和其他实体学习用品，交易仍在市集完成。</p></div>
-        <router-link to="/market?category=books">进入市集 →</router-link>
+        <div><span>STUDY GOODS</span><h2>{{ t("learning.goods") }}</h2><p>{{ t("learning.goodsDesc") }}</p></div>
+        <router-link to="/market?category=books">{{ t("learning.enterMarket") }}</router-link>
       </header>
       <div v-if="goods.length" class="goods-grid">
         <article v-for="item in goods" :key="item.id" class="cpu-card goods-card" @click="router.push(`/market/item/${item.id}`)">
           <div class="goods-cover"><img v-if="item.cover" :src="item.cover" :alt="item.title" /><img v-else src="/brand/kaopu-cloud.svg" alt="" /></div>
-          <div><span>{{ item.category === 'books' ? '教材与学习用品' : '学习好物' }}</span><h3>{{ item.title }}</h3><p>{{ item.description }}</p><b>¥{{ item.price }}</b></div>
+          <div><span>{{ item.category === 'books' ? (isEnglish ? 'Textbooks & Study Supplies' : '教材与学习用品') : t("learning.goods") }}</span><h3>{{ item.title }}</h3><p>{{ item.description }}</p><b>¥{{ item.price }}</b></div>
         </article>
       </div>
-      <el-empty v-else :image-size="70" description="暂无学习好物" />
+      <el-empty v-else :image-size="70" :description="t('learning.noGoods')" />
     </section>
 
     <section class="hub-section split-section">
       <div>
         <header>
-          <div><span>PEER DISCUSSION</span><h2>学习交流</h2><p>围绕课程与学习方法公开提问，同学共同补充。</p></div>
-          <router-link to="/forum/b/question">查看问答 →</router-link>
+          <div><span>PEER DISCUSSION</span><h2>{{ t("learning.discussion") }}</h2><p>{{ t("learning.discussionDesc") }}</p></div>
+          <router-link to="/forum/b/question">{{ t("learning.viewQna") }}</router-link>
         </header>
         <div v-if="topics.length" class="topic-list cpu-card">
           <router-link v-for="topic in topics" :key="topic.id" :to="`/forum/topic/${topic.id}`">
-            <div><b>{{ topic.title }}</b><span>{{ topic.author?.nickname || '同学' }} · {{ topic.replyCount }} 回复</span></div><em>→</em>
+            <div><b>{{ topic.title }}</b><span>{{ topic.author?.nickname || t("common.classmate") }} · {{ topic.replyCount }} {{ isEnglish ? "replies" : "回复" }}</span></div><em>→</em>
           </router-link>
         </div>
-        <el-empty v-else :image-size="64" description="暂无学习问答" />
+        <el-empty v-else :image-size="64" :description="t('learning.noQna')" />
       </div>
 
       <div>
         <header>
-          <div><span>PAID LEARNING</span><h2>付费学习资料专区</h2><p>学习资料与实体商品独立管理；进入专区后再浏览、发布、购买和管理资料。</p></div>
+          <div><span>PAID LEARNING</span><h2>{{ t("learning.materials") }}</h2><p>{{ t("learning.materialsDesc") }}</p></div>
         </header>
         <router-link class="learning-zone-gateway cpu-card" to="/learning/materials">
           <img src="/brand/kaopu-cloud.svg" alt="" />
-          <div><b>进入学习资料专区</b><span>人人可发布 · 内容审核 · 独立订单与发布管理</span></div>
+          <div><b>{{ t("learning.enterMaterials") }}</b><span>{{ t("learning.materialsMeta") }}</span></div>
           <em>→</em>
         </router-link>
       </div>
@@ -51,15 +51,15 @@
 
     <section class="hub-section official-section">
       <header>
-        <div><span>OFFICIAL RESOURCES</span><h2>官方学习资源</h2><p>学校官方系统与帮助入口，外链会明确标注责任部门。</p></div>
-        <router-link to="/services">全部校园服务 →</router-link>
+        <div><span>OFFICIAL RESOURCES</span><h2>{{ t("learning.official") }}</h2><p>{{ t("learning.officialDesc") }}</p></div>
+        <router-link to="/services">{{ t("learning.allServices") }}</router-link>
       </header>
       <div v-if="resources.length" class="resource-grid">
         <a v-for="resource in resources" :key="resource.id" class="cpu-card resource-card" :href="resource.url" target="_blank" rel="noopener noreferrer">
-          <i>{{ resource.icon || '🔗' }}</i><div><b>{{ resource.name }}</b><span>{{ resource.owner }}</span><p>{{ resource.description }}</p><small>{{ resource.needSso ? '需要学校统一身份认证' : '学校官方入口' }} · 打开外链 ↗</small></div>
+          <i>{{ resource.icon || '🔗' }}</i><div><b>{{ resource.name }}</b><span>{{ resource.owner }}</span><p>{{ resource.description }}</p><small>{{ resource.needSso ? t("learning.ssoRequired") : t("learning.officialLink") }} · {{ t("common.openLink") }} ↗</small></div>
         </a>
       </div>
-      <el-empty v-else :image-size="70" description="官方资源暂时不可用" />
+      <el-empty v-else :image-size="70" :description="t('learning.unavailable')" />
     </section>
   </div>
 </template>
@@ -70,8 +70,10 @@ import { useRouter } from "vue-router";
 import { marketApi, type MarketItem } from "@/api/market";
 import { topicApi, type Topic } from "@/api/topic";
 import { servicesApi, type ServiceCard } from "@/api/services";
+import { useLocale } from "@/i18n";
 
 const router = useRouter();
+const { t, isEnglish } = useLocale();
 const goods = ref<MarketItem[]>([]);
 const topics = ref<Topic[]>([]);
 const resources = ref<ServiceCard[]>([]);

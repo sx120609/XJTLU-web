@@ -250,8 +250,8 @@ test("stage 3 routes enforce direct-chat privacy and expose trust administration
   assert.match(marketApi, /request\.get<MarketPublicUserProfile>/);
   const profile = readFileSync(new URL("../../web/src/views/profile/Index.vue", import.meta.url), "utf8");
   assert.doesNotMatch(mine, /label="校园身份与信用"|name="trust"/);
-  assert.match(profile, /校园身份与信用/);
-  assert.match(profile, /我的收藏/);
+  assert.match(profile, /id="trust"[\s\S]*t\("profile\.identity"\)/);
+  assert.match(profile, /id="favorites"[\s\S]*t\("profile\.favorites"\)/);
   assert.match(admin, /信用处理与申诉/);
   assert.match(admin, /内容规则/);
 });

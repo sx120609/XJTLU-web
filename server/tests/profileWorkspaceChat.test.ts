@@ -38,19 +38,13 @@ test("profile, trade workspace, favorites, point promotion and chat share the V1
   }
   assert.doesNotMatch(favorites, /"merchant"/);
 
-  assert.deepEqual(
-    [...mine.matchAll(/<el-tab-pane label="([^"]+)"/g)].map((match) => match[1]),
-    ["我的发布", "求购需求"],
-  );
-  assert.deepEqual(
-    [...mine.matchAll(/\{ label: "([^"]+)", value: "(?:all|active|sold|draft|withdrawn)" \}/g)]
-      .map((match) => match[1]),
-    ["全部", "在售", "已售出", "草稿", "已下架"],
-  );
+  assert.match(mine, /<el-tab-pane :label="isEnglish \? 'My listings' : '我的发布'" name="selling"/);
+  assert.match(mine, /<el-tab-pane :label="isEnglish \? 'Wanted requests' : '求购需求'" name="wanted"/);
+  assert.match(mine, /value: "all"[\s\S]*value: "active"[\s\S]*value: "sold"[\s\S]*value: "draft"[\s\S]*value: "withdrawn"/);
   assert.doesNotMatch(mine, /<el-tab-pane label="校园身份与信用"|<el-tab-pane label="我的收藏"/);
   assert.doesNotMatch(mine, /class="head-actions"|发布求购<\/el-button>|出售物品/);
   assert.match(marketIndex, /market-messages[\s\S]*market-mine/);
-  assert.match(marketIndex, /unread-dot[\s\S]*交易消息[\s\S]*tradeUnreadCount/);
+  assert.match(marketIndex, /unread-dot[\s\S]*t\("market\.tradeMessages"\)[\s\S]*tradeUnreadCount/);
   assert.doesNotMatch(layout, /footer-inner|页脚导航|footer-safety/);
   assert.match(mine, /编辑后重新发布/);
   assert.doesNotMatch(mine, /wantedLifecycle\([^)]*'renew'/);
@@ -92,7 +86,7 @@ test("profile, trade workspace, favorites, point promotion and chat share the V1
   assert.match(messages, /ElMessageBox\.confirm/);
   assert.match(messages, /任意一方未确认都不会发放积分/);
   assert.match(messages, /本次私聊已关闭；历史消息仍可查看/);
-  assert.match(messages, /买家 \{\{ buyerConfirmed \? "已确认" : "待确认" \}\}/);
+  assert.match(messages, /\{\{ isEnglish \? "Buyer" : "买家" \}\} \{\{ buyerConfirmed \?/);
   assert.doesNotMatch(messages, /endNegotiation|结束洽谈/);
   assert.match(messages, /举报消息/);
   assert.match(messages, /屏蔽对方/);

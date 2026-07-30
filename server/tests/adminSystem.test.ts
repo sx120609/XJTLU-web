@@ -141,6 +141,7 @@ test("database restore upload rejects unsupported files without leaving temp dir
   );
   const unsupportedResponse = await fetch(`${baseUrl}/database/restore`, {
     method: "POST",
+    headers: { "Accept-Language": "zh-CN" },
     body: unsupported,
   });
   assert.equal(unsupportedResponse.status, 400);
@@ -154,6 +155,7 @@ test("database restore upload rejects unsupported files without leaving temp dir
   );
   const wrongFieldResponse = await fetch(`${baseUrl}/database/restore`, {
     method: "POST",
+    headers: { "Accept-Language": "zh-CN" },
     body: wrongField,
   });
   assert.equal(wrongFieldResponse.status, 400);

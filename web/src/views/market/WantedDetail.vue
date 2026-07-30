@@ -1,88 +1,88 @@
 <template>
   <div class="wanted-detail" v-loading="loading">
     <template v-if="post">
-      <nav class="crumb"><router-link to="/market/wanted">校园求购</router-link><span>/</span><b>{{ post.title }}</b></nav>
+      <nav class="crumb"><router-link to="/market/wanted">{{ isEnglish ? "Campus Wanted" : "校园求购" }}</router-link><span>/</span><b>{{ post.title }}</b></nav>
       <section class="wanted-card cpu-card" :class="{ 'learning-wanted-card': isLearningWanted }">
         <header>
           <div class="category-icon">{{ categoryIcon }}</div>
-          <div class="headline"><div><el-tag size="small" :type="statusType">{{ statusLabel }}</el-tag><PromotionLabel v-if="post.promotion.urgent" label="加急" kind="urgent" /><span>发布于 {{ fmtRelative(post.createdAt) }}</span></div><h1>{{ post.title }}</h1><p>{{ categoryName }} · {{ post.campus || '校内' }} · {{ post.location || '地点待协商' }}</p></div>
-          <div class="budget"><small>预算范围</small><strong>¥{{ post.budgetMin }}<template v-if="post.budgetMax !== post.budgetMin">–{{ post.budgetMax }}</template></strong></div>
+          <div class="headline"><div><el-tag size="small" :type="statusType">{{ statusLabel }}</el-tag><PromotionLabel v-if="post.promotion.urgent" :label="isEnglish ? 'Boosted' : '加急'" kind="urgent" /><span>{{ isEnglish ? "Posted" : "发布于" }} {{ fmtRelative(post.createdAt) }}</span></div><h1>{{ post.title }}</h1><p>{{ categoryName }} · {{ post.campus || (isEnglish ? 'On campus' : '校内') }} · {{ post.location || (isEnglish ? 'Location to be agreed' : '地点待协商') }}</p></div>
+          <div class="budget"><small>{{ isEnglish ? "Budget" : "预算范围" }}</small><strong>¥{{ post.budgetMin }}<template v-if="post.budgetMax !== post.budgetMin">–{{ post.budgetMax }}</template></strong></div>
         </header>
 
         <div class="detail-grid">
           <main>
-            <section><h2>需求说明</h2><p class="description">{{ post.description }}</p></section>
-            <section class="facts"><h2>{{ isLearningWanted ? '希望收到的学习资料' : '希望收到的物品' }}</h2><dl><div><dt>{{ isLearningWanted ? '课程 / 资料范围' : '品牌 / 型号' }}</dt><dd>{{ post.brandModel || '不限' }}</dd></div><div><dt>{{ isLearningWanted ? '内容要求' : '可接受成色' }}</dt><dd>{{ post.condition || '可协商' }}</dd></div><div><dt>希望交易时间</dt><dd>{{ post.expectedTradeTime || '与发布者协商' }}</dd></div><div><dt>有效期至</dt><dd>{{ formatDate(post.expiresAt) }}</dd></div></dl></section>
-            <el-alert v-if="isLearningWanted" type="success" :closable="false" show-icon title="学习资料响应只能关联资料专区中已审核上架的内容；购买、付款与交付仍在学习资料专区完成。" />
-            <el-alert v-else type="warning" :closable="false" show-icon title="请在校内公共区域当面验货。平台不代收商品款；不要提前转账，不要向陌生人提供验证码或账户密码。" />
+            <section><h2>{{ isEnglish ? "Request details" : "需求说明" }}</h2><p class="description">{{ post.description }}</p></section>
+            <section class="facts"><h2>{{ isLearningWanted ? (isEnglish ? 'Learning material wanted' : '希望收到的学习资料') : (isEnglish ? 'Item wanted' : '希望收到的物品') }}</h2><dl><div><dt>{{ isLearningWanted ? (isEnglish ? 'Course / scope' : '课程 / 资料范围') : (isEnglish ? 'Brand / model' : '品牌 / 型号') }}</dt><dd>{{ post.brandModel || (isEnglish ? 'Any' : '不限') }}</dd></div><div><dt>{{ isLearningWanted ? (isEnglish ? 'Content requirements' : '内容要求') : (isEnglish ? 'Acceptable condition' : '可接受成色') }}</dt><dd>{{ post.condition || (isEnglish ? 'Open to discussion' : '可协商') }}</dd></div><div><dt>{{ isEnglish ? "Preferred time" : "希望交易时间" }}</dt><dd>{{ post.expectedTradeTime || (isEnglish ? 'Discuss with the publisher' : '与发布者协商') }}</dd></div><div><dt>{{ isEnglish ? "Expires" : "有效期至" }}</dt><dd>{{ formatDate(post.expiresAt) }}</dd></div></dl></section>
+            <el-alert v-if="isLearningWanted" type="success" :closable="false" show-icon :title="isEnglish ? 'A response may only link reviewed, active content from Learning Materials. Purchase, payment, and delivery remain in that area.' : '学习资料响应只能关联资料专区中已审核上架的内容；购买、付款与交付仍在学习资料专区完成。'" />
+            <el-alert v-else type="warning" :closable="false" show-icon :title="isEnglish ? 'Meet and inspect items in a public campus area. The platform does not collect item payments. Do not pay in advance or share verification codes or passwords.' : '请在校内公共区域当面验货。平台不代收商品款；不要提前转账，不要向陌生人提供验证码或账户密码。'" />
           </main>
 
           <aside>
             <section class="author-card">
-              <div><UserAvatar :size="44" :src="post.author.avatar" :name="post.author.nickname" /><span><strong>{{ post.author.nickname || '校园用户' }}</strong><small>{{ post.isAnonymous ? '匿名发布 · 身份由平台核验' : post.author.studentSso ? 'XJTLU 身份已认证' : '校园平台用户' }}</small></span></div>
-              <p>求购收到 {{ post.responseCount }} 个响应。沟通和交易确认全部在站内私聊完成。</p>
+              <div><UserAvatar :size="44" :src="post.author.avatar" :name="post.author.nickname" /><span><strong>{{ post.author.nickname || (isEnglish ? 'Campus user' : '校园用户') }}</strong><small>{{ post.isAnonymous ? (isEnglish ? 'Anonymous · Identity verified by platform' : '匿名发布 · 身份由平台核验') : post.author.studentSso ? (isEnglish ? 'XJTLU identity verified' : 'XJTLU 身份已认证') : (isEnglish ? 'Campus platform user' : '校园平台用户') }}</small></span></div>
+              <p>{{ isEnglish ? `${post.responseCount} response(s). Communication and trade confirmation are completed in the in-app chat.` : `求购收到 ${post.responseCount} 个响应。沟通和交易确认全部在站内私聊完成。` }}</p>
             </section>
             <div class="actions">
               <template v-if="post.mine">
-                <el-button v-if="canEdit" @click="$router.push(`/market/wanted/${post.id}/edit`)">编辑求购</el-button>
-                <el-button v-if="canFinish" @click="openPointPromotion">积分推流</el-button>
-                <el-button v-if="post.status === 'expired'" type="primary" plain @click="$router.push(`/market/wanted/${post.id}/edit`)">编辑后重新发布</el-button>
-                <el-button v-if="canFinish" type="success" plain @click="lifecycle('complete')">标记已求到</el-button>
-                <el-button v-if="canFinish" type="danger" plain @click="lifecycle('cancel')">结束求购</el-button>
+                <el-button v-if="canEdit" @click="$router.push(`/market/wanted/${post.id}/edit`)">{{ isEnglish ? "Edit request" : "编辑求购" }}</el-button>
+                <el-button v-if="canFinish" @click="openPointPromotion">{{ isEnglish ? "Points promotion" : "积分推流" }}</el-button>
+                <el-button v-if="post.status === 'expired'" type="primary" plain @click="$router.push(`/market/wanted/${post.id}/edit`)">{{ isEnglish ? "Edit and republish" : "编辑后重新发布" }}</el-button>
+                <el-button v-if="canFinish" type="success" plain @click="lifecycle('complete')">{{ isEnglish ? "Mark as found" : "标记已求到" }}</el-button>
+                <el-button v-if="canFinish" type="danger" plain @click="lifecycle('cancel')">{{ isEnglish ? "Close request" : "结束求购" }}</el-button>
               </template>
               <template v-else>
-                <el-button v-if="canRespond" type="primary" size="large" @click="openResponse">{{ isLearningWanted ? '我有合适的资料' : '我有合适的物品' }}</el-button>
-                <el-button v-else disabled>{{ post.allowSellerOffers ? '当前不可响应' : '发布者未开放响应' }}</el-button>
+                <el-button v-if="canRespond" type="primary" size="large" @click="openResponse">{{ isLearningWanted ? (isEnglish ? 'I have suitable material' : '我有合适的资料') : (isEnglish ? 'I have a suitable item' : '我有合适的物品') }}</el-button>
+                <el-button v-else disabled>{{ post.allowSellerOffers ? (isEnglish ? 'Responses unavailable' : '当前不可响应') : (isEnglish ? 'Publisher disabled responses' : '发布者未开放响应') }}</el-button>
               </template>
-              <el-button @click="$router.push({ path: '/post', query: { board: 'trade-talk', wantedPostId: post.id } })">发起关联讨论</el-button>
-              <el-button @click="shareOpen = true">分享求购</el-button>
-              <el-button v-if="!post.mine && auth.isLoggedIn" type="danger" plain @click="reportWanted">举报求购</el-button>
+              <el-button @click="$router.push({ path: '/post', query: { board: 'trade-talk', wantedPostId: post.id } })">{{ isEnglish ? "Start related discussion" : "发起关联讨论" }}</el-button>
+              <el-button @click="shareOpen = true">{{ isEnglish ? "Share request" : "分享求购" }}</el-button>
+              <el-button v-if="!post.mine && auth.isLoggedIn" type="danger" plain @click="reportWanted">{{ isEnglish ? "Report" : "举报求购" }}</el-button>
             </div>
           </aside>
         </div>
       </section>
 
       <section v-if="matchingItems.length" class="matching-items cpu-card">
-        <header><div><span>可解释匹配</span><h2>{{ isLearningWanted ? '资料专区已有这些匹配内容' : '市集里已有这些合适物品' }}</h2><p>按品类、预算和描述关键词计算，不读取私聊或联系方式。</p></div><router-link :to="isLearningWanted ? '/learning/materials' : '/market'">{{ isLearningWanted ? '进入资料专区' : '继续逛市集' }}</router-link></header>
-        <div class="matching-grid"><article v-for="match in matchingItems" :key="match.item.id" :class="{ learning: isLearningItem(match.item) }" @click="openLinkedItem(match.item)"><div class="matching-cover"><img v-if="match.item.cover" :src="match.item.cover" :alt="match.item.title" /><span v-else>{{ isLearningItem(match.item) ? '📝' : '📦' }}</span><b>{{ match.score }} 分</b></div><div class="matching-copy"><strong>{{ match.item.title }}</strong><p>¥{{ match.item.price }} · {{ isLearningItem(match.item) ? '学习资料专区' : (match.item.campus || '校内') }}</p><div><span v-for="reason in match.reasons" :key="reason.key">{{ reason.label }}</span></div></div></article></div>
+        <header><div><span>{{ isEnglish ? "EXPLAINED MATCHES" : "可解释匹配" }}</span><h2>{{ isLearningWanted ? (isEnglish ? 'Matching content in Learning Materials' : '资料专区已有这些匹配内容') : (isEnglish ? 'Suitable items already in Market' : '市集里已有这些合适物品') }}</h2><p>{{ isEnglish ? "Calculated from category, budget, and description keywords. Private chats and contact details are never read." : "按品类、预算和描述关键词计算，不读取私聊或联系方式。" }}</p></div><router-link :to="isLearningWanted ? '/learning/materials' : '/market'">{{ isLearningWanted ? (isEnglish ? 'Open Learning Materials' : '进入资料专区') : (isEnglish ? 'Continue browsing' : '继续逛市集') }}</router-link></header>
+        <div class="matching-grid"><article v-for="match in matchingItems" :key="match.item.id" :class="{ learning: isLearningItem(match.item) }" @click="openLinkedItem(match.item)"><div class="matching-cover"><img v-if="match.item.cover" :src="match.item.cover" :alt="match.item.title" /><span v-else>{{ isLearningItem(match.item) ? '📝' : '📦' }}</span><b>{{ match.score }} {{ isEnglish ? "pts" : "分" }}</b></div><div class="matching-copy"><strong>{{ match.item.title }}</strong><p>¥{{ match.item.price }} · {{ isLearningItem(match.item) ? (isEnglish ? 'Learning Materials' : '学习资料专区') : (match.item.campus || (isEnglish ? 'On campus' : '校内')) }}</p><div><span v-for="reason in match.reasons" :key="reason.key">{{ matchReason(reason.key, reason.label) }}</span></div></div></article></div>
       </section>
 
       <section v-if="post.responses?.length" class="responses cpu-card">
-        <header><div><h2>{{ post.mine ? '收到的响应' : '我的响应' }}</h2><p>{{ post.mine ? '看中合适物品就直接发起私聊；只有双方确认实际成交后，系统才记录成交。' : '求购者发起私聊后，双方自行沟通价格、验货和交付。' }}</p></div><el-tag>{{ post.responses.length }} 个</el-tag></header>
+        <header><div><h2>{{ post.mine ? (isEnglish ? 'Responses received' : '收到的响应') : (isEnglish ? 'My response' : '我的响应') }}</h2><p>{{ post.mine ? (isEnglish ? 'Start a chat for a suitable item. A trade is recorded only after both parties confirm the real exchange.' : '看中合适物品就直接发起私聊；只有双方确认实际成交后，系统才记录成交。') : (isEnglish ? 'After the requester starts a chat, both parties arrange price, inspection, and handover themselves.' : '求购者发起私聊后，双方自行沟通价格、验货和交付。') }}</p></div><el-tag>{{ post.responses.length }} {{ isEnglish ? "response(s)" : "个" }}</el-tag></header>
         <article v-for="response in post.responses" :key="response.id">
           <div class="response-cover"><img v-if="response.item.cover" :src="response.item.cover" :alt="response.item.title" /><span v-else>📦</span></div>
-          <div class="response-copy"><div><strong>{{ response.item.title }}</strong><el-tag v-if="isLearningItem(response.item)" size="small" color="#f3e8ff">学习资料</el-tag><el-tag size="small" :type="responseStatusType(response.status)">{{ responseStatus(response.status) }}</el-tag></div><p>{{ response.description }}</p><small>{{ response.seller?.nickname || '校园用户' }} · 可交易时间：{{ response.availableTime || '待协商' }}</small></div>
-          <div class="response-price"><strong>¥{{ response.price }}</strong><el-button size="small" @click="openLinkedItem(response.item)">查看{{ isLearningItem(response.item) ? '资料' : '物品' }}</el-button></div>
+          <div class="response-copy"><div><strong>{{ response.item.title }}</strong><el-tag v-if="isLearningItem(response.item)" size="small" color="#f3e8ff">{{ isEnglish ? "Learning material" : "学习资料" }}</el-tag><el-tag size="small" :type="responseStatusType(response.status)">{{ responseStatus(response.status) }}</el-tag></div><p>{{ response.description }}</p><small>{{ response.seller?.nickname || (isEnglish ? 'Campus user' : '校园用户') }} · {{ isEnglish ? "Available" : "可交易时间" }}: {{ response.availableTime || (isEnglish ? 'To be agreed' : '待协商') }}</small></div>
+          <div class="response-price"><strong>¥{{ response.price }}</strong><el-button size="small" @click="openLinkedItem(response.item)">{{ isEnglish ? "View" : "查看" }}{{ isEnglish ? ` ${isLearningItem(response.item) ? 'material' : 'item'}` : (isLearningItem(response.item) ? '资料' : '物品') }}</el-button></div>
           <div v-if="response.status === 'pending'" class="response-actions">
-            <template v-if="post.mine"><el-button size="small" type="danger" plain @click="handleResponse(response.id, 'reject')">婉拒</el-button><el-button size="small" type="primary" :loading="chattingResponseId === response.id" @click="startResponseChat(response)">{{ isLearningItem(response.item) ? '查看并购买' : '发起私聊' }}</el-button></template>
-            <el-button v-else size="small" @click="handleResponse(response.id, 'cancel')">撤回响应</el-button>
+            <template v-if="post.mine"><el-button size="small" type="danger" plain @click="handleResponse(response.id, 'reject')">{{ isEnglish ? "Decline" : "婉拒" }}</el-button><el-button size="small" type="primary" :loading="chattingResponseId === response.id" @click="startResponseChat(response)">{{ isLearningItem(response.item) ? (isEnglish ? 'View and buy' : '查看并购买') : (isEnglish ? 'Start chat' : '发起私聊') }}</el-button></template>
+            <el-button v-else size="small" @click="handleResponse(response.id, 'cancel')">{{ isEnglish ? "Withdraw" : "撤回响应" }}</el-button>
           </div>
           <div v-else-if="post.mine && response.status === 'accepted'" class="response-actions">
-            <el-button size="small" type="primary" plain :loading="chattingResponseId === response.id" @click="startResponseChat(response)">打开私聊</el-button>
+            <el-button size="small" type="primary" plain :loading="chattingResponseId === response.id" @click="startResponseChat(response)">{{ isEnglish ? "Open chat" : "打开私聊" }}</el-button>
           </div>
         </article>
       </section>
     </template>
-    <el-empty v-else-if="!loading" description="求购不存在或已被移除"><el-button @click="$router.push('/market/wanted')">返回求购列表</el-button></el-empty>
+    <el-empty v-else-if="!loading" :description="isEnglish ? 'This request does not exist or has been removed' : '求购不存在或已被移除'"><el-button @click="$router.push('/market/wanted')">{{ isEnglish ? "Back to Wanted" : "返回求购列表" }}</el-button></el-empty>
 
-    <el-dialog v-model="responseOpen" title="响应这条求购" width="620px" destroy-on-close>
+    <el-dialog v-model="responseOpen" :title="isEnglish ? 'Respond to this request' : '响应这条求购'" width="620px" destroy-on-close>
       <el-form label-position="top">
-        <el-radio-group v-model="response.mode" class="response-mode"><el-radio-button value="existing">关联我的在售{{ isLearningWanted ? '资料' : '商品' }}</el-radio-button><el-radio-button v-if="!isLearningWanted" value="new">仅向求购者展示新物品</el-radio-button></el-radio-group>
-        <el-form-item v-if="response.mode === 'existing'" :label="isLearningWanted ? '选择学习资料' : '选择商品'" required><el-select v-model="response.itemId" :placeholder="isLearningWanted ? '请选择自己已审核上架的学习资料' : '请选择自己当前在售的实体商品'"><el-option v-for="item in availableItems" :key="item.id" :label="`${item.title} · ¥${item.price}`" :value="item.id" /></el-select><small v-if="!availableItems.length">{{ isLearningWanted ? '还没有已上架资料，请先进入学习资料专区发布并通过内容审核。' : '还没有可关联的在售商品，也可以切换为上传新物品。' }}</small></el-form-item>
+        <el-radio-group v-model="response.mode" class="response-mode"><el-radio-button value="existing">{{ isEnglish ? `Link my active ${isLearningWanted ? 'material' : 'item'}` : `关联我的在售${isLearningWanted ? '资料' : '商品'}` }}</el-radio-button><el-radio-button v-if="!isLearningWanted" value="new">{{ isEnglish ? "Show a new item only to the requester" : "仅向求购者展示新物品" }}</el-radio-button></el-radio-group>
+        <el-form-item v-if="response.mode === 'existing'" :label="isLearningWanted ? (isEnglish ? 'Select learning material' : '选择学习资料') : (isEnglish ? 'Select item' : '选择商品')" required><el-select v-model="response.itemId" :placeholder="isLearningWanted ? (isEnglish ? 'Select one of your reviewed active materials' : '请选择自己已审核上架的学习资料') : (isEnglish ? 'Select one of your active physical items' : '请选择自己当前在售的实体商品')"><el-option v-for="item in availableItems" :key="item.id" :label="`${item.title} · ¥${item.price}`" :value="item.id" /></el-select><small v-if="!availableItems.length">{{ isLearningWanted ? (isEnglish ? 'You have no active materials. Publish in Learning Materials and pass content review first.' : '还没有已上架资料，请先进入学习资料专区发布并通过内容审核。') : (isEnglish ? 'You have no active item to link. You can switch to a new item.' : '还没有可关联的在售商品，也可以切换为上传新物品。') }}</small></el-form-item>
         <template v-else>
-          <el-form-item label="物品名称" required><el-input v-model="response.title" maxlength="120" placeholder="品牌、型号和关键信息" /></el-form-item>
-          <div class="two-cols"><el-form-item label="品牌"><el-input v-model="response.brand" maxlength="80" /></el-form-item><el-form-item label="型号"><el-input v-model="response.model" maxlength="80" /></el-form-item></div>
-          <el-form-item label="实拍图" required><div class="image-list"><div v-for="url in response.images" :key="url"><img :src="url" alt="响应物品" /><button type="button" @click="response.images.splice(response.images.indexOf(url), 1)">×</button></div><label v-if="response.images.length < 5"><input type="file" accept="image/*" multiple :disabled="uploading" @change="uploadImages" /><span>{{ uploading ? '上传中…' : '+ 添加图片' }}</span></label></div></el-form-item>
-          <el-form-item label="物品成色"><el-select v-model="response.condition"><el-option label="全新" value="new" /><el-option label="近全新" value="like_new" /><el-option label="使用良好" value="good" /><el-option label="有使用痕迹" value="fair" /></el-select></el-form-item>
+          <el-form-item :label="isEnglish ? 'Item name' : '物品名称'" required><el-input v-model="response.title" maxlength="120" :placeholder="isEnglish ? 'Brand, model, and key details' : '品牌、型号和关键信息'" /></el-form-item>
+          <div class="two-cols"><el-form-item :label="isEnglish ? 'Brand' : '品牌'"><el-input v-model="response.brand" maxlength="80" /></el-form-item><el-form-item :label="isEnglish ? 'Model' : '型号'"><el-input v-model="response.model" maxlength="80" /></el-form-item></div>
+          <el-form-item :label="isEnglish ? 'Real photos' : '实拍图'" required><div class="image-list"><div v-for="url in response.images" :key="url"><img :src="url" :alt="isEnglish ? 'Response item' : '响应物品'" /><button type="button" @click="response.images.splice(response.images.indexOf(url), 1)">×</button></div><label v-if="response.images.length < 5"><input type="file" accept="image/*" multiple :disabled="uploading" @change="uploadImages" /><span>{{ uploading ? (isEnglish ? 'Uploading…' : '上传中…') : (isEnglish ? '+ Add images' : '+ 添加图片') }}</span></label></div></el-form-item>
+          <el-form-item :label="isEnglish ? 'Condition' : '物品成色'"><el-select v-model="response.condition"><el-option :label="marketConditionLabel('new')" value="new" /><el-option :label="marketConditionLabel('like_new')" value="like_new" /><el-option :label="marketConditionLabel('good')" value="good" /><el-option :label="marketConditionLabel('fair')" value="fair" /></el-select></el-form-item>
         </template>
-        <div class="two-cols"><el-form-item label="响应价格（元）" required><el-input-number v-model="response.price" :min="0.01" :max="999999" :precision="2" controls-position="right" /></el-form-item><el-form-item label="可交易时间"><el-input v-model="response.availableTime" maxlength="300" placeholder="例如：工作日 18:00 后" /></el-form-item></div>
-        <el-form-item label="物品与交易说明" required><el-input v-model="response.description" type="textarea" :rows="5" maxlength="5000" show-word-limit placeholder="如实说明使用情况、瑕疵、配件和验货要求，请勿填写联系方式。" /></el-form-item>
-        <el-alert type="info" :closable="false" show-icon :title="isLearningWanted ? '提交响应不会自动成交。求购者查看资料后，购买、付款和交付统一在学习资料专区完成。' : '提交响应不会自动成交。求购者可直接发起私聊，商品款仍由双方线下直接结算。'" />
+        <div class="two-cols"><el-form-item :label="isEnglish ? 'Offered price (CNY)' : '响应价格（元）'" required><el-input-number v-model="response.price" :min="0.01" :max="999999" :precision="2" controls-position="right" /></el-form-item><el-form-item :label="isEnglish ? 'Available time' : '可交易时间'"><el-input v-model="response.availableTime" maxlength="300" :placeholder="isEnglish ? 'For example: weekdays after 18:00' : '例如：工作日 18:00 后'" /></el-form-item></div>
+        <el-form-item :label="isEnglish ? 'Item and trade details' : '物品与交易说明'" required><el-input v-model="response.description" type="textarea" :rows="5" maxlength="5000" show-word-limit :placeholder="isEnglish ? 'Describe usage, defects, accessories, and inspection requirements honestly. Do not add contact details.' : '如实说明使用情况、瑕疵、配件和验货要求，请勿填写联系方式。'" /></el-form-item>
+        <el-alert type="info" :closable="false" show-icon :title="isLearningWanted ? (isEnglish ? 'A response does not create a trade automatically. Purchase, payment, and delivery take place in Learning Materials.' : '提交响应不会自动成交。求购者查看资料后，购买、付款和交付统一在学习资料专区完成。') : (isEnglish ? 'A response does not create a trade automatically. The requester can start a chat, and the parties settle payment directly.' : '提交响应不会自动成交。求购者可直接发起私聊，商品款仍由双方线下直接结算。')" />
       </el-form>
-      <template #footer><el-button @click="responseOpen = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitResponse">提交响应</el-button></template>
+      <template #footer><el-button @click="responseOpen = false">{{ isEnglish ? "Cancel" : "取消" }}</el-button><el-button type="primary" :loading="submitting" @click="submitResponse">{{ isEnglish ? "Submit response" : "提交响应" }}</el-button></template>
     </el-dialog>
 
-    <MarketShareDialog v-model="shareOpen" :title="post?.title || '校园求购'" :summary="post ? `预算 ¥${post.budgetMin}–${post.budgetMax}，${post.campus || '校内'}面交` : ''" />
+    <MarketShareDialog v-model="shareOpen" :title="post?.title || (isEnglish ? 'Campus Wanted' : '校园求购')" :summary="post ? (isEnglish ? `Budget ¥${post.budgetMin}–${post.budgetMax}, meetup at ${post.campus || 'campus'}` : `预算 ¥${post.budgetMin}–${post.budgetMax}，${post.campus || '校内'}面交`) : ''" />
   </div>
 </template>
 
@@ -90,7 +90,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, type MarketCategoryOption, type MarketCondition, type MarketItem, type MarketItemMatch, type WantedPost, type WantedResponse, type WantedResponseAction } from "@/api/market";
+import { marketApi, marketConditionLabel, type MarketCategoryOption, type MarketCondition, type MarketItem, type MarketItemMatch, type WantedPost, type WantedResponse, type WantedResponseAction } from "@/api/market";
 import { learningMaterialsApi } from "@/api/learningMaterials";
 import { uploadApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
@@ -98,10 +98,12 @@ import { fmtRelative } from "@/utils/format";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import PromotionLabel from "@/components/market/PromotionLabel.vue";
 import MarketShareDialog from "@/components/market/MarketShareDialog.vue";
+import { useLocale } from "@/i18n";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { isEnglish, locale } = useLocale();
 const post = ref<WantedPost | null>(null);
 const categories = ref<MarketCategoryOption[]>([]);
 const availableItems = ref<MarketItem[]>([]);
@@ -115,8 +117,11 @@ const shareOpen = ref(route.query.published === "1");
 const response = reactive({ mode: "existing" as "existing" | "new", itemId: undefined as number | undefined, title: "", brand: "", model: "", condition: "good" as MarketCondition, images: [] as string[], price: 0, availableTime: "", description: "" });
 const category = computed(() => categories.value.find((entry) => entry.slug === post.value?.category));
 const categoryIcon = computed(() => category.value?.icon || "📦");
-const categoryName = computed(() => category.value?.name || post.value?.category || "其他");
-const statusLabel = computed(() => ({ reviewing: "审核中", active: "求购中", responded: "已有响应", matched: "已匹配", completed: "已求到", cancelled: "已结束", expired: "已过期", removed: "已移除" } as Record<string, string>)[post.value?.status || ""] || post.value?.status);
+const categoryName = computed(() => category.value?.name || post.value?.category || (isEnglish.value ? "Other" : "其他"));
+const statusLabel = computed(() => (isEnglish.value
+  ? ({ reviewing: "Under review", active: "Wanted", responded: "Responses received", matched: "Matched", completed: "Found", cancelled: "Closed", expired: "Expired", removed: "Removed" } as Record<string, string>)
+  : ({ reviewing: "审核中", active: "求购中", responded: "已有响应", matched: "已匹配", completed: "已求到", cancelled: "已结束", expired: "已过期", removed: "已移除" } as Record<string, string>)
+)[post.value?.status || ""] || post.value?.status);
 const statusType = computed(() => post.value?.status === "completed" ? "success" : ["cancelled", "expired", "removed"].includes(post.value?.status || "") ? "info" : post.value?.status === "reviewing" ? "warning" : "primary");
 const canEdit = computed(() => Boolean(post.value && ["active", "responded", "expired"].includes(post.value.status)));
 const canFinish = computed(() => Boolean(post.value && ["active", "responded"].includes(post.value.status)));
@@ -141,7 +146,7 @@ async function load() {
   } catch (error) {
     post.value = null;
     matchingItems.value = [];
-    ElMessage.error(error instanceof Error ? error.message : "求购加载失败");
+    ElMessage.error(error instanceof Error ? error.message : (isEnglish.value ? "Could not load this request" : "求购加载失败"));
   } finally { loading.value = false; }
 }
 
@@ -174,21 +179,21 @@ async function uploadImages(event: Event) {
 
 async function submitResponse() {
   if (!post.value || submitting.value) return;
-  if (response.mode === "existing" && !response.itemId) return void ElMessage.warning(isLearningWanted.value ? "请选择一个已上架学习资料" : "请选择一个在售商品");
-  if (response.mode === "new" && (!response.title.trim() || !response.images.length)) return void ElMessage.warning("请填写物品名称并上传至少一张实拍图");
-  if (response.price <= 0 || !response.description.trim()) return void ElMessage.warning("请填写响应价格和物品说明");
+  if (response.mode === "existing" && !response.itemId) return void ElMessage.warning(isLearningWanted.value ? (isEnglish.value ? "Select an active learning material" : "请选择一个已上架学习资料") : (isEnglish.value ? "Select an active item" : "请选择一个在售商品"));
+  if (response.mode === "new" && (!response.title.trim() || !response.images.length)) return void ElMessage.warning(isEnglish.value ? "Enter the item name and upload at least one real photo" : "请填写物品名称并上传至少一张实拍图");
+  if (response.price <= 0 || !response.description.trim()) return void ElMessage.warning(isEnglish.value ? "Enter an offered price and item details" : "请填写响应价格和物品说明");
   submitting.value = true;
   try {
     await marketApi.respondToWanted(post.value.id, { itemId: response.mode === "existing" ? response.itemId : undefined, title: response.mode === "new" ? response.title : undefined, price: response.price, description: response.description, images: response.mode === "new" ? response.images : undefined, condition: response.condition, brand: response.brand, model: response.model, availableTime: response.availableTime });
     responseOpen.value = false;
-    ElMessage.success("响应已提交，等待求购者处理");
+    ElMessage.success(isEnglish.value ? "Response submitted. Waiting for the requester." : "响应已提交，等待求购者处理");
     await load();
   } finally { submitting.value = false; }
 }
 
 async function handleResponse(id: number, action: WantedResponseAction) {
   await marketApi.updateWantedResponse(id, action);
-  ElMessage.success("操作成功");
+  ElMessage.success(isEnglish.value ? "Done" : "操作成功");
   await load();
 }
 
@@ -225,9 +230,15 @@ function openLinkedItem(item: MarketItem) {
 
 async function lifecycle(action: "cancel" | "complete") {
   if (!post.value) return;
-  await ElMessageBox.confirm(action === "complete" ? "确认已经求到物品并结束这条求购？" : "确认结束这条求购？未处理响应会一并关闭。", "确认操作", { type: "warning" });
+  await ElMessageBox.confirm(
+    action === "complete"
+      ? (isEnglish.value ? "Confirm that you found the item and close this request?" : "确认已经求到物品并结束这条求购？")
+      : (isEnglish.value ? "Close this request? Pending responses will also close." : "确认结束这条求购？未处理响应会一并关闭。"),
+    isEnglish.value ? "Confirm action" : "确认操作",
+    { type: "warning" },
+  );
   post.value = await marketApi.updateWantedLifecycle(post.value.id, action);
-  ElMessage.success("求购状态已更新");
+  ElMessage.success(isEnglish.value ? "Request status updated" : "求购状态已更新");
   await load();
 }
 
@@ -241,14 +252,27 @@ function openPointPromotion() {
 
 async function reportWanted() {
   if (!post.value) return;
-  const { value } = await ElMessageBox.prompt("请简要说明违规类型或风险情况，管理员会结合完整内容核查。", "举报求购", { inputPattern: /\S{2,80}/, inputErrorMessage: "请填写 2–80 个字符", confirmButtonText: "提交举报", type: "warning" });
+  const { value } = await ElMessageBox.prompt(
+    isEnglish.value ? "Briefly describe the violation or risk. Administrators will review the full context." : "请简要说明违规类型或风险情况，管理员会结合完整内容核查。",
+    isEnglish.value ? "Report request" : "举报求购",
+    { inputPattern: /\S{2,80}/, inputErrorMessage: isEnglish.value ? "Enter 2–80 characters" : "请填写 2–80 个字符", confirmButtonText: isEnglish.value ? "Submit report" : "提交举报", type: "warning" },
+  );
   await marketApi.reportWanted(post.value.id, { reason: value });
-  ElMessage.success("举报已提交，感谢你的反馈");
+  ElMessage.success(isEnglish.value ? "Report submitted. Thank you." : "举报已提交，感谢你的反馈");
 }
 
-function formatDate(value: string) { return new Date(value).toLocaleString("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
-function responseStatus(value: string) { return ({ pending: "等待处理", accepted: "已私聊", rejected: "未接受", cancelled: "已撤回", expired: "已过期" } as Record<string, string>)[value] || value; }
+function formatDate(value: string) { return new Date(value).toLocaleString(locale.value, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
+function responseStatus(value: string) {
+  return (isEnglish.value
+    ? ({ pending: "Pending", accepted: "Chat started", rejected: "Declined", cancelled: "Withdrawn", expired: "Expired" } as Record<string, string>)
+    : ({ pending: "等待处理", accepted: "已私聊", rejected: "未接受", cancelled: "已撤回", expired: "已过期" } as Record<string, string>)
+  )[value] || value;
+}
 function responseStatusType(value: string) { return value === "accepted" ? "success" : value === "pending" ? "warning" : "info"; }
+function matchReason(key: string, fallback: string) {
+  if (!isEnglish.value) return fallback;
+  return ({ category: "Same category", budget: "Within budget", title: "Title match", keyword: "Keyword match", course: "Course match" } as Record<string, string>)[key] || fallback;
+}
 </script>
 
 <style scoped>

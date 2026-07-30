@@ -1,12 +1,12 @@
 <template>
   <div v-if="loading && !user" class="user-page">
-    <div class="cpu-card state-card">正在加载用户资料...</div>
+    <div class="cpu-card state-card">{{ isEnglish ? "Loading user profile..." : "正在加载用户资料..." }}</div>
   </div>
 
   <div v-else-if="error && !user" class="user-page">
     <div class="cpu-card state-card">
       <el-empty :description="error">
-        <el-button type="primary" :loading="loading" @click="load">重试</el-button>
+        <el-button type="primary" :loading="loading" @click="load">{{ isEnglish ? "Try again" : "重试" }}</el-button>
       </el-empty>
     </div>
   </div>
@@ -14,39 +14,39 @@
   <div class="user-page" v-else-if="user">
     <button type="button" class="back-btn" @click="goBack">
       <el-icon><ArrowLeft /></el-icon>
-      返回上一页
+      {{ isEnglish ? "Back" : "返回上一页" }}
     </button>
 
     <div class="cpu-card profile-card">
-      <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" alt="用户头像" />
+      <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" :alt="isEnglish ? 'User avatar' : '用户头像'" />
       <div>
         <h2 class="name">
           {{ user.nickname }}
-          <el-tag v-if="user.role === 'admin'" size="small" type="danger">管理员</el-tag>
-          <el-tag v-else-if="user.role === 'mod'" size="small" type="warning">论坛管理员</el-tag>
-          <el-tag v-else-if="user.role === 'bot'" size="small" type="warning">系统账号</el-tag>
+          <el-tag v-if="user.role === 'admin'" size="small" type="danger">{{ isEnglish ? "Administrator" : "管理员" }}</el-tag>
+          <el-tag v-else-if="user.role === 'mod'" size="small" type="warning">{{ isEnglish ? "Moderator" : "论坛管理员" }}</el-tag>
+          <el-tag v-else-if="user.role === 'bot'" size="small" type="warning">{{ isEnglish ? "System account" : "系统账号" }}</el-tag>
         </h2>
-        <p class="bio">{{ user.bio || "这个人还没写简介" }}</p>
+        <p class="bio">{{ user.bio || (isEnglish ? "No bio yet" : "这个人还没写简介") }}</p>
         <div class="meta">
           <span v-if="user.college">{{ user.college }}</span>
-          <span v-if="user.enrollYear">{{ user.enrollYear }} 级</span>
-          <span>发帖 {{ user.postCount }}</span>
-          <span>回复 {{ user.replyCount }}</span>
-          <span>声望 {{ user.reputation }}</span>
-          <span v-if="user.sponsorAmount > 0" class="sponsor-badge">已赞助 ¥{{ formatMoney(user.sponsorAmount) }}</span>
+          <span v-if="user.enrollYear">{{ isEnglish ? `Class of ${user.enrollYear}` : `${user.enrollYear} 级` }}</span>
+          <span>{{ isEnglish ? "Posts" : "发帖" }} {{ user.postCount }}</span>
+          <span>{{ isEnglish ? "Replies" : "回复" }} {{ user.replyCount }}</span>
+          <span>{{ isEnglish ? "Reputation" : "声望" }} {{ user.reputation }}</span>
+          <span v-if="user.sponsorAmount > 0" class="sponsor-badge">{{ isEnglish ? "Sponsored" : "已赞助" }} ¥{{ formatMoney(user.sponsorAmount) }}</span>
         </div>
         <div v-if="auth.isMod" class="staff-panel">
           <UserModerationActions :user="user" display="inline" plain @updated="applyModerationUpdate" />
           <span v-if="user.status === 'muted'" class="staff-note">
-            {{ user.mutedUntil ? `禁言至 ${fmtDate(user.mutedUntil)}` : "当前为禁言状态" }}
+            {{ user.mutedUntil ? (isEnglish ? `Muted until ${fmtDate(user.mutedUntil)}` : `禁言至 ${fmtDate(user.mutedUntil)}`) : (isEnglish ? "Currently muted" : "当前为禁言状态") }}
           </span>
         </div>
       </div>
     </div>
 
     <div class="cpu-card">
-      <h3 class="cpu-section-title">TA 发布的帖子（{{ topics.length }}）</h3>
-      <el-empty v-if="!topics.length" description="还没有发过帖子" />
+      <h3 class="cpu-section-title">{{ isEnglish ? "Posts" : "TA 发布的帖子" }}（{{ topics.length }}）</h3>
+      <el-empty v-if="!topics.length" :description="isEnglish ? 'No posts yet' : '还没有发过帖子'" />
       <div
         v-for="t in topics"
         :key="t.id"
@@ -58,7 +58,7 @@
         @keydown.space.prevent="openTopic(t.id)"
       >
         <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
-        <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
+        <span v-if="t.isAnonymous" class="anon-tag">{{ isEnglish ? "Anonymous" : "匿名" }}</span>
         <span class="title">{{ t.title }}</span>
         <span class="meta">{{ fmtRelative(t.createdAt) }}</span>
       </div>
@@ -75,10 +75,12 @@ import UserModerationActions from "@/components/common/UserModerationActions.vue
 import { request } from "@/api/request";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
+import { useLocale } from "@/i18n";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { isEnglish } = useLocale();
 const user = ref<any>(null);
 const topics = ref<any[]>([]);
 const loading = ref(false);
@@ -95,7 +97,7 @@ async function load() {
   if (!Number.isFinite(id) || id <= 0) {
     user.value = null;
     topics.value = [];
-    error.value = "用户不存在或已被删除";
+    error.value = isEnglish.value ? "User not found or removed" : "用户不存在或已被删除";
     return;
   }
   loading.value = true;
@@ -144,11 +146,11 @@ function openTopic(id: number) {
 
 function normalizeUserLoadError(loadError: unknown) {
   const status = (loadError as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
-  if (status === 404) return "用户不存在或已被删除";
+  if (status === 404) return isEnglish.value ? "User not found or removed" : "用户不存在或已被删除";
   if (status && status < 500) {
-    return (loadError as { response?: { data?: { message?: string } } })?.response?.data?.message || "用户资料加载失败";
+    return (loadError as { response?: { data?: { message?: string } } })?.response?.data?.message || (isEnglish.value ? "Failed to load user profile" : "用户资料加载失败");
   }
-  return "用户资料加载失败，请稍后再试";
+  return isEnglish.value ? "Failed to load user profile. Please try again later." : "用户资料加载失败，请稍后再试";
 }
 </script>
 

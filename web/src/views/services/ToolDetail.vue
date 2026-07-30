@@ -4,7 +4,7 @@
       <div class="tool-head">
         <button type="button" class="back-btn" @click="$router.push('/services/tools')">
           <el-icon><ArrowLeft /></el-icon>
-          <span>小工具</span>
+          <span>{{ isEnglish ? "Tools" : "小工具" }}</span>
         </button>
         <div class="head-main">
           <span class="head-icon" :style="{ color: tool.accent }">
@@ -12,16 +12,16 @@
           </span>
           <div class="head-copy">
             <div class="head-title-row">
-              <h2>{{ tool.name }}</h2>
+              <h2>{{ isEnglish ? tool.nameEn : tool.name }}</h2>
               <el-tag size="small" :type="currentRequireLogin ? 'warning' : 'success'" effect="plain" round>
-                {{ currentRequireLogin ? "需登录" : "免登录" }}
+                {{ currentRequireLogin ? (isEnglish ? "Sign-in required" : "需登录") : (isEnglish ? "No sign-in" : "免登录") }}
               </el-tag>
             </div>
-            <p>{{ tool.description }}</p>
+            <p>{{ isEnglish ? tool.descriptionEn : tool.description }}</p>
           </div>
           <el-button v-if="canManage" plain type="primary" class="manage-btn" @click="openCurrentToolManage">
             <el-icon><Setting /></el-icon>
-            管理
+            {{ isEnglish ? "Manage" : "管理" }}
           </el-button>
         </div>
       </div>
@@ -34,8 +34,8 @@
     </section>
 
     <section v-else class="missing-card">
-      <el-empty description="没有找到这个小工具">
-        <el-button type="primary" @click="$router.push('/services/tools')">返回小工具</el-button>
+      <el-empty :description="isEnglish ? 'Tool not found' : '没有找到这个小工具'">
+        <el-button type="primary" @click="$router.push('/services/tools')">{{ isEnglish ? "Back to Tools" : "返回小工具" }}</el-button>
       </el-empty>
     </section>
   </div>
@@ -50,11 +50,13 @@ import { getToken } from "@/api/request";
 import { toolsApi, type GradeCheckTable, type Questionnaire, type QuestionnaireField, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { findServiceTool } from "@/data/serviceTools";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import { useLocale } from "@/i18n";
 
 const PdfToolPanel = defineAsyncComponent(() => import("./PdfToolPanel.vue"));
 
 const route = useRoute();
 const router = useRouter();
+const { isEnglish, locale } = useLocale();
 const tool = computed(() => findServiceTool(String(route.params.slug || "")));
 const manageable = ref<ServiceToolCode[]>([]);
 const toolMetas = ref<ToolMeta[]>([]);
@@ -151,12 +153,12 @@ const FeedbackPanel = defineComponent({
         for (const field of questionnaire.value.fields ?? []) {
           answers[field.id] = field.type === "multiple" ? [] : "";
         }
-        ElMessage.success("已提交反馈");
+        ElMessage.success(isEnglish.value ? "Feedback submitted" : "已提交反馈");
       } catch (e) {
         if ((e as { response?: { status?: number } }).response?.status === 401) {
           needLogin.value = true;
         } else {
-          ElMessage.error((e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? "提交失败，请稍后再试");
+          ElMessage.error((e as { response?: { data?: { message?: string } }; message?: string }).response?.data?.message ?? (isEnglish.value ? "Submission failed. Please try again later." : "提交失败，请稍后再试"));
         }
       } finally {
         submitting.value = false;
@@ -168,20 +170,20 @@ const FeedbackPanel = defineComponent({
         h("div", { class: "form-head" }, [
           h("span", { class: "form-head-icon" }, [h(EditPen)]),
           h("div", [
-            h("h3", questionnaire.value?.title ?? "需求反馈"),
-            h("p", questionnaire.value?.description ?? "把想法写下来，我们会在后续工具迭代里统一处理。"),
+            h("h3", questionnaire.value?.title ?? (isEnglish.value ? "Feature feedback" : "需求反馈")),
+            h("p", questionnaire.value?.description ?? (isEnglish.value ? "Share your ideas for future tool iterations." : "把想法写下来，我们会在后续工具迭代里统一处理。")),
           ]),
         ]),
         loading.value
-          ? h("div", { class: "loading-card" }, "正在加载问卷...")
+          ? h("div", { class: "loading-card" }, isEnglish.value ? "Loading form..." : "正在加载问卷...")
           : needLogin.value
             ? h("div", { class: "empty-panel" }, [
-              h("p", "登录后可以提交反馈。"),
+              h("p", isEnglish.value ? "Sign in to submit feedback." : "登录后可以提交反馈。"),
               h("button", {
                 class: "plain-action",
                 type: "button",
                 onClick: () => router.push({ name: "login", query: { redirect: route.fullPath } }),
-              }, "去登录"),
+              }, isEnglish.value ? "Sign in" : "去登录"),
               h(PrivacyPolicyNotice, { compact: true }),
             ])
             : loadError.value
@@ -189,18 +191,18 @@ const FeedbackPanel = defineComponent({
           : h(QuestionnaireForm, {
             fields: questionnaire.value?.fields ?? [],
             answers,
-            submitText: "提交反馈",
+            submitText: isEnglish.value ? "Submit feedback" : "提交反馈",
             submitting: submitting.value,
             onSubmit: submit,
           }),
       ]),
       h("aside", { class: "side-note" }, [
-        h("h3", "可以反馈什么"),
-        h("p", "你可以写下希望新增的工具、现有功能哪里不顺手，或者后续问卷功能需要支持的场景。"),
+        h("h3", isEnglish.value ? "What to share" : "可以反馈什么"),
+        h("p", isEnglish.value ? "Suggest new tools, report awkward workflows, or describe use cases future forms should support." : "你可以写下希望新增的工具、现有功能哪里不顺手，或者后续问卷功能需要支持的场景。"),
         h("div", { class: "note-list" }, [
-          h("span", "想收集什么信息"),
-          h("span", "希望谁可以填写"),
-          h("span", "结果需要怎样导出"),
+          h("span", isEnglish.value ? "What information to collect" : "想收集什么信息"),
+          h("span", isEnglish.value ? "Who should be able to respond" : "希望谁可以填写"),
+          h("span", isEnglish.value ? "How results should be exported" : "结果需要怎样导出"),
         ]),
       ]),
     ]);
@@ -215,16 +217,16 @@ const QuestionnairePanel = defineComponent({
     return () => h("div", { class: "questionnaire-list" }, [
       h("div", { class: "list-head" }, [
         h("div", [
-          h("h3", "在线问卷"),
-          h("p", "问卷由发起者创建后通过链接分享。这里不展示全部问卷。"),
+          h("h3", isEnglish.value ? "Online forms" : "在线问卷"),
+          h("p", isEnglish.value ? "Creators share forms by link. This page does not list every form." : "问卷由发起者创建后通过链接分享。这里不展示全部问卷。"),
         ]),
         canManageQuestionnaire.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("questionnaire") }, "进入管理")
+          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("questionnaire") }, isEnglish.value ? "Manage" : "进入管理")
           : null,
       ]),
       h("div", { class: "empty-panel" }, canManageQuestionnaire.value
-        ? "在管理页创建问卷，发布后复制链接发给填写人。"
-        : "请通过发起者分享的问卷链接填写。"),
+        ? (isEnglish.value ? "Create a form in Manage, publish it, then share its link." : "在管理页创建问卷，发布后复制链接发给填写人。")
+        : (isEnglish.value ? "Open the form through the link shared by its creator." : "请通过发起者分享的问卷链接填写。")),
     ]);
   },
 });
@@ -251,15 +253,15 @@ const GradeCheckPanel = defineComponent({
     return () => h("div", { class: "questionnaire-list grade-check-panel" }, [
       h("div", { class: "list-head" }, [
         h("div", [
-          h("h3", "成绩表核对"),
-          h("p", "查询表由发起者上传 Excel 后生成链接。学生登录打开链接，只能看到自己学号对应的信息。"),
+          h("h3", isEnglish.value ? "Grade sheet lookup" : "成绩表核对"),
+          h("p", isEnglish.value ? "A creator uploads an Excel file and shares a link. Signed-in students can see only the row matching their own student ID." : "查询表由发起者上传 Excel 后生成链接。学生登录打开链接，只能看到自己学号对应的信息。"),
         ]),
         canManageGradeCheck.value
-          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("grade_check") }, "进入管理")
+          ? h("button", { class: "plain-action", type: "button", onClick: () => openToolManage("grade_check") }, isEnglish.value ? "Manage" : "进入管理")
           : null,
       ]),
       loading.value
-        ? h("div", { class: "empty-panel" }, "正在查找与你有关的查询...")
+        ? h("div", { class: "empty-panel" }, isEnglish.value ? "Finding lookups related to you..." : "正在查找与你有关的查询...")
         : related.value.length
           ? h("div", { class: "related-grade-list" }, related.value.map((item) => h("button", {
             key: item.id,
@@ -270,16 +272,16 @@ const GradeCheckPanel = defineComponent({
             h("span", { class: "related-grade-icon" }, [h(Link)]),
             h("span", { class: "related-grade-main" }, [
               h("b", item.title),
-              h("small", `${item.rowCount} 条记录 · 更新 ${new Date(item.updatedAt).toLocaleDateString()}`),
+              h("small", isEnglish.value ? `${item.rowCount} records · Updated ${new Date(item.updatedAt).toLocaleDateString(locale.value)}` : `${item.rowCount} 条记录 · 更新 ${new Date(item.updatedAt).toLocaleDateString(locale.value)}`),
             ]),
-            h("span", { class: "related-grade-action" }, "查看"),
+            h("span", { class: "related-grade-action" }, isEnglish.value ? "View" : "查看"),
           ])))
           : h("div", { class: "empty-panel" }, canManageGradeCheck.value
-            ? "在管理页上传带有“学号”字段的 Excel，开放后复制链接分享给需要核对的同学。"
+            ? (isEnglish.value ? "Upload an Excel file containing a student-ID column in Manage, open it, and share the link." : "在管理页上传带有“学号”字段的 Excel，开放后复制链接分享给需要核对的同学。")
             : getToken()
-              ? "暂未找到与你学号匹配的开放查询。也可以通过发起者分享的链接进入。"
+              ? (isEnglish.value ? "No open lookup currently matches your student ID. You can also use a link shared by the creator." : "暂未找到与你学号匹配的开放查询。也可以通过发起者分享的链接进入。")
               : h("div", [
-                h("p", { class: "empty-panel-copy" }, "登录后会自动显示与你学号匹配的开放查询。"),
+                h("p", { class: "empty-panel-copy" }, isEnglish.value ? "Sign in to see open lookups matching your student ID." : "登录后会自动显示与你学号匹配的开放查询。"),
                 h(PrivacyPolicyNotice, { compact: true }),
               ])),
     ]);
@@ -294,19 +296,19 @@ const FileCollectPanel = defineComponent({
     return () => h("div", { class: "questionnaire-list grade-check-panel" }, [
       h("div", { class: "list-head" }, [
         h("div", [
-          h("h3", "文件收集"),
-          h("p", "进入 Filestore 创建提交链接，集中收取作业、材料、照片等文件。"),
+          h("h3", isEnglish.value ? "File collection" : "文件收集"),
+          h("p", isEnglish.value ? "Use Filestore to create a submission link and collect assignments, documents, photos, and other files." : "进入 Filestore 创建提交链接，集中收取作业、材料、照片等文件。"),
         ]),
         canManageFileCollect.value
           ? h("div", { class: "file-collect-entry-actions" }, [
-            h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, "旧版 Filestore"),
-            h("button", { class: "plain-action beta-action", type: "button", onClick: () => router.push("/services/tools/filestore-beta") }, "Beta 工作台"),
+            h("button", { class: "plain-action", type: "button", onClick: () => router.push("/services/tools/filestore") }, isEnglish.value ? "Legacy Filestore" : "旧版 Filestore"),
+            h("button", { class: "plain-action beta-action", type: "button", onClick: () => router.push("/services/tools/filestore-beta") }, isEnglish.value ? "Beta workspace" : "Beta 工作台"),
           ])
           : null,
       ]),
       h("div", { class: "empty-panel" }, canManageFileCollect.value
-        ? "在 Filestore 工作台创建任务、复制提交链接、查看提交记录和下载文件。"
-        : "请通过发起者分享的文件收集链接上传文件。"),
+        ? (isEnglish.value ? "Create tasks, copy submission links, review submissions, and download files in Filestore." : "在 Filestore 工作台创建任务、复制提交链接、查看提交记录和下载文件。")
+        : (isEnglish.value ? "Upload files through the collection link shared by the creator." : "请通过发起者分享的文件收集链接上传文件。")),
     ]);
   },
 });
@@ -341,7 +343,7 @@ const QuestionnaireForm = defineComponent({
         class: "submit-btn",
         type: "submit",
         disabled: props.submitting,
-      }, props.submitting ? "提交中..." : props.submitText),
+      }, props.submitting ? (isEnglish.value ? "Submitting..." : "提交中...") : props.submitText),
     ]);
   },
 });
@@ -363,7 +365,7 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
       disabled,
       onChange: (event: Event) => setValue(field.id, (event.target as HTMLSelectElement).value),
     }, [
-      h("option", { value: "" }, "请选择"),
+      h("option", { value: "" }, isEnglish.value ? "Select one" : "请选择"),
       ...(field.options ?? []).map((option) => h("option", { value: option }, option)),
     ]);
   }
@@ -424,9 +426,9 @@ function renderField(field: QuestionnaireField, value: string | string[] | undef
 function normalizeFeedbackLoadError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status && status < 500) {
-    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "反馈问卷加载失败";
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || (isEnglish.value ? "Failed to load the feedback form" : "反馈问卷加载失败");
   }
-  return "反馈问卷加载失败，请稍后再试";
+  return isEnglish.value ? "Failed to load the feedback form. Please try again later." : "反馈问卷加载失败，请稍后再试";
 }
 
 function uniqueToolCodes(items: ServiceToolCode[]) {

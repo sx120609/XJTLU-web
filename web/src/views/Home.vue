@@ -3,18 +3,18 @@
     <section class="home-hero">
       <div class="hero-copy">
         <span class="eyebrow">{{ greeting }} · {{ site.siteName }}</span>
-        <h1>发现校内闲置，也让真实需求更快被看见</h1>
-        <p>{{ site.siteSubtitle || "给 XJTLU 同学一个更顺手、更可信的校园互助入口。" }}</p>
+        <h1>{{ t("home.hero") }}</h1>
+        <p>{{ isEnglish ? t("home.subtitle") : (site.siteSubtitle || t("home.subtitle")) }}</p>
       </div>
       <form class="hero-search" role="search" @submit.prevent="goSearch">
-        <el-input v-model="query" size="large" clearable placeholder="搜索商品、求购或广场帖子">
+        <el-input v-model="query" size="large" clearable :placeholder="t('home.searchPlaceholder')">
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-button native-type="submit" type="primary" size="large">搜索</el-button>
+        <el-button native-type="submit" type="primary" size="large">{{ t("common.search") }}</el-button>
       </form>
     </section>
 
-    <section class="quick-actions" aria-label="常用发布入口">
+    <section class="quick-actions" :aria-label="t('home.quickLabel')">
       <router-link
         v-for="action in quickActions"
         :key="action.to"
@@ -30,8 +30,8 @@
 
     <section class="home-section market-section">
       <div class="section-head">
-        <div><span>RECOMMENDED GOODS</span><h2>推荐好物</h2></div>
-        <div class="section-links"><router-link to="/market">进入市集 <el-icon><Right /></el-icon></router-link></div>
+        <div><span>RECOMMENDED GOODS</span><h2>{{ t("home.recommended") }}</h2></div>
+        <div class="section-links"><router-link to="/market">{{ t("home.enterMarket") }} <el-icon><Right /></el-icon></router-link></div>
       </div>
       <div v-if="marketLoading" class="market-grid"><MarketSkeleton v-for="i in 8" :key="i" /></div>
       <div v-else-if="recommendedItems.length" class="market-grid">
@@ -49,39 +49,39 @@
           </div>
           <div class="market-copy">
             <div class="market-title-line">
-              <em v-if="isLearningItem(item)" class="learning-label">学习资料</em>
-              <PromotionLabel v-if="item.promotions?.home" label="推广" kind="home" />
-              <PromotionLabel v-else-if="item.promotions?.pinned" label="置顶" kind="pin" />
-              <em v-if="item.listingType === 'wanted'">求购</em>
+              <em v-if="isLearningItem(item)" class="learning-label">{{ t("home.learning") }}</em>
+              <PromotionLabel v-if="item.promotions?.home" :label="t('home.promoted')" kind="home" />
+              <PromotionLabel v-else-if="item.promotions?.pinned" :label="t('home.pinned')" kind="pin" />
+              <em v-if="item.listingType === 'wanted'">{{ t("home.wantedTag") }}</em>
               <h3>{{ item.title }}</h3>
             </div>
             <div class="market-price">
-              <strong>{{ item.listingType === 'wanted' ? '预算 ' : '' }}¥{{ item.price }}</strong>
-              <span v-if="item.negotiable">可议</span>
+              <strong>{{ item.listingType === 'wanted' ? t("home.budget") : '' }}¥{{ item.price }}</strong>
+              <span v-if="item.negotiable">{{ t("common.negotiable") }}</span>
             </div>
             <div class="market-meta">
-              <span>{{ isLearningItem(item) ? '学习资料专区' : (item.campus || '校内面交') }}</span>
+              <span>{{ isLearningItem(item) ? t("home.learningZone") : (item.campus || t("common.campusMeetup")) }}</span>
               <time>{{ fmtRelative(item.createdAt) }}</time>
             </div>
           </div>
         </router-link>
       </div>
-      <CompactEmpty v-else title="还没有推荐内容" description="实体商品和已审核学习资料会展示在这里" action="发布内容" to="/publish" />
+      <CompactEmpty v-else :title="t('home.noRecommendations')" :description="t('home.noRecommendationsDesc')" :action="t('home.publishContent')" to="/publish" />
     </section>
 
     <section class="home-section square-section">
       <div class="section-head">
-        <div><span>SQUARE HOT &amp; WANTED</span><h2>热议与求购</h2></div>
-        <router-link to="/square">进入广场 <el-icon><Right /></el-icon></router-link>
+        <div><span>SQUARE HOT &amp; WANTED</span><h2>{{ t("home.hot") }}</h2></div>
+        <router-link to="/square">{{ t("home.enterSquare") }} <el-icon><Right /></el-icon></router-link>
       </div>
       <div v-if="summaryLoading" class="topic-loading"><el-skeleton :rows="3" animated /></div>
       <div v-else-if="hotTopics.length" class="topic-list">
         <div v-for="topic in hotTopics" :key="topic.id" class="topic-entry">
-          <PromotionLabel v-if="topic.promotion" label="加急" kind="urgent" class="topic-promotion" />
+          <PromotionLabel v-if="topic.promotion" :label="t('home.urgent')" kind="urgent" class="topic-promotion" />
           <TopicListItem :topic="topic" />
         </div>
       </div>
-      <CompactEmpty v-else title="广场还没有热议内容" description="热门讨论和求购需求都会展示在这里" action="发起讨论" to="/post" />
+      <CompactEmpty v-else :title="t('home.noHot')" :description="t('home.noHotDesc')" :action="t('home.startDiscussion')" to="/post" />
     </section>
 
     <el-alert v-if="marketError || summaryError" type="warning" :closable="false" show-icon :title="marketError || summaryError" />
@@ -101,10 +101,12 @@ import { learningMaterialsApi } from "@/api/learningMaterials";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
+import { useLocale } from "@/i18n";
 
 const auth = useAuthStore();
 const site = useSiteStore();
 const router = useRouter();
+const { t, isEnglish } = useLocale();
 const query = ref("");
 const summary = ref<HomeSummary | null>(null);
 const naturalRecommendedItems = ref<MarketItem[]>([]);
@@ -115,7 +117,9 @@ const marketError = ref("");
 const summaryError = ref("");
 let marketLoadSequence = 0;
 
-const greeting = computed(() => auth.user?.nickname ? `${auth.user.nickname}，你好` : "你好，XJTLUer");
+const greeting = computed(() => auth.user?.nickname
+  ? t("home.helloUser", { name: auth.user.nickname })
+  : t("home.hello"));
 const canBrowseMarket = computed(() => site.features.market && auth.canAccessForum);
 const hotTopics = computed(() => (summary.value?.hotTopics ?? []).slice(0, 8));
 const recommendedItems = computed<MarketItem[]>(() => {
@@ -136,11 +140,11 @@ const recommendedItems = computed<MarketItem[]>(() => {
   }
   return [...promoted, ...natural].slice(0, 8);
 });
-const quickActions = [
-  { title: "我要出售", description: "发布校内闲置物品", to: "/publish/listing", icon: Goods, tone: "teal" },
-  { title: "我要求购", description: "发布到广场求购需求", to: "/publish/wanted", icon: Search, tone: "amber" },
-  { title: "我要发帖", description: "发起校园讨论", to: "/post", icon: ChatDotRound, tone: "violet" },
-] as const;
+const quickActions = computed(() => [
+  { title: t("home.sell"), description: t("home.sellDesc"), to: "/publish/listing", icon: Goods, tone: "teal" },
+  { title: t("home.wanted"), description: t("home.wantedDesc"), to: "/publish/wanted", icon: Search, tone: "amber" },
+  { title: t("home.post"), description: t("home.postDesc"), to: "/post", icon: ChatDotRound, tone: "violet" },
+] as const);
 
 const categoryIcons: Record<string, string> = { digital: "💻", digital_goods: "📝", books: "📚", dorm: "🛏️", appliance: "🔌", fashion: "👕", sports: "🏸", tickets: "🎫", other: "📦" };
 
@@ -223,7 +227,7 @@ async function loadRecommendedItems() {
     if (sequence !== marketLoadSequence) return;
     naturalRecommendedItems.value = [];
     recommendedLearningItems.value = [];
-    marketError.value = "市集内容暂时加载失败，请稍后重试";
+    marketError.value = t("home.marketLoadError");
   } finally {
     if (sequence === marketLoadSequence) marketLoading.value = false;
   }
@@ -245,7 +249,7 @@ async function loadSummary() {
     recordVisiblePromotionImpressions();
   } catch {
     summary.value = { identity: null, pinnedTopics: [], hotTopics: [], latestTopics: [], announce: [], services: [], promotions: [] };
-    summaryError.value = "广场内容暂时加载失败，请稍后重试";
+    summaryError.value = t("home.squareLoadError");
   } finally {
     summaryLoading.value = false;
   }

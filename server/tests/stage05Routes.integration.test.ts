@@ -31,7 +31,7 @@ test("stage 0.5 runtime routes reject student payment and digital category write
   const { port } = server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${port}/api/market`;
   const token = signToken({ userId: 999_999, studentId: "stage05-test", role: "admin", campus: "" });
-  const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Accept-Language": "zh-CN" };
 
   for (const path of [
     "/items?page=abc&size=Infinity",

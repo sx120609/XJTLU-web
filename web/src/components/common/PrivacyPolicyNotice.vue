@@ -1,25 +1,32 @@
 <template>
   <p :class="['privacy-policy-notice', `align-${align}`, `tone-${tone}`, { compact }]">
-    <span v-if="prefix">{{ prefix }}</span>
-    <a href="/privacy.html">《隐私政策》</a>
-    <span v-if="suffix">{{ suffix }}</span>
+    <span v-if="effectivePrefix">{{ effectivePrefix }}</span>
+    <a href="/privacy.html">{{ isEnglish ? "Privacy Policy" : "《隐私政策》" }}</a>
+    <span v-if="effectiveSuffix">{{ effectiveSuffix }}</span>
   </p>
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { computed } from "vue";
+import { useLocale } from "@/i18n";
+
+const props = withDefaults(defineProps<{
   prefix?: string;
   suffix?: string;
   align?: "left" | "center";
   tone?: "muted" | "accent";
   compact?: boolean;
 }>(), {
-  prefix: "登录前可先阅读",
-  suffix: "，了解账号与身份信息如何被使用。",
+  prefix: "",
+  suffix: "",
   align: "center",
   tone: "muted",
   compact: false,
 });
+
+const { isEnglish } = useLocale();
+const effectivePrefix = computed(() => props.prefix || (isEnglish.value ? "Before signing in, read our " : "登录前可先阅读"));
+const effectiveSuffix = computed(() => props.suffix || (isEnglish.value ? " to learn how account and identity information is used." : "，了解账号与身份信息如何被使用。"));
 </script>
 
 <style scoped lang="scss">

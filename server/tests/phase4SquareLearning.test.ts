@@ -75,7 +75,9 @@ test("stage 4 routes and pages expose linked discussions and the four-part learn
   assert.match(topic, /关联实体商品/);
   assert.match(topic, /关联学习资料/);
   assert.match(topic, /学习资料求购/);
-  for (const title of ["学习好物", "学习交流", "付费学习资料", "官方学习资源"]) assert.match(hub, new RegExp(title));
+  for (const key of ["goods", "discussion", "materials", "official"]) {
+    assert.match(hub, new RegExp(`t\\("learning\\.${key}"\\)`));
+  }
   assert.match(router, /path: "learning"[^\n]+views\/learning\/Hub\.vue/);
   assert.match(router, /path: "learning\/materials"[^\n]+LearningMaterials\.vue/);
 });
@@ -99,8 +101,8 @@ test("structured wanted demands expose anonymous publishing without leaking iden
   assert.match(trustService, /eligible: true/);
   assert.match(marketRoute, /authorId:\s*isAnonymous\s*\?\s*null/);
   assert.match(wantedTopic, /isAnonymous:\s*Boolean\(wanted\.isAnonymous\)/);
-  assert.match(wantedPublish, /匿名发布求购/);
-  assert.match(wantedPublish, /匿名发布免费，不消耗积分/);
+  assert.match(wantedPublish, /Post anonymously[\s\S]*匿名发布求购/);
+  assert.match(wantedPublish, /Anonymous publishing is free[\s\S]*匿名发布免费，不消耗积分/);
   assert.match(square, /board-card--wanted/);
   assert.match(square, /#ea580c/);
 });
@@ -159,14 +161,14 @@ test("physical sale form and filters share required category, condition, deliver
   assert.match(marketCatalogRoute, /tradeMode && tradeMode !== "any"/);
   assert.match(marketItemWriteService, /expiresAt: null/);
 
-  assert.match(publish, /label="商品品类" required/);
+  assert.match(publish, /:label="isEnglish \? 'Category' : '商品品类'" required/);
   assert.doesNotMatch(publishTemplate, /expiryDays|自动过期/);
-  assert.ok(publish.indexOf("v-model=\"form.availableTime\"") > publish.indexOf("<h2>交付信息<\/h2>"));
-  assert.match(publish, /label="校区（选填）"/);
+  assert.ok(publish.indexOf("v-model=\"form.availableTime\"") > publish.indexOf("Delivery and meetup"));
+  assert.match(publish, /:label="isEnglish \? 'Campus \(optional\)' : '校区（选填）'"/);
   assert.match(publish, /v-model="form\.campus" clearable/);
   assert.doesNotMatch(publish, /isMarketCampus\(form\.campus\)|请选择 SIP 或 TC 校区/);
   assert.doesNotMatch(marketItemWriteService, /!input\.draft && !input\.campus|requestedStatus === "active" && !\(input\.campus/);
-  assert.match(index, /placeholder="任意交付方式"/);
+  assert.match(index, /:placeholder="marketTradeModeLabel\('any'\)"/);
   assert.match(index, /tradeMode: "any"/);
   assert.match(marketApi, /any: "任意交付方式"/);
   assert.match(marketApi, /"meetup" \| "shipping" \| "online" \| "any"/);

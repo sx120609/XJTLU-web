@@ -1,17 +1,17 @@
 <template>
   <div class="post-page">
-    <h2 class="page-title">{{ editingId ? '编辑帖子' : '发表新帖' }}</h2>
+    <h2 class="page-title">{{ editingId ? (isEnglish ? 'Edit post' : '编辑帖子') : (isEnglish ? 'Create a post' : '发表新帖') }}</h2>
 
     <div v-if="loadError && !loading" class="cpu-card post-load-state">
       <el-empty :description="loadError">
-        <el-button type="primary" :loading="loading" @click="loadInitial">重试</el-button>
+        <el-button type="primary" :loading="loading" @click="loadInitial">{{ isEnglish ? "Try again" : "重试" }}</el-button>
       </el-empty>
     </div>
 
     <div v-else v-loading="loading" class="cpu-card form">
       <el-form label-position="top" :model="form">
-        <el-form-item label="选择板块" required>
-          <el-select v-model="form.boardSlug" placeholder="选择要发帖的板块" :disabled="!!editingId">
+        <el-form-item :label="isEnglish ? 'Channel' : '选择板块'" required>
+          <el-select v-model="form.boardSlug" :placeholder="isEnglish ? 'Select a channel' : '选择要发帖的板块'" :disabled="!!editingId">
             <el-option
               v-for="b in boards"
               :key="b.slug"
@@ -20,7 +20,7 @@
               :disabled="b.readOnly"
             >
               <span class="option-icon">{{ b.icon }}</span>{{ b.name }}
-              <span class="option-note">{{ b.readOnly ? '不可发帖' : '' }}</span>
+              <span class="option-note">{{ b.readOnly ? (isEnglish ? 'Read only' : '不可发帖') : '' }}</span>
             </el-option>
           </el-select>
           <div v-if="currentBoard" class="board-hint">
@@ -28,12 +28,12 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="关联市集信息（选填）">
+        <el-form-item :label="isEnglish ? 'Link Market content (optional)' : '关联市集信息（选填）'">
           <div class="relation-picker">
             <el-radio-group v-model="relationType" @change="onRelationTypeChange">
-              <el-radio-button value="none">不关联</el-radio-button>
-              <el-radio-button value="item">关联商品</el-radio-button>
-              <el-radio-button value="wanted">关联求购</el-radio-button>
+              <el-radio-button value="none">{{ isEnglish ? "No link" : "不关联" }}</el-radio-button>
+              <el-radio-button value="item">{{ isEnglish ? "Link item" : "关联商品" }}</el-radio-button>
+              <el-radio-button value="wanted">{{ isEnglish ? "Link request" : "关联求购" }}</el-radio-button>
             </el-radio-group>
             <el-select
               v-if="relationType === 'item'"
@@ -41,9 +41,9 @@
               filterable
               clearable
               :loading="linkOptionsLoading"
-              placeholder="选择公开商品"
+              :placeholder="isEnglish ? 'Select a public item' : '选择公开商品'"
             >
-              <el-option v-for="item in marketItems" :key="item.id" :value="item.id" :label="`${isLearningItem(item) ? '📝 学习资料' : '📦 实体商品'} · ${item.title} · ¥${item.price}`" />
+              <el-option v-for="item in marketItems" :key="item.id" :value="item.id" :label="`${isLearningItem(item) ? (isEnglish ? '📝 Learning material' : '📝 学习资料') : (isEnglish ? '📦 Physical item' : '📦 实体商品')} · ${item.title} · ¥${item.price}`" />
             </el-select>
             <el-select
               v-else-if="relationType === 'wanted'"
@@ -51,19 +51,19 @@
               filterable
               clearable
               :loading="linkOptionsLoading"
-              placeholder="选择公开求购"
+              :placeholder="isEnglish ? 'Select a public request' : '选择公开求购'"
             >
-              <el-option v-for="item in wantedPosts" :key="item.id" :value="item.id" :label="`${item.title} · ${item.budgetMin}-${item.budgetMax}元`" />
+              <el-option v-for="item in wantedPosts" :key="item.id" :value="item.id" :label="`${item.title} · ¥${item.budgetMin}-${item.budgetMax}`" />
             </el-select>
-            <p>只展示公开摘要，不会公开交易联系方式；实际交易仍需回到市集完成。</p>
+            <p>{{ isEnglish ? "Only a public summary is shown. Contact details remain private, and the transaction stays in Market." : "只展示公开摘要，不会公开交易联系方式；实际交易仍需回到市集完成。" }}</p>
           </div>
         </el-form-item>
 
-        <el-form-item v-if="currentBoard?.anonymousEnabled" label="匿名发布">
+        <el-form-item v-if="currentBoard?.anonymousEnabled" :label="isEnglish ? 'Post anonymously' : '匿名发布'">
           <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
             <el-switch v-model="form.anonymous" :disabled="!anonymousEnabledForForm || !!editingId" />
             <div class="anonymous-copy">
-              <b>{{ editingId ? "保持匿名状态" : "免费匿名发布" }}</b>
+              <b>{{ editingId ? (isEnglish ? "Keep anonymous status" : "保持匿名状态") : (isEnglish ? "Post anonymously for free" : "免费匿名发布") }}</b>
               <p>{{ anonymousHint }}</p>
             </div>
           </div>
@@ -72,23 +72,23 @@
         <!-- 二手板块特化 -->
         <template v-if="boardType === 'market'">
           <div class="meta-row">
-            <el-form-item label="价格（元）" required>
+            <el-form-item :label="isEnglish ? 'Price (CNY)' : '价格（元）'" required>
               <el-input-number v-model="meta.price" :min="0" :max="999999" :step="10" />
             </el-form-item>
-            <el-form-item label="新旧程度">
-              <el-select v-model="meta.condition" placeholder="选择">
-                <el-option label="全新" value="全新" />
-                <el-option label="九成新" value="九成新" />
-                <el-option label="八成新" value="八成新" />
-                <el-option label="七成新及以下" value="七成新及以下" />
-                <el-option label="求购" value="求购" />
+            <el-form-item :label="isEnglish ? 'Condition' : '新旧程度'">
+              <el-select v-model="meta.condition" :placeholder="isEnglish ? 'Select' : '选择'">
+                <el-option :label="isEnglish ? 'New' : '全新'" value="全新" />
+                <el-option :label="isEnglish ? 'Like new' : '九成新'" value="九成新" />
+                <el-option :label="isEnglish ? 'Good' : '八成新'" value="八成新" />
+                <el-option :label="isEnglish ? 'Well used' : '七成新及以下'" value="七成新及以下" />
+                <el-option :label="isEnglish ? 'Wanted' : '求购'" value="求购" />
               </el-select>
             </el-form-item>
-            <el-form-item label="交易方式">
-              <el-select v-model="meta.tradeMode" placeholder="选择">
-                <el-option label="当面" value="当面" />
-                <el-option label="包邮" value="包邮" />
-                <el-option label="当面 / 包邮+5" value="当面 / 包邮+5" />
+            <el-form-item :label="isEnglish ? 'Trade method' : '交易方式'">
+              <el-select v-model="meta.tradeMode" :placeholder="isEnglish ? 'Select' : '选择'">
+                <el-option :label="isEnglish ? 'Meetup' : '当面'" value="当面" />
+                <el-option :label="isEnglish ? 'Shipping included' : '包邮'" value="包邮" />
+                <el-option :label="isEnglish ? 'Meetup / Shipping +¥5' : '当面 / 包邮+5'" value="当面 / 包邮+5" />
               </el-select>
             </el-form-item>
           </div>
@@ -96,27 +96,27 @@
 
         <!-- 提问板块特化 -->
         <template v-if="boardType === 'question'">
-          <el-form-item label="悬赏（声望）">
+          <el-form-item :label="isEnglish ? 'Bounty (reputation)' : '悬赏（声望）'">
             <el-input-number v-model="meta.bounty" :min="0" :max="999" :step="5" />
-            <span class="cpu-muted" style="margin-left:8px">采纳回答者获得声望</span>
+            <span class="cpu-muted" style="margin-left:8px">{{ isEnglish ? "Awarded to the accepted answer" : "采纳回答者获得声望" }}</span>
           </el-form-item>
         </template>
 
-        <el-form-item label="标题" required>
-          <el-input v-model="form.title" placeholder="一句话描述要点（2-120 字）" maxlength="120" show-word-limit />
+        <el-form-item :label="isEnglish ? 'Title' : '标题'" required>
+          <el-input v-model="form.title" :placeholder="isEnglish ? 'Summarize the key point in one sentence (2–120 characters)' : '一句话描述要点（2-120 字）'" maxlength="120" show-word-limit />
         </el-form-item>
 
-        <el-form-item label="正文" required>
+        <el-form-item :label="isEnglish ? 'Content' : '正文'" required>
           <div class="post-editor-shell">
             <div class="post-editor-toolbar">
-              <div class="editor-mode-switch" role="tablist" aria-label="正文编辑模式">
+              <div class="editor-mode-switch" role="tablist" :aria-label="isEnglish ? 'Content editor mode' : '正文编辑模式'">
                 <button
                   type="button"
                   class="editor-mode-btn"
                   :class="{ active: editorMode === 'visual' }"
                   @click="setEditorMode('visual')"
                 >
-                  可视化编辑
+                  {{ isEnglish ? "Visual editor" : "可视化编辑" }}
                 </button>
                 <button
                   type="button"
@@ -128,16 +128,16 @@
                 </button>
               </div>
               <el-button size="small" :loading="autoFormatting" :disabled="autoFormatting" @click="autoFormatContent">
-                {{ autoFormatting ? "排版中" : "AI 自动排版" }}
+                {{ autoFormatting ? (isEnglish ? "Formatting" : "排版中") : (isEnglish ? "AI formatting" : "AI 自动排版") }}
               </el-button>
             </div>
 
             <p class="editor-mode-hint">
               <template v-if="editorMode === 'visual'">
-                适合直接排版、插图和视频。想写源码可切到 Markdown / HTML 高级模式。
+                {{ isEnglish ? "Best for direct formatting, images, and video. Switch to Markdown / HTML for source editing." : "适合直接排版、插图和视频。想写源码可切到 Markdown / HTML 高级模式。" }}
               </template>
               <template v-else>
-                高级模式支持 Markdown 和安全 HTML。切回可视化后，会按最终渲染效果继续编辑。
+                {{ isEnglish ? "Advanced mode supports Markdown and safe HTML. Switch back to continue editing the rendered result." : "高级模式支持 Markdown 和安全 HTML。切回可视化后，会按最终渲染效果继续编辑。" }}
               </template>
             </p>
 
@@ -152,30 +152,30 @@
 
             <div v-else class="markup-editor-shell">
               <div class="markup-helper-row">
-                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupHeadingSnippet)">小标题</button>
-                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupQuoteSnippet)">引用</button>
-                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupListSnippet)">列表</button>
-                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupTableSnippet)">表格</button>
-                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupCenterSnippet)">居中 HTML</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupHeadingSnippet)">{{ isEnglish ? "Heading" : "小标题" }}</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupQuoteSnippet)">{{ isEnglish ? "Quote" : "引用" }}</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupListSnippet)">{{ isEnglish ? "List" : "列表" }}</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupTableSnippet)">{{ isEnglish ? "Table" : "表格" }}</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupCenterSnippet)">{{ isEnglish ? "Centered HTML" : "居中 HTML" }}</button>
               </div>
               <textarea
                 ref="markupTextareaRef"
                 v-model="form.content"
                 class="markup-editor"
-                placeholder="在这里输入 Markdown 或安全 HTML，例如标题、列表、表格、blockquote、video、img 等。"
+                :placeholder="isEnglish ? 'Enter Markdown or safe HTML, such as headings, lists, tables, blockquotes, video, or img.' : '在这里输入 Markdown 或安全 HTML，例如标题、列表、表格、blockquote、video、img 等。'"
                 spellcheck="false"
               ></textarea>
               <div class="markup-meta">
-                <span>支持 Markdown、表格、引用，以及安全 HTML 标签。</span>
+                <span>{{ isEnglish ? "Supports Markdown, tables, quotes, and safe HTML tags." : "支持 Markdown、表格、引用，以及安全 HTML 标签。" }}</span>
                 <span :class="{ warn: form.content.length > CONTENT_MAX }">{{ form.content.length }} / {{ CONTENT_MAX }}</span>
               </div>
               <div class="markup-preview">
                 <div class="markup-preview__head">
-                  <strong>实时预览</strong>
-                  <span>按帖子最终展示效果渲染</span>
+                  <strong>{{ isEnglish ? "Live preview" : "实时预览" }}</strong>
+                  <span>{{ isEnglish ? "Rendered as the final post" : "按帖子最终展示效果渲染" }}</span>
                 </div>
                 <div v-if="isMarkupContentEmpty(form.content)" class="markup-preview__empty">
-                  写点内容后，这里会显示预览效果。
+                  {{ isEnglish ? "Your preview will appear here as you write." : "写点内容后，这里会显示预览效果。" }}
                 </div>
                 <MarkdownView v-else :content="form.content" />
               </div>
@@ -196,61 +196,61 @@
           type="warning"
           :closable="false"
           show-icon
-          title="你有内容正在人工复核，暂时不能继续提交新内容"
+          :title="isEnglish ? 'Some content is under manual review. You cannot submit new content for now.' : '你有内容正在人工复核，暂时不能继续提交新内容'"
         />
 
         <el-form-item class="form-actions">
-          <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
-          <el-button :disabled="submitting" @click="$router.back()">取消</el-button>
+          <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ editingId ? (isEnglish ? 'Preview and save' : '预览并保存') : (isEnglish ? 'Preview and publish' : '预览并发布') }}</el-button>
+          <el-button :disabled="submitting" @click="$router.back()">{{ isEnglish ? "Cancel" : "取消" }}</el-button>
         </el-form-item>
       </el-form>
     </div>
 
     <el-dialog
       v-model="previewOpen"
-      :title="editingId ? '确认保存修改' : '确认发布帖子'"
+      :title="editingId ? (isEnglish ? 'Confirm changes' : '确认保存修改') : (isEnglish ? 'Confirm publication' : '确认发布帖子')"
       width="720px"
       class="publish-preview-dialog"
       append-to-body
     >
       <div class="publish-preview">
         <div class="preview-meta">
-          <span>{{ currentBoard?.name || "未选择板块" }}</span>
+          <span>{{ currentBoard?.name || (isEnglish ? "No channel selected" : "未选择板块") }}</span>
           <span>{{ form.content.length }} / {{ CONTENT_MAX }}</span>
         </div>
-        <el-tag v-if="form.anonymous" type="warning" effect="plain" class="preview-anon-tag">匿名发布</el-tag>
-        <el-tag v-if="relationType !== 'none'" type="success" effect="plain" class="preview-anon-tag">{{ relationType === 'item' ? '已关联商品' : '已关联求购' }}</el-tag>
-        <h3>{{ form.title || "未填写标题" }}</h3>
+        <el-tag v-if="form.anonymous" type="warning" effect="plain" class="preview-anon-tag">{{ isEnglish ? "Anonymous" : "匿名发布" }}</el-tag>
+        <el-tag v-if="relationType !== 'none'" type="success" effect="plain" class="preview-anon-tag">{{ relationType === 'item' ? (isEnglish ? 'Item linked' : '已关联商品') : (isEnglish ? 'Request linked' : '已关联求购') }}</el-tag>
+        <h3>{{ form.title || (isEnglish ? "No title" : "未填写标题") }}</h3>
         <MarkdownView :content="form.content" />
       </div>
       <template #footer>
-        <el-button :disabled="submitting" @click="previewOpen = false">返回修改</el-button>
+        <el-button :disabled="submitting" @click="previewOpen = false">{{ isEnglish ? "Back to edit" : "返回修改" }}</el-button>
         <el-button type="primary" :loading="submitting" :disabled="submitting" @click="confirmSubmit">
-          {{ editingId ? '确认保存' : '确认发布' }}
+          {{ editingId ? (isEnglish ? 'Save' : '确认保存') : (isEnglish ? 'Publish' : '确认发布') }}
         </el-button>
       </template>
     </el-dialog>
 
     <el-dialog
       v-model="reviewBlockedOpen"
-      title="内容暂未通过审核"
+      :title="isEnglish ? 'Content did not pass review' : '内容暂未通过审核'"
       width="520px"
       append-to-body
     >
       <div class="review-blocked">
-        <p>这条内容暂时还没有发出。</p>
-        <p v-if="blockedReviewInfo.reason">审核说明：{{ blockedReviewInfo.reason }}</p>
-        <p class="cpu-muted">你可以修改后再试，或申请人工复核。复核期间暂时不能继续提交新内容。</p>
+        <p>{{ isEnglish ? "This content has not been published." : "这条内容暂时还没有发出。" }}</p>
+        <p v-if="blockedReviewInfo.reason">{{ isEnglish ? "Review note" : "审核说明" }}：{{ blockedReviewInfo.reason }}</p>
+        <p class="cpu-muted">{{ isEnglish ? "You can edit and try again, or request manual review. New submissions are paused during review." : "你可以修改后再试，或申请人工复核。复核期间暂时不能继续提交新内容。" }}</p>
       </div>
       <template #footer>
-        <el-button @click="reviewBlockedOpen = false">返回修改</el-button>
-        <el-button type="warning" :loading="requestingManualReview" :disabled="requestingManualReview" @click="manualReviewConfirmOpen = true">申请人工复核</el-button>
+        <el-button @click="reviewBlockedOpen = false">{{ isEnglish ? "Back to edit" : "返回修改" }}</el-button>
+        <el-button type="warning" :loading="requestingManualReview" :disabled="requestingManualReview" @click="manualReviewConfirmOpen = true">{{ isEnglish ? "Request manual review" : "申请人工复核" }}</el-button>
       </template>
     </el-dialog>
 
     <ManualReviewConfirmDialog
       v-model="manualReviewConfirmOpen"
-      subject="内容"
+      :subject="isEnglish ? 'content' : '内容'"
       @confirm="confirmManualReviewRequest"
     />
   </div>
@@ -269,10 +269,12 @@ import { marketApi, type MarketItem, type WantedPost } from "@/api/market";
 import { learningMaterialsApi } from "@/api/learningMaterials";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
+import { useLocale } from "@/i18n";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { isEnglish } = useLocale();
 
 const boards = ref<Board[]>([]);
 const marketItems = ref<MarketItem[]>([]);
@@ -306,11 +308,11 @@ const blockedReviewInfo = reactive<{ reason: string; riskScore: number | null }>
 let loadSeq = 0;
 let formDraftTimer = 0;
 let markupDraftTimer = 0;
-const markupHeadingSnippet = "## 小标题\n\n";
-const markupQuoteSnippet = "> 引用内容\n\n";
-const markupListSnippet = "- 要点一\n- 要点二\n\n";
-const markupTableSnippet = "| 项目 | 内容 |\n| --- | --- |\n| 示例 | 示例内容 |\n\n";
-const markupCenterSnippet = "<div align='center'>居中文字</div>\n\n";
+const markupHeadingSnippet = computed(() => isEnglish.value ? "## Subheading\n\n" : "## 小标题\n\n");
+const markupQuoteSnippet = computed(() => isEnglish.value ? "> Quoted text\n\n" : "> 引用内容\n\n");
+const markupListSnippet = computed(() => isEnglish.value ? "- First point\n- Second point\n\n" : "- 要点一\n- 要点二\n\n");
+const markupTableSnippet = computed(() => isEnglish.value ? "| Item | Details |\n| --- | --- |\n| Example | Example content |\n\n" : "| 项目 | 内容 |\n| --- | --- |\n| 示例 | 示例内容 |\n\n");
+const markupCenterSnippet = computed(() => isEnglish.value ? "<div align='center'>Centered text</div>\n\n" : "<div align='center'>居中文字</div>\n\n");
 
 const form = reactive({
   boardSlug: (route.query.board as string) || "",
@@ -342,10 +344,12 @@ const anonymousEnabledForForm = computed(() => {
 });
 const anonymousHint = computed(() => {
   if (editingId.value) {
-    return form.anonymous ? "这篇帖子会继续以匿名身份展示，编辑不会公开你的真实身份。" : "这篇帖子当前不是匿名帖。";
+    return form.anonymous
+      ? (isEnglish.value ? "This post remains anonymous. Editing will not reveal your identity." : "这篇帖子会继续以匿名身份展示，编辑不会公开你的真实身份。")
+      : (isEnglish.value ? "This post is not anonymous." : "这篇帖子当前不是匿名帖。");
   }
-  if (!currentBoard.value?.anonymousEnabled) return "当前板块暂不支持匿名发帖。";
-  return "匿名发布免费，不消耗积分，也不影响信誉值。";
+  if (!currentBoard.value?.anonymousEnabled) return isEnglish.value ? "This channel does not support anonymous posts." : "当前板块暂不支持匿名发帖。";
+  return isEnglish.value ? "Anonymous publishing is free and does not use points or affect reputation." : "匿名发布免费，不消耗积分，也不影响信誉值。";
 });
 
 const submitDisabled = computed(() =>
@@ -356,7 +360,9 @@ const submitDisabled = computed(() =>
   Boolean(auth.user?.topicSubmissionLocked)
 );
 
-const mutedNotice = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}，当前不能发帖或编辑发言内容` : "你当前已被禁言，暂时不能发帖或编辑发言内容");
+const mutedNotice = computed(() => auth.user?.mutedUntil
+  ? (isEnglish.value ? `You are muted until ${fmtDate(auth.user.mutedUntil)} and cannot post or edit content.` : `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}，当前不能发帖或编辑发言内容`)
+  : (isEnglish.value ? "You are currently muted and cannot post or edit content." : "你当前已被禁言，暂时不能发帖或编辑发言内容"));
 
 watch(() => route.params.id, () => {
   void loadInitial();
@@ -397,7 +403,7 @@ async function loadInitial() {
   loadError.value = "";
   resetEditorStateForLoad();
   if (route.params.id && !editingId.value) {
-    loadError.value = "编辑的帖子地址无效";
+    loadError.value = isEnglish.value ? "The post URL is invalid" : "编辑的帖子地址无效";
     loading.value = false;
     return;
   }
@@ -519,10 +525,10 @@ function getRequestMessage(error: unknown) {
 
 function normalizePostLoadError(error: unknown) {
   const status = getRequestStatus(error);
-  if (status === 401) return "登录状态已失效，请重新登录后再试";
-  if (status === 403) return "你没有权限编辑这篇帖子";
-  if (status === 404) return "帖子不存在或已被删除";
-  return getRequestMessage(error) || "发帖页加载失败，请稍后重试";
+  if (status === 401) return isEnglish.value ? "Your session expired. Sign in and try again." : "登录状态已失效，请重新登录后再试";
+  if (status === 403) return isEnglish.value ? "You cannot edit this post" : "你没有权限编辑这篇帖子";
+  if (status === 404) return isEnglish.value ? "This post does not exist or has been deleted" : "帖子不存在或已被删除";
+  return getRequestMessage(error) || (isEnglish.value ? "Could not load the post editor. Please try again later." : "发帖页加载失败，请稍后重试");
 }
 
 function normalizeSelectedBoard() {
@@ -695,7 +701,7 @@ async function insertMarkupSnippet(snippet: string) {
 async function autoFormatContent() {
   if (autoFormatting.value) return;
   if (isMarkupContentEmpty(form.content)) {
-    ElMessage.warning("先写一点正文，再试试自动排版");
+    ElMessage.warning(isEnglish.value ? "Write some content before using automatic formatting" : "先写一点正文，再试试自动排版");
     return;
   }
   autoFormatting.value = true;
@@ -709,9 +715,9 @@ async function autoFormatContent() {
     form.content = result.content;
     if (editorMode.value === "markup") scheduleMarkupDraftSave(result.content);
     if (result.provider === "ai") {
-      ElMessage.success(result.summary || "AI 已完成自动排版");
+      ElMessage.success(result.summary || (isEnglish.value ? "AI formatting completed" : "AI 已完成自动排版"));
     } else {
-      ElMessage.info(result.summary || "AI 当前不可用，已按本地规则整理排版");
+      ElMessage.info(result.summary || (isEnglish.value ? "AI is unavailable. Local formatting rules were applied." : "AI 当前不可用，已按本地规则整理排版"));
     }
   } finally {
     autoFormatting.value = false;
@@ -720,17 +726,17 @@ async function autoFormatContent() {
 
 async function submit() {
   if (submitting.value) return;
-  if (loading.value) { ElMessage.warning("页面还在加载，请稍后再试"); return; }
-  if (loadError.value) { ElMessage.warning("页面加载失败，请重试后再发布"); return; }
+  if (loading.value) { ElMessage.warning(isEnglish.value ? "The page is still loading" : "页面还在加载，请稍后再试"); return; }
+  if (loadError.value) { ElMessage.warning(isEnglish.value ? "Reload the page before publishing" : "页面加载失败，请重试后再发布"); return; }
   if (auth.user?.status === "muted") { ElMessage.warning(mutedNotice.value); return; }
-  if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你有内容正在人工复核，暂时不能继续提交新内容"); return; }
-  if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
-  if (relationType.value === "item" && !form.linkedMarketItemId) { ElMessage.warning("请选择要关联的商品"); return; }
-  if (relationType.value === "wanted" && !form.linkedWantedPostId) { ElMessage.warning("请选择要关联的求购"); return; }
+  if (auth.user?.topicSubmissionLocked) { ElMessage.warning(isEnglish.value ? "Content is under manual review. You cannot submit new content for now." : "你有内容正在人工复核，暂时不能继续提交新内容"); return; }
+  if (!form.boardSlug) { ElMessage.warning(isEnglish.value ? "Select a channel" : "请选择板块"); return; }
+  if (relationType.value === "item" && !form.linkedMarketItemId) { ElMessage.warning(isEnglish.value ? "Select an item to link" : "请选择要关联的商品"); return; }
+  if (relationType.value === "wanted" && !form.linkedWantedPostId) { ElMessage.warning(isEnglish.value ? "Select a request to link" : "请选择要关联的求购"); return; }
   if (form.anonymous && !anonymousEnabledForForm.value) { ElMessage.warning(anonymousHint.value); return; }
-  if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
-  if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
-  if (form.content.length > CONTENT_MAX) { ElMessage.warning("正文内容过长，请精简后再发布"); return; }
+  if (form.title.trim().length < 2) { ElMessage.warning(isEnglish.value ? "The title must contain at least 2 characters" : "标题至少 2 字"); return; }
+  if (isEditorContentEmpty()) { ElMessage.warning(isEnglish.value ? "Enter the post content" : "请填写正文"); return; }
+  if (form.content.length > CONTENT_MAX) { ElMessage.warning(isEnglish.value ? "The content is too long. Shorten it before publishing." : "正文内容过长，请精简后再发布"); return; }
   const metadata = buildMetadata();
   if (!metadata) return;
   pendingMetadata.value = metadata;
@@ -743,7 +749,7 @@ function buildMetadata() {
     _editorMode: editorMode.value,
   };
   if (boardType.value === "market") {
-    if (!meta.price && meta.price !== 0) { ElMessage.warning("请填写价格"); return null; }
+    if (!meta.price && meta.price !== 0) { ElMessage.warning(isEnglish.value ? "Enter a price" : "请填写价格"); return null; }
     metadata.price = meta.price;
     metadata.condition = meta.condition;
     metadata.tradeMode = meta.tradeMode;
@@ -770,16 +776,16 @@ async function confirmSubmit() {
       });
       if (r.submissionResult?.status === "blocked_ai") {
         blockedTopicId.value = editingId.value;
-        blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
+        blockedReviewInfo.reason = r.submissionResult.reason || (isEnglish.value ? "Potentially high-risk content was detected" : "检测到较高风险内容");
         blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
         reviewBlockedOpen.value = true;
-        ElMessage.warning("修改后的内容暂未通过审核");
+        ElMessage.warning(isEnglish.value ? "The revised content did not pass review" : "修改后的内容暂未通过审核");
         return;
       }
       notifyImageReviewState(r.submissionResult?.imageReview);
       notifyVideoReviewState(r.submissionResult?.videoReview);
       clearDrafts();
-      ElMessage.success("已保存");
+      ElMessage.success(isEnglish.value ? "Saved" : "已保存");
       router.replace(`/forum/topic/${editingId.value}`);
     } else {
       const r = await topicApi.create({
@@ -794,16 +800,16 @@ async function confirmSubmit() {
       if (form.anonymous) await auth.fetchMe();
       if (r.submissionResult?.status === "blocked_ai") {
         blockedTopicId.value = r.id;
-        blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
+        blockedReviewInfo.reason = r.submissionResult.reason || (isEnglish.value ? "Potentially high-risk content was detected" : "检测到较高风险内容");
         blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
         reviewBlockedOpen.value = true;
-        ElMessage.warning("内容暂未通过审核");
+        ElMessage.warning(isEnglish.value ? "Content did not pass review" : "内容暂未通过审核");
         return;
       }
       notifyImageReviewState(r.submissionResult?.imageReview);
       notifyVideoReviewState(r.submissionResult?.videoReview);
       clearDrafts();
-      ElMessage.success("已发布");
+      ElMessage.success(isEnglish.value ? "Published" : "已发布");
       router.replace(`/forum/topic/${r.id}`);
     }
   } finally {
@@ -820,7 +826,7 @@ async function confirmManualReviewRequest() {
     await auth.fetchMe();
     clearDrafts();
     reviewBlockedOpen.value = false;
-    ElMessage.success("已提交人工复核申请");
+    ElMessage.success(isEnglish.value ? "Manual review requested" : "已提交人工复核申请");
     router.replace("/forum");
   } finally {
     requestingManualReview.value = false;

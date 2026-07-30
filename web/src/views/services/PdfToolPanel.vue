@@ -3,15 +3,15 @@
     <div v-if="needsLogin" class="pdf-login-panel">
       <el-icon><Lock /></el-icon>
       <div>
-        <h3>登录后使用 PDF 工具</h3>
-        <p>管理员已将这个工具设为登录后可用。</p>
+        <h3>{{ isEnglish ? "Sign in to use PDF Tools" : "登录后使用 PDF 工具" }}</h3>
+        <p>{{ isEnglish ? "An administrator has configured this tool for signed-in users." : "管理员已将这个工具设为登录后可用。" }}</p>
       </div>
-      <el-button type="primary" @click="goLogin">去登录</el-button>
+      <el-button type="primary" @click="goLogin">{{ isEnglish ? "Sign in" : "去登录" }}</el-button>
       <PrivacyPolicyNotice compact />
     </div>
 
     <template v-else>
-      <section class="pdf-toolbar" aria-label="PDF 工具模式">
+      <section class="pdf-toolbar" :aria-label="isEnglish ? 'PDF tool modes' : 'PDF 工具模式'">
         <button
           v-for="mode in modeOptions"
           :key="mode.key"
@@ -47,26 +47,26 @@
             @drop.prevent="handleDrop"
           >
             <el-icon><UploadFilled /></el-icon>
-            <strong>选择 PDF 或图片</strong>
+            <strong>{{ isEnglish ? "Choose PDFs or images" : "选择 PDF 或图片" }}</strong>
             <span>PDF、PNG、JPG、WebP、BMP</span>
           </button>
 
           <div class="file-list" :class="{ empty: !files.length }">
-            <div v-if="!files.length" class="file-empty">还没有文件</div>
+            <div v-if="!files.length" class="file-empty">{{ isEnglish ? "No files yet" : "还没有文件" }}</div>
             <div v-for="(item, index) in files" :key="item.id" class="file-row">
               <span class="file-kind" :class="item.kind">{{ item.kind === 'pdf' ? 'PDF' : 'IMG' }}</span>
               <span class="file-main">
                 <b>{{ item.file.name }}</b>
-                <small>{{ formatBytes(item.file.size) }}<template v-if="item.pages"> · {{ item.pages }} 页</template></small>
+                <small>{{ formatBytes(item.file.size) }}<template v-if="item.pages"> · {{ item.pages }} {{ isEnglish ? "pages" : "页" }}</template></small>
               </span>
               <span class="file-actions">
-                <button type="button" :disabled="index === 0 || busy" title="上移" @click="moveFile(index, -1)">
+                <button type="button" :disabled="index === 0 || busy" :title="isEnglish ? 'Move up' : '上移'" @click="moveFile(index, -1)">
                   <el-icon><SortUp /></el-icon>
                 </button>
-                <button type="button" :disabled="index === files.length - 1 || busy" title="下移" @click="moveFile(index, 1)">
+                <button type="button" :disabled="index === files.length - 1 || busy" :title="isEnglish ? 'Move down' : '下移'" @click="moveFile(index, 1)">
                   <el-icon><SortDown /></el-icon>
                 </button>
-                <button type="button" :disabled="busy" title="移除" @click="removeFile(item.id)">
+                <button type="button" :disabled="busy" :title="isEnglish ? 'Remove' : '移除'" @click="removeFile(item.id)">
                   <el-icon><Close /></el-icon>
                 </button>
               </span>
@@ -85,9 +85,9 @@
 
           <div v-if="singlePdfMode" class="control-grid">
             <label>
-              <span>PDF 文件</span>
+              <span>{{ isEnglish ? "PDF file" : "PDF 文件" }}</span>
               <select v-model="selectedPdfId" :disabled="busy">
-                <option value="">选择一个 PDF</option>
+                <option value="">{{ isEnglish ? "Choose a PDF" : "选择一个 PDF" }}</option>
                 <option v-for="item in pdfFiles" :key="item.id" :value="item.id">{{ item.file.name }}</option>
               </select>
             </label>
@@ -95,57 +95,57 @@
 
           <div v-if="pageRangeMode" class="control-grid">
             <label>
-              <span>页码范围</span>
-              <input v-model="pageRange" :disabled="busy" placeholder="例如 1-3,5；留空为全部">
+              <span>{{ isEnglish ? "Page range" : "页码范围" }}</span>
+              <input v-model="pageRange" :disabled="busy" :placeholder="isEnglish ? 'Example: 1-3,5; leave blank for all pages' : '例如 1-3,5；留空为全部'">
             </label>
           </div>
 
           <div v-if="activeMode === 'split'" class="control-grid">
             <label>
-              <span>导出方式</span>
+              <span>{{ isEnglish ? "Export mode" : "导出方式" }}</span>
               <select v-model="splitOutput" :disabled="busy">
-                <option value="single">合成一个 PDF</option>
-                <option value="zip">逐页 ZIP</option>
+                <option value="single">{{ isEnglish ? "One combined PDF" : "合成一个 PDF" }}</option>
+                <option value="zip">{{ isEnglish ? "One PDF per page in ZIP" : "逐页 ZIP" }}</option>
               </select>
             </label>
           </div>
 
           <div v-if="activeMode === 'rotate'" class="control-grid">
             <label>
-              <span>旋转角度</span>
+              <span>{{ isEnglish ? "Rotation" : "旋转角度" }}</span>
               <select v-model.number="rotateAngle" :disabled="busy">
-                <option :value="90">顺时针 90°</option>
+                <option :value="90">{{ isEnglish ? "Clockwise 90°" : "顺时针 90°" }}</option>
                 <option :value="180">180°</option>
-                <option :value="270">逆时针 90°</option>
+                <option :value="270">{{ isEnglish ? "Counter-clockwise 90°" : "逆时针 90°" }}</option>
               </select>
             </label>
           </div>
 
           <div v-if="activeMode === 'compress'" class="control-grid two">
             <label>
-              <span>清晰度</span>
+              <span>{{ isEnglish ? "Quality" : "清晰度" }}</span>
               <input v-model.number="compressQuality" :disabled="busy" type="range" min="45" max="92" step="1">
             </label>
             <label>
-              <span>渲染倍率</span>
+              <span>{{ isEnglish ? "Render scale" : "渲染倍率" }}</span>
               <select v-model.number="compressScale" :disabled="busy">
-                <option :value="0.9">小文件</option>
-                <option :value="1.15">均衡</option>
-                <option :value="1.45">更清晰</option>
+                <option :value="0.9">{{ isEnglish ? "Smaller file" : "小文件" }}</option>
+                <option :value="1.15">{{ isEnglish ? "Balanced" : "均衡" }}</option>
+                <option :value="1.45">{{ isEnglish ? "Higher clarity" : "更清晰" }}</option>
               </select>
             </label>
           </div>
 
           <div v-if="activeMode === 'pdf_to_images'" class="control-grid two">
             <label>
-              <span>图片格式</span>
+              <span>{{ isEnglish ? "Image format" : "图片格式" }}</span>
               <select v-model="imageOutputFormat" :disabled="busy">
                 <option value="png">PNG</option>
                 <option value="jpg">JPG</option>
               </select>
             </label>
             <label>
-              <span>渲染倍率</span>
+              <span>{{ isEnglish ? "Render scale" : "渲染倍率" }}</span>
               <select v-model.number="imageScale" :disabled="busy">
                 <option :value="1">1x</option>
                 <option :value="1.5">1.5x</option>
@@ -156,17 +156,17 @@
 
           <div v-if="activeMode === 'images_to_pdf'" class="control-grid">
             <label>
-              <span>页面尺寸</span>
+              <span>{{ isEnglish ? "Page size" : "页面尺寸" }}</span>
               <select v-model="imagePdfFit" :disabled="busy">
-                <option value="natural">按图片原尺寸</option>
-                <option value="a4">适配 A4 页面</option>
+                <option value="natural">{{ isEnglish ? "Use original image dimensions" : "按图片原尺寸" }}</option>
+                <option value="a4">{{ isEnglish ? "Fit to A4" : "适配 A4 页面" }}</option>
               </select>
             </label>
           </div>
 
           <button type="button" class="run-button" :disabled="!canRun || busy" @click="runTool">
             <el-icon><Download /></el-icon>
-            <span>{{ busy ? progressText || '处理中' : activeModeMeta.action }}</span>
+            <span>{{ busy ? progressText || (isEnglish ? 'Processing' : '处理中') : activeModeMeta.action }}</span>
           </button>
 
           <div class="result-strip" :class="{ active: resultText }">
@@ -203,6 +203,7 @@ import type JSZip from "jszip";
 import type { PDFDocument as PdfDocumentInstance } from "pdf-lib";
 import { getToken } from "@/api/request";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import { useLocale } from "@/i18n";
 
 type PdfMode = "merge" | "split" | "compress" | "images_to_pdf" | "pdf_to_images" | "extract_text" | "rotate";
 type LocalFileKind = "pdf" | "image";
@@ -217,6 +218,7 @@ interface LocalFile {
 const props = defineProps<{ requireLogin?: boolean }>();
 const route = useRoute();
 const router = useRouter();
+const { isEnglish } = useLocale();
 const fileInput = ref<HTMLInputElement | null>(null);
 const files = ref<LocalFile[]>([]);
 const activeMode = ref<PdfMode>("merge");
@@ -239,14 +241,22 @@ let pdfLibPromise: Promise<typeof import("pdf-lib")> | null = null;
 let pdfJsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
 let jsZipPromise: Promise<typeof JSZip> | null = null;
 
-const modeOptions: Array<{
+const modeOptions = computed<Array<{
   key: PdfMode;
   label: string;
   badge: string;
   summary: string;
   action: string;
   icon: unknown;
-}> = [
+}>>(() => isEnglish.value ? [
+  { key: "merge", label: "Merge", badge: "PDF x2", summary: "Combine PDFs in the order shown on the left.", action: "Merge and download", icon: Files },
+  { key: "split", label: "Split", badge: "Pages", summary: "Export selected pages as one PDF or a ZIP of individual PDFs.", action: "Split and download", icon: Scissor },
+  { key: "compress", label: "Compress", badge: "Raster", summary: "Re-render each page to create a smaller PDF.", action: "Compress and download", icon: CopyDocument },
+  { key: "images_to_pdf", label: "Images to PDF", badge: "IMG", summary: "Create a PDF from images in order.", action: "Create PDF", icon: Picture },
+  { key: "pdf_to_images", label: "PDF to Images", badge: "ZIP", summary: "Export PDF pages to an image ZIP.", action: "Export images", icon: Document },
+  { key: "extract_text", label: "Extract Text", badge: "TXT", summary: "Extract PDF text and save it as TXT.", action: "Extract text", icon: Rank },
+  { key: "rotate", label: "Rotate", badge: "90°", summary: "Rotate selected PDF pages in a batch.", action: "Rotate and download", icon: RefreshLeft },
+] : [
   { key: "merge", label: "合并", badge: "PDF x2", summary: "按左侧顺序合成一个 PDF。", action: "合并并下载", icon: Files },
   { key: "split", label: "拆分", badge: "页码", summary: "按页码导出一个 PDF 或逐页打包。", action: "拆分并下载", icon: Scissor },
   { key: "compress", label: "压缩", badge: "图片版", summary: "将每页重新渲染后生成更小的 PDF。", action: "压缩并下载", icon: CopyDocument },
@@ -254,10 +264,10 @@ const modeOptions: Array<{
   { key: "pdf_to_images", label: "PDF 转图片", badge: "ZIP", summary: "把 PDF 页面导出为图片压缩包。", action: "导出图片", icon: Document },
   { key: "extract_text", label: "提取文字", badge: "TXT", summary: "提取 PDF 文本并保存为 TXT。", action: "提取文字", icon: Rank },
   { key: "rotate", label: "旋转", badge: "90°", summary: "按页码批量旋转 PDF 页面。", action: "旋转并下载", icon: RefreshLeft },
-];
+]);
 
 const needsLogin = computed(() => Boolean(props.requireLogin && !getToken()));
-const activeModeMeta = computed(() => modeOptions.find((item) => item.key === activeMode.value) ?? modeOptions[0]);
+const activeModeMeta = computed(() => modeOptions.value.find((item) => item.key === activeMode.value) ?? modeOptions.value[0]);
 const pdfFiles = computed(() => files.value.filter((item) => item.kind === "pdf"));
 const imageFiles = computed(() => files.value.filter((item) => item.kind === "image"));
 const activePdf = computed(() => {
@@ -272,9 +282,9 @@ const canRun = computed(() => {
   return Boolean(activePdf.value);
 });
 const requirementText = computed(() => {
-  if (activeMode.value === "merge") return "至少添加 2 个 PDF。";
-  if (activeMode.value === "images_to_pdf") return "至少添加 1 张图片。";
-  return "选择一个 PDF 后即可处理。";
+  if (activeMode.value === "merge") return isEnglish.value ? "Add at least 2 PDFs." : "至少添加 2 个 PDF。";
+  if (activeMode.value === "images_to_pdf") return isEnglish.value ? "Add at least 1 image." : "至少添加 1 张图片。";
+  return isEnglish.value ? "Choose a PDF to begin." : "选择一个 PDF 后即可处理。";
 });
 
 function goLogin() {
@@ -306,7 +316,7 @@ function addFiles(nextFiles: File[]) {
     if (kind === "pdf") void inspectPdfPages(item);
   }
   if (!additions.length && nextFiles.length) {
-    ElMessage.warning("请选择 PDF 或常见图片文件");
+    ElMessage.warning(isEnglish.value ? "Choose a PDF or a common image format" : "请选择 PDF 或常见图片文件");
     return;
   }
   files.value = [...files.value, ...additions];
@@ -354,7 +364,7 @@ async function runTool() {
   if (!canRun.value || busy.value) return;
   busy.value = true;
   resultText.value = "";
-  progressText.value = "处理中";
+  progressText.value = isEnglish.value ? "Processing" : "处理中";
   try {
     if (activeMode.value === "merge") await mergePdfs();
     else if (activeMode.value === "split") await splitPdf();
@@ -363,9 +373,9 @@ async function runTool() {
     else if (activeMode.value === "pdf_to_images") await pdfToImages();
     else if (activeMode.value === "extract_text") await extractText();
     else if (activeMode.value === "rotate") await rotatePdf();
-    ElMessage.success("处理完成");
+    ElMessage.success(isEnglish.value ? "Processing complete" : "处理完成");
   } catch (error) {
-    const message = error instanceof Error ? error.message : "处理失败";
+    const message = error instanceof Error ? error.message : (isEnglish.value ? "Processing failed" : "处理失败");
     ElMessage.error(message);
     resultText.value = message;
   } finally {
@@ -379,14 +389,14 @@ async function mergePdfs() {
   const output = await PDFDocument.create();
   for (let index = 0; index < pdfFiles.value.length; index += 1) {
     const item = pdfFiles.value[index];
-    progressText.value = `合并 ${index + 1}/${pdfFiles.value.length}`;
+    progressText.value = `${isEnglish.value ? "Merging" : "合并"} ${index + 1}/${pdfFiles.value.length}`;
     const source = await PDFDocument.load(await item.file.arrayBuffer(), { ignoreEncryption: true });
     const pages = await output.copyPages(source, source.getPageIndices());
     pages.forEach((page) => output.addPage(page));
   }
   const bytes = await output.save();
-  downloadBytes(bytes, "合并文件.pdf", "application/pdf");
-  resultText.value = `已合并 ${pdfFiles.value.length} 个 PDF。`;
+  downloadBytes(bytes, isEnglish.value ? "merged.pdf" : "合并文件.pdf", "application/pdf");
+  resultText.value = isEnglish.value ? `Merged ${pdfFiles.value.length} PDFs.` : `已合并 ${pdfFiles.value.length} 个 PDF。`;
 }
 
 async function splitPdf() {
@@ -398,21 +408,21 @@ async function splitPdf() {
     const output = await PDFDocument.create();
     const pages = await output.copyPages(source, indexes);
     pages.forEach((page) => output.addPage(page));
-    downloadBytes(await output.save(), `${baseName(item.file.name)}-选定页面.pdf`, "application/pdf");
-    resultText.value = `已导出 ${indexes.length} 页。`;
+    downloadBytes(await output.save(), `${baseName(item.file.name)}-${isEnglish.value ? "selected-pages" : "选定页面"}.pdf`, "application/pdf");
+    resultText.value = isEnglish.value ? `Exported ${indexes.length} pages.` : `已导出 ${indexes.length} 页。`;
     return;
   }
 
   const zip = await createZip();
   for (let i = 0; i < indexes.length; i += 1) {
-    progressText.value = `拆分 ${i + 1}/${indexes.length}`;
+    progressText.value = `${isEnglish.value ? "Splitting" : "拆分"} ${i + 1}/${indexes.length}`;
     const output = await PDFDocument.create();
     const [page] = await output.copyPages(source, [indexes[i]]);
     output.addPage(page);
-    zip.file(`${baseName(item.file.name)}-第${indexes[i] + 1}页.pdf`, await output.save());
+    zip.file(`${baseName(item.file.name)}-${isEnglish.value ? `page-${indexes[i] + 1}` : `第${indexes[i] + 1}页`}.pdf`, await output.save());
   }
-  downloadBlob(await zip.generateAsync({ type: "blob" }), `${baseName(item.file.name)}-拆分页.zip`);
-  resultText.value = `已打包 ${indexes.length} 个页面 PDF。`;
+  downloadBlob(await zip.generateAsync({ type: "blob" }), `${baseName(item.file.name)}-${isEnglish.value ? "split-pages" : "拆分页"}.zip`);
+  resultText.value = isEnglish.value ? `Packed ${indexes.length} page PDFs.` : `已打包 ${indexes.length} 个页面 PDF。`;
 }
 
 async function rotatePdf() {
@@ -426,8 +436,8 @@ async function rotatePdf() {
     const current = page.getRotation().angle;
     page.setRotation(degrees((current + Number(rotateAngle.value)) % 360));
   }
-  downloadBytes(await doc.save(), `${baseName(item.file.name)}-旋转.pdf`, "application/pdf");
-  resultText.value = `已旋转 ${indexes.length} 页。`;
+  downloadBytes(await doc.save(), `${baseName(item.file.name)}-${isEnglish.value ? "rotated" : "旋转"}.pdf`, "application/pdf");
+  resultText.value = isEnglish.value ? `Rotated ${indexes.length} pages.` : `已旋转 ${indexes.length} 页。`;
 }
 
 async function compressPdf() {
@@ -436,7 +446,7 @@ async function compressPdf() {
   const source = await loadPdfJs(item.file);
   const output = await PDFDocument.create();
   for (let pageNumber = 1; pageNumber <= source.numPages; pageNumber += 1) {
-    progressText.value = `压缩 ${pageNumber}/${source.numPages}`;
+    progressText.value = `${isEnglish.value ? "Compressing" : "压缩"} ${pageNumber}/${source.numPages}`;
     const page = await source.getPage(pageNumber);
     const naturalViewport = page.getViewport({ scale: 1 });
     const canvas = await renderPdfPage(page, Number(compressScale.value));
@@ -447,8 +457,8 @@ async function compressPdf() {
     page.cleanup();
   }
   await source.destroy();
-  downloadBytes(await output.save(), `${baseName(item.file.name)}-压缩.pdf`, "application/pdf");
-  resultText.value = "已生成压缩 PDF。";
+  downloadBytes(await output.save(), `${baseName(item.file.name)}-${isEnglish.value ? "compressed" : "压缩"}.pdf`, "application/pdf");
+  resultText.value = isEnglish.value ? "Compressed PDF created." : "已生成压缩 PDF。";
 }
 
 async function imagesToPdf() {
@@ -456,11 +466,11 @@ async function imagesToPdf() {
   const output = await PDFDocument.create();
   for (let index = 0; index < imageFiles.value.length; index += 1) {
     const item = imageFiles.value[index];
-    progressText.value = `写入图片 ${index + 1}/${imageFiles.value.length}`;
+    progressText.value = `${isEnglish.value ? "Adding image" : "写入图片"} ${index + 1}/${imageFiles.value.length}`;
     await addImagePage(output, item.file);
   }
-  downloadBytes(await output.save(), "图片合成.pdf", "application/pdf");
-  resultText.value = `已合成 ${imageFiles.value.length} 张图片。`;
+  downloadBytes(await output.save(), isEnglish.value ? "images.pdf" : "图片合成.pdf", "application/pdf");
+  resultText.value = isEnglish.value ? `Combined ${imageFiles.value.length} images.` : `已合成 ${imageFiles.value.length} 张图片。`;
 }
 
 async function pdfToImages() {
@@ -471,16 +481,16 @@ async function pdfToImages() {
   const mime = imageOutputFormat.value === "jpg" ? "image/jpeg" : "image/png";
   const ext = imageOutputFormat.value === "jpg" ? "jpg" : "png";
   for (let i = 0; i < indexes.length; i += 1) {
-    progressText.value = `导出图片 ${i + 1}/${indexes.length}`;
+    progressText.value = `${isEnglish.value ? "Exporting image" : "导出图片"} ${i + 1}/${indexes.length}`;
     const page = await source.getPage(indexes[i] + 1);
     const canvas = await renderPdfPage(page, Number(imageScale.value));
     const blob = await canvasToBlob(canvas, mime, 0.9);
-    zip.file(`${baseName(item.file.name)}-第${indexes[i] + 1}页.${ext}`, blob);
+    zip.file(`${baseName(item.file.name)}-${isEnglish.value ? `page-${indexes[i] + 1}` : `第${indexes[i] + 1}页`}.${ext}`, blob);
     page.cleanup();
   }
   await source.destroy();
-  downloadBlob(await zip.generateAsync({ type: "blob" }), `${baseName(item.file.name)}-图片.zip`);
-  resultText.value = `已导出 ${indexes.length} 张图片。`;
+  downloadBlob(await zip.generateAsync({ type: "blob" }), `${baseName(item.file.name)}-${isEnglish.value ? "images" : "图片"}.zip`);
+  resultText.value = isEnglish.value ? `Exported ${indexes.length} images.` : `已导出 ${indexes.length} 张图片。`;
 }
 
 async function extractText() {
@@ -489,23 +499,23 @@ async function extractText() {
   const indexes = parsePageSelection(pageRange.value, source.numPages);
   const chunks: string[] = [];
   for (let i = 0; i < indexes.length; i += 1) {
-    progressText.value = `提取 ${i + 1}/${indexes.length}`;
+    progressText.value = `${isEnglish.value ? "Extracting" : "提取"} ${i + 1}/${indexes.length}`;
     const page = await source.getPage(indexes[i] + 1);
     const content = await page.getTextContent();
     const text = content.items
       .map((part: unknown) => typeof (part as { str?: unknown }).str === "string" ? (part as { str: string }).str : "")
       .filter(Boolean)
       .join(" ");
-    chunks.push(`--- 第 ${indexes[i] + 1} 页 ---\n${text}`);
+    chunks.push(isEnglish.value ? `--- Page ${indexes[i] + 1} ---\n${text}` : `--- 第 ${indexes[i] + 1} 页 ---\n${text}`);
     page.cleanup();
   }
   await source.destroy();
-  downloadBlob(new Blob([chunks.join("\n\n")], { type: "text/plain;charset=utf-8" }), `${baseName(item.file.name)}-文字.txt`);
-  resultText.value = `已提取 ${indexes.length} 页文字。`;
+  downloadBlob(new Blob([chunks.join("\n\n")], { type: "text/plain;charset=utf-8" }), `${baseName(item.file.name)}-${isEnglish.value ? "text" : "文字"}.txt`);
+  resultText.value = isEnglish.value ? `Extracted text from ${indexes.length} pages.` : `已提取 ${indexes.length} 页文字。`;
 }
 
 function requireActivePdf() {
-  if (!activePdf.value) throw new Error("请先选择一个 PDF");
+  if (!activePdf.value) throw new Error(isEnglish.value ? "Choose a PDF first" : "请先选择一个 PDF");
   return activePdf.value;
 }
 
@@ -541,7 +551,7 @@ async function rasterizeImageFile(file: File) {
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("当前浏览器无法处理图片");
+  if (!context) throw new Error(isEnglish.value ? "This browser cannot process images" : "当前浏览器无法处理图片");
   context.fillStyle = "#fff";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(bitmap, 0, 0);
@@ -577,7 +587,7 @@ async function renderPdfPage(page: Awaited<ReturnType<Awaited<ReturnType<typeof 
   canvas.width = Math.max(1, Math.floor(viewport.width));
   canvas.height = Math.max(1, Math.floor(viewport.height));
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("当前浏览器无法渲染 PDF");
+  if (!context) throw new Error(isEnglish.value ? "This browser cannot render PDFs" : "当前浏览器无法渲染 PDF");
   await page.render({ canvasContext: context, viewport }).promise;
   return canvas;
 }
@@ -593,15 +603,15 @@ function parsePageSelection(input: string, total: number) {
     if (range) {
       const start = Number(range[1]);
       const end = Number(range[2]);
-      if (!validPage(start, total) || !validPage(end, total) || start > end) throw new Error("页码范围不正确");
+      if (!validPage(start, total) || !validPage(end, total) || start > end) throw new Error(isEnglish.value ? "Invalid page range" : "页码范围不正确");
       for (let page = start; page <= end; page += 1) selected.add(page - 1);
       continue;
     }
     const page = Number(token);
-    if (!validPage(page, total)) throw new Error("页码范围不正确");
+    if (!validPage(page, total)) throw new Error(isEnglish.value ? "Invalid page range" : "页码范围不正确");
     selected.add(page - 1);
   }
-  if (!selected.size) throw new Error("页码范围不正确");
+  if (!selected.size) throw new Error(isEnglish.value ? "Invalid page range" : "页码范围不正确");
   return Array.from(selected).sort((a, b) => a - b);
 }
 
@@ -613,7 +623,7 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error("图片导出失败"));
+      else reject(new Error(isEnglish.value ? "Image export failed" : "图片导出失败"));
     }, type, quality);
   });
 }

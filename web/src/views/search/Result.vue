@@ -1,28 +1,28 @@
 <template>
   <div class="search-page" v-loading="loading">
     <div class="head">
-      <h2>搜索 "{{ q }}"</h2>
+      <h2>{{ isEnglish ? `Search “${q}”` : `搜索 “${q}”` }}</h2>
       <div class="counts" v-if="result">
-        共找到 {{ result.marketItems.length + result.wantedPosts.length + result.topics.length + result.services.length }} 条结果
+        {{ isEnglish ? "Found" : "共找到" }} {{ result.marketItems.length + result.wantedPosts.length + result.topics.length + result.services.length }} {{ isEnglish ? "results" : "条结果" }}
       </div>
     </div>
 
-    <div v-if="!q" class="cpu-card empty"><el-empty description="请输入搜索关键词" /></div>
+    <div v-if="!q" class="cpu-card empty"><el-empty :description="isEnglish ? 'Enter a search term' : '请输入搜索关键词'" /></div>
     <div v-else-if="error && !loading" class="cpu-card empty">
       <el-empty :description="error">
-        <el-button type="primary" @click="reload">重试</el-button>
+        <el-button type="primary" @click="reload">{{ isEnglish ? "Try again" : "重试" }}</el-button>
       </el-empty>
     </div>
 
     <template v-else-if="result">
       <section v-if="result.marketItems.length" class="cpu-card">
-        <h3 class="title">🛍️ 在售商品（{{ result.marketItems.length }}）</h3>
+        <h3 class="title">🛍️ {{ isEnglish ? "Items for sale" : "在售商品" }}（{{ result.marketItems.length }}）</h3>
         <div class="market-results">
           <router-link v-for="item in result.marketItems" :key="item.id" :to="`/market/item/${item.id}`" class="market-result" @click="recordClick(item.promotions.pinned?.orderId)">
-            <span class="market-cover"><img v-if="item.cover" :src="item.cover" :alt="item.title" /><b v-else>物</b></span>
+            <span class="market-cover"><img v-if="item.cover" :src="item.cover" :alt="item.title" /><b v-else>{{ isEnglish ? "I" : "物" }}</b></span>
             <span class="market-result-copy">
-              <span><PromotionLabel v-if="item.promotions.pinned" label="置顶" kind="pin" /><b>{{ item.title }}</b></span>
-              <small>{{ item.campus || '校内交易' }}<i v-if="item.negotiable">可议</i></small>
+              <span><PromotionLabel v-if="item.promotions.pinned" :label="isEnglish ? 'Pinned' : '置顶'" kind="pin" /><b>{{ item.title }}</b></span>
+              <small>{{ item.campus || (isEnglish ? 'On-campus trade' : '校内交易') }}<i v-if="item.negotiable">{{ isEnglish ? "Negotiable" : "可议" }}</i></small>
             </span>
             <strong>¥{{ item.price }}</strong>
           </router-link>
@@ -30,23 +30,23 @@
       </section>
 
       <section v-if="result.wantedPosts.length" class="cpu-card">
-        <h3 class="title">🔎 校园求购（{{ result.wantedPosts.length }}）</h3>
+        <h3 class="title">🔎 {{ isEnglish ? "Campus wanted" : "校园求购" }}（{{ result.wantedPosts.length }}）</h3>
         <div class="market-results">
           <router-link v-for="post in result.wantedPosts" :key="post.id" :to="`/market/wanted/${post.id}`" class="market-result wanted-result" @click="recordClick(post.promotion.urgent?.orderId)">
-            <span class="market-cover"><b>求</b></span>
-            <span class="market-result-copy"><span><PromotionLabel v-if="post.promotion.urgent" label="加急" kind="urgent" /><em>求购</em><b>{{ post.title }}</b></span><small>{{ post.campus || '校内面交' }} · {{ post.responseCount }} 个响应</small></span>
+            <span class="market-cover"><b>{{ isEnglish ? "W" : "求" }}</b></span>
+            <span class="market-result-copy"><span><PromotionLabel v-if="post.promotion.urgent" :label="isEnglish ? 'Boosted' : '加急'" kind="urgent" /><em>{{ isEnglish ? "Wanted" : "求购" }}</em><b>{{ post.title }}</b></span><small>{{ post.campus || (isEnglish ? 'On-campus handoff' : '校内面交') }} · {{ post.responseCount }} {{ isEnglish ? "responses" : "个响应" }}</small></span>
             <strong>¥{{ post.budgetMin }}–{{ post.budgetMax }}</strong>
           </router-link>
         </div>
       </section>
 
       <section v-if="result.topics.length" class="cpu-card">
-        <h3 class="title">💬 帖子（{{ result.topics.length }}）</h3>
+        <h3 class="title">💬 {{ isEnglish ? "Posts" : "帖子" }}（{{ result.topics.length }}）</h3>
         <TopicListItem v-for="t in result.topics" :key="t.id" :topic="t" />
       </section>
 
       <section v-if="result.services.length" class="cpu-card">
-        <h3 class="title">🧭 服务（{{ result.services.length }}）</h3>
+        <h3 class="title">🧭 {{ isEnglish ? "Services" : "服务" }}（{{ result.services.length }}）</h3>
         <div
           v-for="s in result.services"
           :key="s.id"
@@ -67,7 +67,7 @@
       </section>
 
       <div v-if="!hasResult" class="cpu-card empty">
-        <el-empty description="什么也没找到。换个关键词试试？" />
+        <el-empty :description="isEnglish ? 'Nothing found. Try a different search term.' : '什么也没找到。换个关键词试试？'" />
       </div>
     </template>
   </div>
@@ -82,9 +82,11 @@ import TopicListItem from "@/components/forum/TopicListItem.vue";
 import PromotionLabel from "@/components/market/PromotionLabel.vue";
 import { marketApi } from "@/api/market";
 import { searchApi, type SearchResult } from "@/api/search";
+import { useLocale } from "@/i18n";
 
 const route = useRoute();
 const router = useRouter();
+const { isEnglish } = useLocale();
 const q = ref((route.query.q as string) ?? "");
 const result = ref<SearchResult | null>(null);
 const loading = ref(false);
@@ -134,9 +136,9 @@ async function reload() {
 function normalizeSearchError(searchError: unknown) {
   const status = (searchError as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status && status < 500) {
-    return (searchError as { response?: { data?: { message?: string } } })?.response?.data?.message || "搜索失败";
+    return (searchError as { response?: { data?: { message?: string } } })?.response?.data?.message || (isEnglish.value ? "Search failed" : "搜索失败");
   }
-  return "搜索失败，请稍后再试";
+  return isEnglish.value ? "Search failed. Please try again later." : "搜索失败，请稍后再试";
 }
 
 function recordClick(orderId?: number) {
@@ -146,7 +148,7 @@ function recordClick(orderId?: number) {
 function open(s: any) {
   const url = typeof s?.url === "string" ? s.url.trim() : "";
   if (!url) {
-    ElMessage.warning("该服务暂未配置链接");
+    ElMessage.warning(isEnglish.value ? "This service has no configured link" : "该服务暂未配置链接");
     return;
   }
   if (url.startsWith("/")) {
@@ -161,7 +163,7 @@ function open(s: any) {
     window.open(url, "_blank", "noopener,noreferrer");
     return;
   }
-  ElMessage.warning("该服务链接格式暂不支持");
+  ElMessage.warning(isEnglish.value ? "This service link format is not supported" : "该服务链接格式暂不支持");
 }
 
 </script>

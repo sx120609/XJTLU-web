@@ -7,46 +7,46 @@
           <h2 class="head-name">{{ boardDisplayName }}</h2>
           <p class="head-desc">{{ boardDisplayDescription }}</p>
           <div class="head-meta">
-            <span>{{ board.topicCount }} 帖</span>
-            <span v-if="board.anonymousEnabled" class="anon-tag">支持匿名</span>
-            <span v-if="board.readOnly" class="ro-tag">{{ board.slug === 'campus-wall' ? '逛逛镜像' : '公告板' }}</span>
-            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" rel="noopener noreferrer" class="ro-link">查看来源 →</a>
+            <span>{{ board.topicCount }} {{ isEnglish ? "posts" : "帖" }}</span>
+            <span v-if="board.anonymousEnabled" class="anon-tag">{{ isEnglish ? "Anonymous posts supported" : "支持匿名" }}</span>
+            <span v-if="board.readOnly" class="ro-tag">{{ board.slug === 'campus-wall' ? (isEnglish ? 'External feed mirror' : '逛逛镜像') : (isEnglish ? 'Notice board' : '公告板') }}</span>
+            <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" rel="noopener noreferrer" class="ro-link">{{ isEnglish ? "View source" : "查看来源" }} →</a>
           </div>
         </div>
       </div>
       <div class="head-right">
         <el-radio-group v-model="sort" size="default" @change="onSortChange">
-          <el-radio-button value="new">最新</el-radio-button>
-          <el-radio-button value="hot">最热</el-radio-button>
+          <el-radio-button value="new">{{ isEnglish ? "Newest" : "最新" }}</el-radio-button>
+          <el-radio-button value="hot">{{ isEnglish ? "Popular" : "最热" }}</el-radio-button>
         </el-radio-group>
         <el-button v-if="canPost" type="primary" @click="goPost">
-          <el-icon><Edit /></el-icon> {{ board?.slug === 'wanted-demand' ? '发布需求' : '发帖' }}
+          <el-icon><Edit /></el-icon> {{ board?.slug === 'wanted-demand' ? (isEnglish ? 'Post request' : '发布需求') : (isEnglish ? 'Create post' : '发帖') }}
         </el-button>
       </div>
     </div>
 
     <div v-if="error && !loading" class="topic-list cpu-card board-error">
       <el-empty :description="error">
-        <el-button type="primary" @click="reload()">重试</el-button>
+        <el-button type="primary" @click="reload()">{{ isEnglish ? "Try again" : "重试" }}</el-button>
       </el-empty>
     </div>
 
     <template v-else>
       <div v-if="orderedPinnedList.length" class="topic-list cpu-card pinned-list">
         <div class="section-head">
-          <h3>置顶帖</h3>
-          <span>{{ orderedPinnedList.length }} 条</span>
+          <h3>{{ isEnglish ? "Pinned posts" : "置顶帖" }}</h3>
+          <span>{{ orderedPinnedList.length }} {{ isEnglish ? "posts" : "条" }}</span>
         </div>
         <TopicListItem v-for="t in orderedPinnedList" :key="`pin-${t.id}`" :topic="t" />
       </div>
 
       <div class="topic-list cpu-card" v-loading="loading">
         <div class="section-head">
-          <h3>{{ sort === "hot" ? "按热度查看" : "按时间查看" }}</h3>
-          <span>{{ total }} 条</span>
+          <h3>{{ sort === "hot" ? (isEnglish ? "By popularity" : "按热度查看") : (isEnglish ? "By time" : "按时间查看") }}</h3>
+          <span>{{ total }} {{ isEnglish ? "posts" : "条" }}</span>
         </div>
         <TopicListItem v-for="t in list" :key="t.id" :topic="t" />
-        <el-empty v-if="!loading && !list.length" description="还没有帖子" />
+        <el-empty v-if="!loading && !list.length" :description="isEnglish ? 'No posts yet' : '还没有帖子'" />
         <el-pagination
           v-if="total > size"
           :current-page="page"
@@ -70,6 +70,7 @@ import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
+import { useLocale } from "@/i18n";
 
 type BoardRestoreState = {
   scrollY: number;
@@ -81,6 +82,7 @@ type BoardRestoreState = {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { isEnglish } = useLocale();
 
 const board = ref<Board | null>(null);
 const pinnedList = ref<any[]>([]);
@@ -95,10 +97,10 @@ let pendingRestoreState: BoardRestoreState | null = null;
 let loadSeq = 0;
 
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
-const boardDisplayName = computed(() => board.value?.slug === "campus-wall" ? "逛逛" : (board.value?.name || ""));
+const boardDisplayName = computed(() => board.value?.slug === "campus-wall" ? (isEnglish.value ? "Campus Feed" : "逛逛") : (board.value?.name || ""));
 const boardDisplayDescription = computed(() => (
   board.value?.slug === "campus-wall"
-    ? "从外部逛逛同步的只读镜像，自动刷新帖子与评论。"
+    ? (isEnglish.value ? "A read-only external feed mirror that refreshes posts and comments automatically." : "从外部逛逛同步的只读镜像，自动刷新帖子与评论。")
     : (board.value?.description || "")
 ));
 const fallbackBoardIcon = computed(() => {
@@ -162,11 +164,11 @@ async function reload(options: { scrollToTop?: boolean } = {}) {
 
 function normalizeBoardError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
-  if (status === 404) return "板块不存在或已关闭";
+  if (status === 404) return isEnglish.value ? "This channel does not exist or is closed" : "板块不存在或已关闭";
   if (status && status < 500) {
-    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "板块内容加载失败";
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || (isEnglish.value ? "Could not load channel content" : "板块内容加载失败");
   }
-  return "板块内容加载失败，请稍后再试";
+  return isEnglish.value ? "Could not load channel content. Please try again later." : "板块内容加载失败，请稍后再试";
 }
 
 function onPage(p: number) {

@@ -1,57 +1,57 @@
 <template>
   <div class="support-page">
     <header class="support-head">
-      <div><span>CONTENT SUPPORT</span><h1>资料问题反馈</h1><p>反馈与领取记录和资料版本绑定，便于资料发布者或平台定位问题。</p></div>
-      <div><el-button @click="router.push({ name: 'market-learning-material-library' })">我的资料库</el-button><el-button @click="load">刷新</el-button></div>
+      <div><span>CONTENT SUPPORT</span><h1>{{ isEnglish ? "Material Support" : "资料问题反馈" }}</h1><p>{{ isEnglish ? "Feedback is linked to the purchase and material version so the creator or platform can diagnose issues." : "反馈与领取记录和资料版本绑定，便于资料发布者或平台定位问题。" }}</p></div>
+      <div><el-button @click="router.push({ name: 'market-learning-material-library' })">{{ isEnglish ? "My Library" : "我的资料库" }}</el-button><el-button @click="load">{{ isEnglish ? "Refresh" : "刷新" }}</el-button></div>
     </header>
 
-    <el-alert type="info" show-icon :closable="false" title="资料交付后可在这里反馈文件、内容、版本或版权问题；请勿填写手机号、微信、QQ 或其他私下联系方式。" />
+    <el-alert type="info" show-icon :closable="false" :title="isEnglish ? 'After delivery, report file, content, version, or copyright issues here. Do not include phone numbers or off-platform contact details.' : '资料交付后可在这里反馈文件、内容、版本或版权问题；请勿填写手机号、微信、QQ 或其他私下联系方式。'" />
 
     <div class="support-layout" v-loading="loading">
       <aside class="ticket-list cpu-card">
-        <div class="aside-title"><b>反馈记录</b><span>{{ tickets.length }}</span></div>
+        <div class="aside-title"><b>{{ isEnglish ? "Support records" : "反馈记录" }}</b><span>{{ tickets.length }}</span></div>
         <button v-for="ticket in tickets" :key="ticket.id" type="button" :class="{ active: selected?.id === ticket.id }" @click="selectTicket(ticket.id)">
-          <div><strong>{{ ticket.order?.item?.title || `领取记录 #${ticket.orderId}` }}</strong><em :class="`status-${ticket.status}`">{{ statusLabel(ticket.status) }}</em></div>
+          <div><strong>{{ ticket.order?.item?.title || `${isEnglish ? "Purchase" : "领取记录"} #${ticket.orderId}` }}</strong><em :class="`status-${ticket.status}`">{{ statusLabel(ticket.status) }}</em></div>
           <span>{{ categoryLabel(ticket.category) }} · {{ formatTime(ticket.updatedAt) }}</span>
         </button>
-        <el-empty v-if="!tickets.length" :image-size="70" description="暂无资料反馈" />
+        <el-empty v-if="!tickets.length" :image-size="70" :description="isEnglish ? 'No material support records' : '暂无资料反馈'" />
       </aside>
 
       <main class="support-main cpu-card">
         <section v-if="showCreate" class="create-ticket">
-          <span>NEW CONTENT FEEDBACK</span><h2>发起资料反馈</h2>
-          <p>领取记录 #{{ orderId }}。请只描述与该资料相关的问题，不要填写手机号、微信、QQ 或外链。</p>
+          <span>NEW CONTENT FEEDBACK</span><h2>{{ isEnglish ? "Open material support request" : "发起资料反馈" }}</h2>
+          <p>{{ isEnglish ? "Purchase" : "领取记录" }} #{{ orderId }}。{{ isEnglish ? "Describe only issues related to this material. Do not include phone numbers, contact handles, or external links." : "请只描述与该资料相关的问题，不要填写手机号、微信、QQ 或外链。" }}</p>
           <el-form label-position="top">
-            <el-form-item label="问题类型" required><el-select v-model="createForm.category" placeholder="选择问题类型"><el-option v-for="option in meta.supportCategories" :key="option.value" :label="option.label" :value="option.value"><span>{{ option.label }}</span></el-option></el-select></el-form-item>
-            <el-form-item label="问题描述" required><el-input v-model="createForm.message" type="textarea" :rows="7" maxlength="2000" show-word-limit placeholder="说明无法下载、文件缺失、内容与描述不符等具体情况" /></el-form-item>
-            <el-button type="primary" :loading="submitting" @click="createTicket">提交反馈</el-button>
+            <el-form-item :label="isEnglish ? 'Issue type' : '问题类型'" required><el-select v-model="createForm.category" :placeholder="isEnglish ? 'Select issue type' : '选择问题类型'"><el-option v-for="option in meta.supportCategories" :key="option.value" :label="categoryLabel(option.value)" :value="option.value"><span>{{ categoryLabel(option.value) }}</span></el-option></el-select></el-form-item>
+            <el-form-item :label="isEnglish ? 'Issue description' : '问题描述'" required><el-input v-model="createForm.message" type="textarea" :rows="7" maxlength="2000" show-word-limit :placeholder="isEnglish ? 'Describe download failures, missing files, mismatched content, or other specifics' : '说明无法下载、文件缺失、内容与描述不符等具体情况'" /></el-form-item>
+            <el-button type="primary" :loading="submitting" @click="createTicket">{{ isEnglish ? "Submit feedback" : "提交反馈" }}</el-button>
           </el-form>
         </section>
 
         <section v-else-if="selected" class="ticket-detail">
           <header>
-            <div><span>{{ categoryLabel(selected.category) }}</span><h2>{{ selected.order?.item?.title || `领取记录 #${selected.orderId}` }}</h2><p>领取编号 {{ selected.order?.outTradeNo }} · {{ participantLabel }}</p></div>
+            <div><span>{{ categoryLabel(selected.category) }}</span><h2>{{ selected.order?.item?.title || `${isEnglish ? "Purchase" : "领取记录"} #${selected.orderId}` }}</h2><p>{{ isEnglish ? "Reference" : "领取编号" }} {{ selected.order?.outTradeNo }} · {{ participantLabel }}</p></div>
             <el-tag effect="plain" :type="statusType(selected.status)">{{ statusLabel(selected.status) }}</el-tag>
           </header>
-          <div class="ticket-facts"><span>反馈单 #{{ selected.id }}</span><span>创建于 {{ formatTime(selected.createdAt) }}</span><span v-if="selected.responseDueAt">资料发布者应于 {{ formatTime(selected.responseDueAt) }} 前回复</span></div>
+          <div class="ticket-facts"><span>{{ isEnglish ? "Ticket" : "反馈单" }} #{{ selected.id }}</span><span>{{ isEnglish ? "Created" : "创建于" }} {{ formatTime(selected.createdAt) }}</span><span v-if="selected.responseDueAt">{{ isEnglish ? `Creator response due by ${formatTime(selected.responseDueAt)}` : `资料发布者应于 ${formatTime(selected.responseDueAt)} 前回复` }}</span></div>
           <div class="message-list">
             <article v-for="message in selected.messages || []" :key="message.id" :class="{ mine: message.senderId === auth.user?.id, system: message.kind === 'system' }">
               <template v-if="message.kind === 'system'"><span>{{ message.content }}</span></template>
-              <template v-else><header><b>{{ message.sender?.nickname || message.sender?.username || '平台用户' }}</b><time>{{ formatTime(message.createdAt) }}</time></header><p>{{ message.content }}</p></template>
+              <template v-else><header><b>{{ message.sender?.nickname || message.sender?.username || (isEnglish ? 'Platform user' : '平台用户') }}</b><time>{{ formatTime(message.createdAt) }}</time></header><p>{{ message.content }}</p></template>
             </article>
           </div>
           <div v-if="selected.status !== 'closed'" class="composer">
-            <el-input v-model="message" type="textarea" :rows="4" maxlength="2000" show-word-limit placeholder="继续说明问题或回复处理方案（禁止发送联系方式和外链）" />
-            <div><span>所有消息都会作为问题定位与处理依据。</span><el-button type="primary" :loading="submitting" @click="sendMessage">发送回复</el-button></div>
+            <el-input v-model="message" type="textarea" :rows="4" maxlength="2000" show-word-limit :placeholder="isEnglish ? 'Add details or reply with a resolution (no contact details or external links)' : '继续说明问题或回复处理方案（禁止发送联系方式和外链）'" />
+            <div><span>{{ isEnglish ? "All messages become part of the issue-resolution record." : "所有消息都会作为问题定位与处理依据。" }}</span><el-button type="primary" :loading="submitting" @click="sendMessage">{{ isEnglish ? "Send reply" : "发送回复" }}</el-button></div>
           </div>
           <footer class="ticket-actions">
-            <el-button v-if="selected.status === 'resolved' && isBuyer" @click="updateTicket('reopen')">问题仍未解决</el-button>
-            <el-button v-if="selected.status !== 'resolved'" type="success" plain @click="updateTicket('resolve')">{{ isBuyer || isStaff ? '确认问题已解决' : '提交处理结果' }}</el-button>
-            <el-button v-if="isBuyer && !['resolved','escalated','closed'].includes(selected.status)" type="danger" plain @click="updateTicket('escalate')">申请平台介入</el-button>
+            <el-button v-if="selected.status === 'resolved' && isBuyer" @click="updateTicket('reopen')">{{ isEnglish ? "Issue remains unresolved" : "问题仍未解决" }}</el-button>
+            <el-button v-if="selected.status !== 'resolved'" type="success" plain @click="updateTicket('resolve')">{{ isBuyer || isStaff ? (isEnglish ? 'Confirm resolved' : '确认问题已解决') : (isEnglish ? 'Submit resolution' : '提交处理结果') }}</el-button>
+            <el-button v-if="isBuyer && !['resolved','escalated','closed'].includes(selected.status)" type="danger" plain @click="updateTicket('escalate')">{{ isEnglish ? "Request platform review" : "申请平台介入" }}</el-button>
           </footer>
         </section>
 
-        <el-empty v-else :description="sellerEntry ? '领取同学尚未就该资料发起反馈' : '从左侧选择反馈记录，或从资料库发起反馈'" />
+        <el-empty v-else :description="sellerEntry ? (isEnglish ? 'No buyer has opened feedback for this material' : '领取同学尚未就该资料发起反馈') : (isEnglish ? 'Select a record on the left, or open feedback from My Library' : '从左侧选择反馈记录，或从资料库发起反馈')" />
       </main>
     </div>
   </div>
@@ -63,10 +63,12 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { learningMaterialsApi, type LearningMaterialMeta, type LearningMaterialSupportTicket } from "@/api/learningMaterials";
 import { useAuthStore } from "@/stores/auth";
+import { useLocale } from "@/i18n";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { isEnglish, locale } = useLocale();
 const loading = ref(false);
 const submitting = ref(false);
 const tickets = ref<LearningMaterialSupportTicket[]>([]);
@@ -78,7 +80,7 @@ const sellerEntry = computed(() => route.query.side === "seller");
 const showCreate = computed(() => Boolean(orderId.value) && !sellerEntry.value && !tickets.value.some((ticket) => ticket.orderId === orderId.value));
 const isBuyer = computed(() => selected.value?.buyerId === auth.user?.id);
 const isStaff = computed(() => ["admin", "mod"].includes(auth.user?.role || ""));
-const participantLabel = computed(() => isBuyer.value ? `资料发布者：${selected.value?.seller?.nickname || selected.value?.seller?.username || "—"}` : `领取同学：${selected.value?.buyer?.nickname || selected.value?.buyer?.username || "—"}`);
+const participantLabel = computed(() => isBuyer.value ? `${isEnglish.value ? "Creator" : "资料发布者"}：${selected.value?.seller?.nickname || selected.value?.seller?.username || "—"}` : `${isEnglish.value ? "Buyer" : "领取同学"}：${selected.value?.buyer?.nickname || selected.value?.buyer?.username || "—"}`);
 const meta = reactive<LearningMaterialMeta>({ category: { id: 0, slug: "digital_goods", name: "电子资料", icon: "📚", description: "", fulfillmentType: "digital", imageRequired: false, enabled: true, sort: 0, itemCount: 0 }, semesters: [], formats: [], languages: [], originalityOptions: [], supportCategories: [], types: [], legacyIncompleteCount: 0 });
 const createForm = reactive({ category: "", message: "" });
 
@@ -95,7 +97,7 @@ async function load() {
     if (wanted) await selectTicket(wanted, false);
     else selected.value = null;
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : "资料反馈加载失败");
+    ElMessage.error(error instanceof Error ? error.message : (isEnglish.value ? "Failed to load material support" : "资料反馈加载失败"));
   } finally { loading.value = false; }
 }
 
@@ -106,19 +108,19 @@ async function selectTicket(id: number, updateRoute = true) {
 
 async function createTicket() {
   if (!orderId.value) return;
-  if (!createForm.category || createForm.message.trim().length < 2) return ElMessage.warning("请选择问题类型并完整描述问题");
+  if (!createForm.category || createForm.message.trim().length < 2) return ElMessage.warning(isEnglish.value ? "Select an issue type and describe the issue" : "请选择问题类型并完整描述问题");
   submitting.value = true;
   try {
     const ticket = await learningMaterialsApi.createSupport(orderId.value, { category: createForm.category, message: createForm.message.trim() });
     createForm.message = "";
-    ElMessage.success("资料反馈已创建，平台已通知资料发布者");
+    ElMessage.success(isEnglish.value ? "Support request created and the creator has been notified" : "资料反馈已创建，平台已通知资料发布者");
     await router.replace({ name: "market-learning-material-support", query: { ticket: String(ticket.id) } });
     await load();
   } finally { submitting.value = false; }
 }
 
 async function sendMessage() {
-  if (!selected.value || !message.value.trim()) return ElMessage.warning("请填写回复内容");
+  if (!selected.value || !message.value.trim()) return ElMessage.warning(isEnglish.value ? "Enter a reply" : "请填写回复内容");
   submitting.value = true;
   try {
     await learningMaterialsApi.sendSupportMessage(selected.value.id, message.value.trim());
@@ -128,18 +130,18 @@ async function sendMessage() {
 }
 
 async function updateTicket(action: "resolve" | "reopen" | "escalate") {
-  const copy = action === "escalate" ? "平台介入后，管理员将根据领取记录、资料版本与沟通记录核查处理。" : action === "resolve" ? "确认该问题已经解决？" : "确认重新开启资料反馈？";
-  await ElMessageBox.confirm(copy, action === "escalate" ? "申请平台介入" : "确认操作", { type: action === "escalate" ? "warning" : "info" });
+  const copy = action === "escalate" ? (isEnglish.value ? "Administrators will review the purchase, material version, and conversation." : "平台介入后，管理员将根据领取记录、资料版本与沟通记录核查处理。") : action === "resolve" ? (isEnglish.value ? "Confirm that this issue is resolved?" : "确认该问题已经解决？") : (isEnglish.value ? "Reopen this support request?" : "确认重新开启资料反馈？");
+  await ElMessageBox.confirm(copy, action === "escalate" ? (isEnglish.value ? "Request platform review" : "申请平台介入") : (isEnglish.value ? "Confirm action" : "确认操作"), { type: action === "escalate" ? "warning" : "info" });
   if (!selected.value) return;
   selected.value = await learningMaterialsApi.updateSupport(selected.value.id, action);
   await load();
-  ElMessage.success("反馈状态已更新");
+  ElMessage.success(isEnglish.value ? "Support status updated" : "反馈状态已更新");
 }
 
-function categoryLabel(value: string) { return meta.supportCategories.find((option) => option.value === value)?.label || value; }
-function statusLabel(value: string) { return ({ waiting_seller: "等待资料发布者", waiting_buyer: "等待领取者", escalated: "平台介入", resolved: "已解决", closed: "已关闭" } as Record<string, string>)[value] || value; }
+function categoryLabel(value: string) { const label=meta.supportCategories.find((option) => option.value === value)?.label || value;if(!isEnglish.value)return label;return ({usage:"Usage / download",content:"Content",version:"Version",copyright:"Copyright",file:"File issue",other:"Other"} as Record<string,string>)[value]||label; }
+function statusLabel(value: string) { const labels=isEnglish.value?{waiting_seller:"Waiting for creator",waiting_buyer:"Waiting for buyer",escalated:"Platform review",resolved:"Resolved",closed:"Closed"}:{ waiting_seller: "等待资料发布者", waiting_buyer: "等待领取者", escalated: "平台介入", resolved: "已解决", closed: "已关闭" };return (labels as Record<string,string>)[value]||value; }
 function statusType(value: string) { if (value === "resolved") return "success"; if (value === "escalated") return "danger"; if (value === "waiting_seller") return "warning"; return "info"; }
-function formatTime(value?: string | null) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
+function formatTime(value?: string | null) { return value ? new Date(value).toLocaleString(locale.value, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
 </script>
 
 <style scoped>

@@ -19,8 +19,18 @@ import {
   writeAcademicIdentity,
   type AcademicIdentity,
 } from "@/utils/academicIdentity";
+import { applyAccountLocale, getActiveLocale } from "@/i18n";
 
 const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
+
+function authText(chinese: string, english: string) {
+  return getActiveLocale() === "en-US" ? english : chinese;
+}
+
+function ssoErrorText(value: string | null | undefined, englishFallback: string) {
+  if (getActiveLocale() === "zh-CN") return value || "登录失败";
+  return value && !/[\u3400-\u9fff]/u.test(value) ? value : englishFallback;
+}
 
 function dataAuthKey(username: string) {
   return `${DATA_AUTH_KEY_PREFIX}:${username}`;
@@ -132,6 +142,7 @@ export const useAuthStore = defineStore("auth", {
     },
 
     syncDataAuthAgreement(user?: UserInfo | null) {
+      if (user?.preferredLocale) applyAccountLocale(user.preferredLocale);
       if (user && user.studentSso) {
         this.dataAuthAgreed = Boolean(user.dataAuthAgreedAt) || readDataAuthAgreement(user.username);
       } else {
@@ -195,7 +206,7 @@ export const useAuthStore = defineStore("auth", {
           await this.ssoBegin();
           this.ssoLoading = true;
           if (this.ssoNeedCaptcha && !verificationToken) {
-            this.ssoError = "登录会话已刷新，请输入验证码";
+            this.ssoError = authText("登录会话已刷新，请输入验证码", "The sign-in session was refreshed. Enter the verification code.");
             return false;
           }
         }
@@ -209,7 +220,7 @@ export const useAuthStore = defineStore("auth", {
           remember,
         });
         if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
-          this.ssoError = r.error || "登录失败";
+          this.ssoError = ssoErrorText(r.error, "XJTLU authentication could not be completed. Review your details and try again.");
           if (r.needVerification && r.verification) {
             this.applySsoVerification(r.verification);
             this.ssoError = "";
@@ -291,7 +302,7 @@ export const useAuthStore = defineStore("auth", {
           this.ssoVerificationToken = result.verificationToken;
           return true;
         }
-        this.ssoError = result.error || "滑块验证失败，请重试";
+        this.ssoError = ssoErrorText(result.error, "Slider verification failed. Please try again.");
         if (result.verification) this.applySsoVerification(result.verification);
         return false;
       } finally {
@@ -300,12 +311,12 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async sendSsoMfaCode(method: "email" | "sms") {
-      if (!this.ssoMfa) return { ok: false as const, error: "二次认证会话不存在" };
+      if (!this.ssoMfa) return { ok: false as const, error: authText("二次认证会话不存在", "The two-step verification session is unavailable.") };
       this.ssoLoading = true;
       this.ssoError = "";
       try {
         const result = await authApi.ssoMfaSend({ pendingId: this.ssoMfa.pendingId, method });
-        if (!result.ok) this.ssoError = result.error || "验证码发送失败";
+        if (!result.ok) this.ssoError = ssoErrorText(result.error, "Could not send the verification code.");
         return result;
       } finally {
         this.ssoLoading = false;
@@ -336,7 +347,7 @@ export const useAuthStore = defineStore("auth", {
           remember,
         });
         if (!result.ok || (!result.sessionAuthenticated && !result.siteToken) || !result.user) {
-          this.ssoError = result.error || "二次认证失败";
+          this.ssoError = ssoErrorText(result.error, "Two-step verification failed.");
           if (result.needMfa && result.mfa) this.applySsoMfa(result.mfa);
           if (result.needVerification && result.verification) this.applySsoVerification(result.verification);
           return false;
@@ -397,6 +408,7 @@ export const useAuthStore = defineStore("auth", {
     async updateProfile(patch: Partial<UserInfo>) {
       const u = await authApi.updateMe(patch);
       this.user = u;
+      if (u.preferredLocale) applyAccountLocale(u.preferredLocale);
       return u;
     },
 

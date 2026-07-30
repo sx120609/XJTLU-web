@@ -111,6 +111,7 @@ test("simplified V1 completes direct trades, free anonymity, reserved point prom
       method,
       signal: AbortSignal.timeout(20_000),
       headers: {
+        "Accept-Language": "zh-CN",
         ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         ...(payload === undefined ? {} : { "Content-Type": "application/json" }),
       },

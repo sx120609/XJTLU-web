@@ -9,7 +9,7 @@
     }"
     :style="layoutStyle"
   >
-    <a v-if="!hideChrome && !useNativeShell" class="skip-link" href="#main-content">跳到主要内容</a>
+    <a v-if="!hideChrome && !useNativeShell" class="skip-link" href="#main-content">{{ t("nav.skip") }}</a>
     <!-- 顶栏 -->
     <header v-if="!hideChrome && !useNativeShell" class="topbar">
       <div class="topbar-inner">
@@ -17,7 +17,7 @@
           <span class="brand-logo"><img :src="site.siteLogoUrl || '/brand/kaopu-mark.svg'" alt="靠浦" /></span>
           <span class="brand-text">
             <span class="brand-name">{{ site.siteName }}</span>
-            <span class="brand-sub">{{ site.siteSubtitle }}</span>
+            <span class="brand-sub">{{ isEnglish ? "Reimagine campus life" : site.siteSubtitle }}</span>
           </span>
         </router-link>
 
@@ -32,7 +32,7 @@
           </el-input>
         </div>
 
-        <nav class="top-nav" aria-label="主导航">
+        <nav class="top-nav" :aria-label="t('nav.primary')">
           <router-link
             v-for="item in desktopPrimaryNavItems"
             :key="item.to"
@@ -44,8 +44,19 @@
         </nav>
 
         <div class="top-right">
+          <el-dropdown trigger="click" @command="setLanguage">
+            <button type="button" class="locale-switch-btn" :aria-label="t('common.language')">
+              {{ isEnglish ? "EN" : "中" }}
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="en-US" :class="{ 'is-current-appearance': isEnglish }">English</el-dropdown-item>
+                <el-dropdown-item command="zh-CN" :class="{ 'is-current-appearance': isChinese }">中文</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-dropdown trigger="click" @command="setAppearanceMode">
-            <button type="button" class="appearance-cycle-btn" :aria-label="`外观：${appearance.modeLabel}`">
+            <button type="button" class="appearance-cycle-btn" :aria-label="t('common.appearance')">
               <el-icon size="20"><component :is="appearanceIcon" /></el-icon>
             </button>
             <template #dropdown>
@@ -63,12 +74,12 @@
             </template>
           </el-dropdown>
           <template v-if="auth.isLoggedIn">
-            <el-tooltip content="刷新页面">
+            <el-tooltip :content="t('common.refresh')">
               <el-button text @click="reloadPage">
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-tooltip content="消息">
+            <el-tooltip :content="t('common.messages')">
               <el-button text @click="$router.push('/messages')">
                 <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
                   <el-icon size="20"><Bell /></el-icon>
@@ -77,35 +88,35 @@
             </el-tooltip>
             <el-dropdown @command="onUserCmd">
               <span class="user-info">
-                <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
+                <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" :alt="t('nav.account')" />
                 <span class="user-name">{{ auth.user?.nickname }}</span>
                 <el-icon><ArrowDown /></el-icon>
               </span>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                  <el-dropdown-item v-if="auth.isMod" command="admin" divided>🛠 管理后台</el-dropdown-item>
-                  <el-dropdown-item command="logout" :divided="!auth.isMod">退出登录</el-dropdown-item>
+                  <el-dropdown-item command="profile">{{ t("common.profile") }}</el-dropdown-item>
+                  <el-dropdown-item v-if="auth.isMod" command="admin" divided>🛠 {{ t("common.admin") }}</el-dropdown-item>
+                  <el-dropdown-item command="logout" :divided="!auth.isMod">{{ t("common.logout") }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </template>
           <template v-else>
-            <el-button text @click="goAuth('login')">登录</el-button>
+            <el-button text @click="goAuth('login')">{{ t("common.login") }}</el-button>
           </template>
         </div>
 
         <div class="mobile-actions">
-          <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
+          <el-button text class="touch-icon-btn" :aria-label="t('common.refresh')" @click="reloadPage">
             <el-icon><Refresh /></el-icon>
           </el-button>
-          <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
+          <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" :aria-label="t('common.messages')" @click="$router.push('/messages')">
             <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
               <el-icon><Bell /></el-icon>
             </el-badge>
           </el-button>
-          <el-button v-else text class="mobile-login-btn" @click="goAuth('login')">登录</el-button>
-          <el-button text class="touch-icon-btn" aria-label="更多" @click="mobileMenuOpen = true">
+          <el-button v-else text class="mobile-login-btn" @click="goAuth('login')">{{ t("common.login") }}</el-button>
+          <el-button text class="touch-icon-btn" :aria-label="t('nav.quick')" @click="mobileMenuOpen = true">
             <el-icon><Menu /></el-icon>
           </el-button>
         </div>
@@ -121,7 +132,7 @@
       </router-view>
     </main>
 
-    <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
+    <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" :aria-label="t('nav.mobile')" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
       <router-link
         v-for="item in mobileNavItems"
         :key="item.to"
@@ -139,7 +150,7 @@
       direction="btt"
       size="min(92dvh, 640px)"
       class="mobile-drawer"
-      title="快捷入口"
+      :title="t('nav.quick')"
     >
       <div class="drawer-grid">
         <button
@@ -154,12 +165,12 @@
         </button>
         <button type="button" class="drawer-link" @click="reloadPage">
           <el-icon><Refresh /></el-icon>
-          <span>刷新页面</span>
+          <span>{{ t("common.refresh") }}</span>
         </button>
       </div>
       <div class="drawer-appearance">
-        <span>外观</span>
-        <div class="appearance-segmented" role="radiogroup" aria-label="外观模式">
+        <span>{{ t("common.appearance") }}</span>
+        <div class="appearance-segmented" role="radiogroup" :aria-label="t('common.appearance')">
           <button
             v-for="item in appearanceOptions"
             :key="item.value"
@@ -174,17 +185,24 @@
           </button>
         </div>
       </div>
+      <div class="drawer-appearance">
+        <span>{{ t("common.language") }}</span>
+        <div class="appearance-segmented" role="radiogroup" :aria-label="t('common.language')">
+          <button type="button" role="radio" :class="{ active: isEnglish }" :aria-checked="isEnglish" @click="setLanguage('en-US')">English</button>
+          <button type="button" role="radio" :class="{ active: isChinese }" :aria-checked="isChinese" @click="setLanguage('zh-CN')">中文</button>
+        </div>
+      </div>
       <div class="drawer-account">
         <template v-if="auth.isLoggedIn">
-          <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
+          <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" :alt="t('nav.account')" />
           <div class="drawer-user">
             <div>{{ auth.user?.nickname }}</div>
-            <button type="button" @click="goDrawer('/profile')">个人中心</button>
+            <button type="button" @click="goDrawer('/profile')">{{ t("common.profile") }}</button>
           </div>
-          <el-button text type="danger" @click="onMobileLogout">退出</el-button>
+          <el-button text type="danger" @click="onMobileLogout">{{ t("common.logout") }}</el-button>
         </template>
         <template v-else>
-          <el-button type="primary" @click="goDrawerAuth('login')">登录</el-button>
+          <el-button type="primary" @click="goDrawerAuth('login')">{{ t("common.login") }}</el-button>
         </template>
       </div>
     </el-drawer>
@@ -192,29 +210,29 @@
     <!-- 首次登录设昵称（强制） -->
     <el-dialog
       v-model="showNicknameDialog"
-      title="设置展示昵称"
+      :title="t('nav.setNickname')"
       width="420"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       :show-close="false"
     >
       <p class="dlg-tip">
-        欢迎来到 {{ site.siteName }}，先设置一个公开显示的昵称
+        {{ t("nav.nicknameIntro", { site: site.siteName }) }}
       </p>
       <p class="dlg-hint">
-        {{ nicknameHint }}，<b>不会展示你的学号</b>。
+        {{ nicknameHint }} <b>{{ t("nav.nicknameHint") }}</b>
       </p>
       <el-input
         v-model="newNickname"
         size="large"
-        placeholder="2-20 个字符，支持中文"
+        :placeholder="t('nav.nicknamePlaceholder')"
         maxlength="20"
         show-word-limit
         @keyup.enter="saveNickname"
       />
       <template #footer>
         <el-button type="primary" size="large" :loading="savingNickname" :disabled="savingNickname" @click="saveNickname">
-          完成设置
+          {{ t("nav.finishSetup") }}
         </el-button>
       </template>
     </el-dialog>
@@ -248,11 +266,13 @@ import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { isFlutterNativeShell } from "@/utils/clientInfo";
+import { setLocale, useLocale, type AppLocale } from "@/i18n";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
 const site = useSiteStore();
 const appearance = useAppearanceStore();
+const { t, isEnglish, isChinese } = useLocale();
 const router = useRouter();
 const route = useRoute();
 const q = ref("");
@@ -268,10 +288,10 @@ const isMobileViewport = ref(false);
 let focusOutTimer = 0;
 let disposed = false;
 
-const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
-  { value: "light", label: "浅色", icon: Sunny },
-  { value: "dark", label: "深色", icon: Moon },
-];
+const appearanceOptions = computed<Array<{ value: AppearanceMode; label: string; icon: unknown }>>(() => [
+  { value: "light", label: t("common.light"), icon: Sunny },
+  { value: "dark", label: t("common.dark"), icon: Moon },
+]);
 const appearanceIcon = computed(() => (
   appearance.resolved === "dark" ? Moon : Sunny
 ));
@@ -293,7 +313,7 @@ const layoutStyle = computed(() => (
 ));
 
 const searchPlaceholder = computed(() => {
-  return "搜索商品 / 求购 / 帖子 / 校园资源";
+  return t("nav.searchPlaceholder");
 });
 
 type DesktopNavItem = { to: string; label: string; fullLabel?: string };
@@ -301,6 +321,11 @@ type DesktopNavItem = { to: string; label: string; fullLabel?: string };
 const nicknameHint = computed(() => {
   const actions: string[] = [];
   if (site.features.forum) actions.push("发帖、回复");
+  if (isEnglish.value) {
+    return actions.length
+      ? "Your display name will appear on posts and replies."
+      : "Your display name will appear when you use site features.";
+  }
   if (!actions.length) return "后续使用站内功能时会显示昵称";
   return `后续${actions.join("和")}都会显示昵称`;
 });
@@ -311,11 +336,11 @@ function reloadPage() {
 
 const desktopNavItems = computed(() => {
   return [
-    { to: "/home", label: "首页" },
-    { to: "/market", label: "市集", fullLabel: "校园市集" },
-    { to: "/square", label: "广场", fullLabel: "校园广场" },
-    { to: "/services", label: "工具", fullLabel: "校园工具" },
-    { to: "/profile", label: "我的" },
+    { to: "/home", label: t("nav.home") },
+    { to: "/market", label: t("nav.market"), fullLabel: t("nav.marketFull") },
+    { to: "/square", label: t("nav.square"), fullLabel: t("nav.squareFull") },
+    { to: "/services", label: t("nav.tools"), fullLabel: t("nav.toolsFull") },
+    { to: "/profile", label: t("nav.mine") },
   ] as DesktopNavItem[];
 });
 
@@ -325,23 +350,23 @@ const desktopPrimaryNavItems = computed(() => {
 
 const mobileNavItems = computed(() => {
   return [
-    { to: "/home", label: "首页", icon: House, match: ["/home"] },
-    { to: "/market", label: "市集", icon: Goods, match: ["/market"] },
-    { to: "/square", label: "广场", icon: ChatLineRound, match: ["/square", "/forum"] },
-    { to: "/services", label: "工具", icon: Service, match: ["/services", "/academic"] },
-    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
+    { to: "/home", label: t("nav.home"), icon: House, match: ["/home"] },
+    { to: "/market", label: t("nav.market"), icon: Goods, match: ["/market"] },
+    { to: "/square", label: t("nav.square"), icon: ChatLineRound, match: ["/square", "/forum"] },
+    { to: "/services", label: t("nav.tools"), icon: Service, match: ["/services", "/academic"] },
+    { to: "/profile", label: t("nav.mine"), icon: UserFilled, match: ["/profile", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
   ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
 
 const drawerItems = computed(() => {
   const items: { to: string; label: string; icon: any }[] = [];
-  items.push({ to: "/messages", label: "消息", icon: Message });
-  if (auth.isMod) items.push({ to: "/admin", label: "管理后台", icon: Tools });
-  if (site.features.forum) items.push({ to: "/square", label: "广场", icon: ChatLineRound });
-  if (site.features.market) items.push({ to: "/market", label: "市集", icon: Goods });
-  items.push({ to: "/services", label: "工具", icon: Service });
-  items.push({ to: "/academic", label: "eBridge 教务", icon: Calendar });
-  items.push({ to: "/search", label: "搜索", icon: Search });
+  items.push({ to: "/messages", label: t("common.messages"), icon: Message });
+  if (auth.isMod) items.push({ to: "/admin", label: t("common.admin"), icon: Tools });
+  if (site.features.forum) items.push({ to: "/square", label: t("nav.square"), icon: ChatLineRound });
+  if (site.features.market) items.push({ to: "/market", label: t("nav.market"), icon: Goods });
+  items.push({ to: "/services", label: t("nav.tools"), icon: Service });
+  items.push({ to: "/academic", label: t("nav.academic"), icon: Calendar });
+  items.push({ to: "/search", label: t("nav.search"), icon: Search });
   return items;
 });
 
@@ -358,12 +383,12 @@ watch(shouldAskNickname, (v) => {
 
 async function saveNickname() {
   const nick = newNickname.value.trim();
-  if (nick.length < 2) { ElMessage.warning("昵称至少 2 个字"); return; }
-  if (nick.length > 20) { ElMessage.warning("昵称最多 20 个字"); return; }
+  if (nick.length < 2) { ElMessage.warning(t("nav.nicknameMin")); return; }
+  if (nick.length > 20) { ElMessage.warning(t("nav.nicknameMax")); return; }
   savingNickname.value = true;
   try {
     await auth.updateProfile({ nickname: nick });
-    ElMessage.success(`欢迎，${nick}`);
+    ElMessage.success(t("nav.welcome", { name: nick }));
     showNicknameDialog.value = false;
     newNickname.value = "";
   } finally { savingNickname.value = false; }
@@ -544,6 +569,15 @@ function setAppearanceMode(command: string | number | object) {
   const mode = String(command);
   if (mode === "light" || mode === "dark") appearance.setMode(mode);
 }
+
+async function setLanguage(command: string | number | object) {
+  const next = String(command);
+  if (next !== "en-US" && next !== "zh-CN") return;
+  setLocale(next as AppLocale);
+  if (auth.isLoggedIn) {
+    await auth.updateProfile({ preferredLocale: next as AppLocale }).catch(() => undefined);
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -667,7 +701,8 @@ function setAppearanceMode(command: string | number | object) {
   flex-shrink: 0;
 }
 
-.appearance-cycle-btn {
+.appearance-cycle-btn,
+.locale-switch-btn {
   display: inline-flex;
   width: 38px;
   height: 38px;
@@ -681,7 +716,17 @@ function setAppearanceMode(command: string | number | object) {
   font: inherit;
 }
 
-.appearance-cycle-btn:hover {
+.locale-switch-btn {
+  width: auto;
+  min-width: 38px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.appearance-cycle-btn:hover,
+.locale-switch-btn:hover {
   color: var(--cpu-primary);
   background: var(--cpu-surface-subtle);
 }
@@ -984,7 +1029,7 @@ function setAppearanceMode(command: string | number | object) {
 
 .appearance-segmented {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 4px;
   border: 1px solid var(--cpu-border-soft);

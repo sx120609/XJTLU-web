@@ -106,6 +106,7 @@ test("admin user routes preserve forum counters and protected business records",
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
+        "Accept-Language": "zh-CN",
         Authorization: `Bearer ${bearer}`,
         ...(payload === undefined ? {} : { "Content-Type": "application/json" }),
       },

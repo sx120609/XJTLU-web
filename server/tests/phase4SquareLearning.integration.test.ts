@@ -61,6 +61,7 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
+        "Accept-Language": "zh-CN",
         ...(authenticated ? { Authorization: `Bearer ${token}` } : {}),
         ...(payload === undefined ? {} : { "Content-Type": "application/json" }),
       },

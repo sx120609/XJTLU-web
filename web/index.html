@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en-US" data-locale="en-US">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -28,21 +28,27 @@
     <meta name="application-name" content="靠浦" />
     <script>
       (() => {
+        const localeKey = "kaopu-locale";
+        let locale = "en-US";
+        try {
+          if (localStorage.getItem(localeKey) === "zh-CN") locale = "zh-CN";
+        } catch {}
+        const root = document.documentElement;
+        root.lang = locale;
+        root.dataset.locale = locale;
+
         const storageKey = "kaopu-appearance-mode-v2";
         let mode = "light";
         try {
           const stored = localStorage.getItem(storageKey);
-          if (stored === "light" || stored === "dark" || stored === "system") mode = stored;
+          if (stored === "light" || stored === "dark") mode = stored;
         } catch {}
-        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-        const resolved = mode === "system" ? (prefersDark ? "dark" : "light") : mode;
-        const root = document.documentElement;
-        root.dataset.theme = resolved;
+        root.dataset.theme = mode;
         root.dataset.appearanceMode = mode;
-        root.classList.toggle("dark", resolved === "dark");
-        root.style.colorScheme = resolved;
+        root.classList.toggle("dark", mode === "dark");
+        root.style.colorScheme = mode;
         const themeColor = document.querySelector("meta[name='theme-color']");
-        if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#8B7CF6" : "#6D5CE7");
+        if (themeColor) themeColor.setAttribute("content", mode === "dark" ? "#8B7CF6" : "#6D5CE7");
       })();
     </script>
     <style>
@@ -85,6 +91,10 @@
         opacity: 0;
         visibility: hidden;
       }
+      html[data-locale="en-US"] .launch-zh,
+      html[data-locale="zh-CN"] .launch-en {
+        display: none;
+      }
       .app-launch-logo {
         width: 84px;
         height: 84px;
@@ -120,15 +130,22 @@
         box-shadow: 0 14px 42px rgba(139, 124, 246, 0.2);
       }
     </style>
-    <title>靠浦 · 重塑校园生活的可能</title>
-    <meta name="description" content="靠浦，为西交利物浦大学学生重塑校园生活的更多可能。" />
+    <title>Kaopu · Reimagine campus life</title>
+    <meta name="description" content="Kaopu helps XJTLU students trade, learn, and connect on campus." />
   </head>
   <body>
-    <div class="app-launch-screen" id="boot-screen" aria-label="靠浦正在启动">
+    <div class="app-launch-screen" id="boot-screen" aria-label="Kaopu">
       <img class="app-launch-logo" src="/brand/kaopu-mark.svg?v=20260713" alt="" />
       <h1 class="app-launch-title">靠浦</h1>
-      <p class="app-launch-subtitle">重塑校园生活的可能</p>
+      <p class="app-launch-subtitle"><span class="launch-en">Reimagine campus life</span><span class="launch-zh">重塑校园生活的可能</span></p>
     </div>
+    <script>
+      if (document.documentElement.dataset.locale === "zh-CN") {
+        document.title = "靠浦 · 重塑校园生活的可能";
+        document.querySelector('meta[name="description"]')?.setAttribute("content", "靠浦，为西交利物浦大学学生重塑校园生活的更多可能。");
+        document.getElementById("boot-screen")?.setAttribute("aria-label", "靠浦正在启动");
+      }
+    </script>
     <div id="app">
     </div>
     <script type="module" src="/src/main.ts"></script>

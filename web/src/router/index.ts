@@ -8,6 +8,7 @@ import {
   type ProductSource,
   type ProductSurface,
 } from "@/api/productAnalytics";
+import { localizeRouteTitle, t } from "@/i18n";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
 
@@ -185,7 +186,7 @@ router.beforeEach(async (to) => {
   const site = useSiteStore();
   // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测真实会话。
   if (!auth.ready) await auth.fetchMe({ probe: true });
-  if (to.meta.title) document.title = `${to.meta.title} · ${site.siteName}`;
+  if (to.meta.title) document.title = `${localizeRouteTitle(to.meta.title)} · ${site.siteName}`;
 
   const requestedManageTool = firstRouteValue(to.query.tool);
   if (to.name === "service-tools-manage" && requestedManageTool === "file_collect") {
@@ -210,7 +211,7 @@ router.beforeEach(async (to) => {
     if (auth.token && !auth.user) await auth.fetchMe();
     const isStaff = auth.user?.role === "admin" || auth.user?.role === "mod";
     if (!isStaff) {
-      ElMessage.info("该功能当前不可用");
+      ElMessage.info(t("router.unavailable"));
       return { name: "home" };
     }
   }
@@ -242,6 +243,12 @@ router.beforeEach(async (to) => {
     }
   }
   return true;
+});
+
+window.addEventListener("kaopu-locale-changed", () => {
+  const route = router.currentRoute.value;
+  const site = useSiteStore();
+  if (route.meta.title) document.title = `${localizeRouteTitle(route.meta.title)} · ${site.siteName}`;
 });
 
 function routeSurface(routeName: unknown): ProductSurface | null {

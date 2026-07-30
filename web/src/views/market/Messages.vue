@@ -2,21 +2,21 @@
   <div class="market-chat-page cpu-page">
     <header class="chat-head">
       <div>
-        <el-button text @click="router.push({ name: 'market' })">← 返回市集</el-button>
-        <h1>交易消息</h1>
-        <p>有意向直接私聊；双方自行沟通和交付，只有双方都确认后系统才认定成交并发放积分。</p>
+        <el-button text @click="router.push({ name: 'market' })">← {{ isEnglish ? "Back to Market" : "返回市集" }}</el-button>
+        <h1>{{ t("market.tradeMessages") }}</h1>
+        <p>{{ isEnglish ? "Chat directly when interested. Both parties arrange payment and delivery themselves; points are granted only after both confirm completion." : "有意向直接私聊；双方自行沟通和交付，只有双方都确认后系统才认定成交并发放积分。" }}</p>
       </div>
-      <el-tag :type="realtimeConnected ? 'success' : 'info'" effect="plain">{{ realtimeConnected ? "实时连接" : "自动同步" }}</el-tag>
+      <el-tag :type="realtimeConnected ? 'success' : 'info'" effect="plain">{{ realtimeConnected ? (isEnglish ? "Live" : "实时连接") : (isEnglish ? "Auto sync" : "自动同步") }}</el-tag>
     </header>
 
     <section class="chat-shell" v-loading="loading">
       <aside :class="{ hidden: selectedId && mobileConversation }">
         <div class="aside-title">
-          <b>会话</b>
+          <b>{{ isEnglish ? "Conversations" : "会话" }}</b>
           <el-badge :value="totalUnread" :hidden="!totalUnread" />
         </div>
         <div class="conversation-tools">
-          <el-input v-model="search" clearable placeholder="搜索用户、商品或消息" />
+          <el-input v-model="search" clearable :placeholder="isEnglish ? 'Search people, items, or messages' : '搜索用户、商品或消息'" />
           <el-segmented v-model="filter" :options="filterOptions" />
         </div>
         <button
@@ -30,13 +30,13 @@
             <el-avatar :size="42" :src="conversation.counterpart?.avatar || ''">{{ userInitial(conversation.counterpart) }}</el-avatar>
           </el-badge>
           <span>
-            <strong>{{ conversation.counterpart?.nickname || "校园用户" }}</strong>
+            <strong>{{ conversation.counterpart?.nickname || (isEnglish ? "Campus user" : "校园用户") }}</strong>
             <small>{{ conversation.item?.title }} · {{ conversationStatus(conversation) }}</small>
             <em>{{ lastMessageText(conversation) }}</em>
           </span>
           <time>{{ shortTime(conversation.lastMessageAt) }}</time>
         </button>
-        <el-empty v-if="!loading && !conversations.length" description="当前筛选没有交易会话" />
+        <el-empty v-if="!loading && !conversations.length" :description="isEnglish ? 'No conversations match this filter' : '当前筛选没有交易会话'" />
       </aside>
 
       <main v-if="activeConversation" class="messages">
@@ -45,15 +45,15 @@
           <img v-if="activeConversation.item?.cover" :src="activeConversation.item.cover" alt="" />
           <div>
             <strong>{{ activeConversation.item?.title }}</strong>
-            <small>与 {{ activeConversation.counterpart?.nickname || "校园用户" }} 沟通 · {{ conversationStatus(activeConversation) }}</small>
+            <small>{{ isEnglish ? "Chat with" : "与" }} {{ activeConversation.counterpart?.nickname || (isEnglish ? "Campus user" : "校园用户") }} {{ isEnglish ? "·" : "沟通 ·" }} {{ conversationStatus(activeConversation) }}</small>
           </div>
           <el-dropdown trigger="click">
-            <el-button>更多</el-button>
+            <el-button>{{ isEnglish ? "More" : "更多" }}</el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item @click="router.push({ name: 'market-item', params: { id: activeConversation!.itemId } })">查看商品</el-dropdown-item>
+                <el-dropdown-item @click="router.push({ name: 'market-item', params: { id: activeConversation!.itemId } })">{{ isEnglish ? "View item" : "查看商品" }}</el-dropdown-item>
                 <el-dropdown-item :class="{ danger: !activeConversation.blockedByMe }" divided @click="toggleBlock">
-                  {{ activeConversation.blockedByMe ? "解除屏蔽" : "屏蔽对方" }}
+                  {{ activeConversation.blockedByMe ? (isEnglish ? "Unblock" : "解除屏蔽") : (isEnglish ? "Block user" : "屏蔽对方") }}
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -65,69 +65,71 @@
             <b>{{ confirmationHeadline }}</b>
             <span>{{ confirmationDescription }}</span>
           </div>
-          <div class="party-confirmations" aria-label="买卖双方成交确认状态">
-            <span :class="{ confirmed: buyerConfirmed }">买家 {{ buyerConfirmed ? "已确认" : "待确认" }}</span>
-            <span :class="{ confirmed: sellerConfirmed }">卖家 {{ sellerConfirmed ? "已确认" : "待确认" }}</span>
+          <div class="party-confirmations" :aria-label="isEnglish ? 'Buyer and seller confirmation status' : '买卖双方成交确认状态'">
+            <span :class="{ confirmed: buyerConfirmed }">{{ isEnglish ? "Buyer" : "买家" }} {{ buyerConfirmed ? (isEnglish ? "confirmed" : "已确认") : (isEnglish ? "pending" : "待确认") }}</span>
+            <span :class="{ confirmed: sellerConfirmed }">{{ isEnglish ? "Seller" : "卖家" }} {{ sellerConfirmed ? (isEnglish ? "confirmed" : "已确认") : (isEnglish ? "pending" : "待确认") }}</span>
           </div>
-          <el-button v-if="canConfirm" type="success" :loading="confirming" @click="confirmCompleted">确认实际成交</el-button>
+          <el-button v-if="canConfirm" type="success" :loading="confirming" @click="confirmCompleted">{{ isEnglish ? "Confirm completed trade" : "确认实际成交" }}</el-button>
         </section>
 
         <div ref="messageList" class="message-list">
           <div class="history-loader">
-            <el-button v-if="nextCursor" text type="primary" :loading="loadingOlder" @click="loadOlder">加载更早消息</el-button>
-            <span v-else-if="messages.length">已经到最早一条</span>
+            <el-button v-if="nextCursor" text type="primary" :loading="loadingOlder" @click="loadOlder">{{ isEnglish ? "Load earlier messages" : "加载更早消息" }}</el-button>
+            <span v-else-if="messages.length">{{ isEnglish ? "Beginning of conversation" : "已经到最早一条" }}</span>
           </div>
           <template v-for="message in messages" :key="message.clientMessageId || message.id">
             <div v-if="message.kind === 'system'" class="system-message">
-              <span>{{ message.content }}</span><time>{{ fullTime(message.createdAt) }}</time>
+              <span>{{ localizeSystemMessage(message.content) }}</span><time>{{ fullTime(message.createdAt) }}</time>
             </div>
             <div v-else class="bubble-row" :class="{ mine: message.senderId === auth.user?.id, failed: message._state === 'failed' }">
               <el-avatar :size="32" :src="message.sender?.avatar || ''">{{ userInitial(message.sender) }}</el-avatar>
               <div>
                 <div v-if="message.attachments?.length" class="message-images">
                   <button v-for="attachment in message.attachments" :key="attachment.id || attachment.url" type="button" @click="openImage(attachment.url)">
-                    <img :src="attachment.url" alt="私聊图片" />
+                    <img :src="attachment.url" :alt="isEnglish ? 'Chat image' : '私聊图片'" />
                   </button>
                 </div>
                 <p v-if="message.content">{{ message.content }}</p>
                 <footer>
                   <time>{{ fullTime(message.createdAt) }}</time>
-                  <span v-if="message._state === 'sending'">发送中</span>
-                  <button v-else-if="message._state === 'failed'" type="button" @click="retryMessage(message)">发送失败，重试</button>
-                  <span v-else-if="message.senderId === auth.user?.id">{{ message.readAt ? "已读" : "已发送" }}</span>
-                  <button v-else type="button" @click="reportMessage(message)">举报</button>
+                  <span v-if="message._state === 'sending'">{{ isEnglish ? "Sending" : "发送中" }}</span>
+                  <button v-else-if="message._state === 'failed'" type="button" @click="retryMessage(message)">{{ isEnglish ? "Failed — retry" : "发送失败，重试" }}</button>
+                  <span v-else-if="message.senderId === auth.user?.id">{{ message.readAt ? (isEnglish ? "Read" : "已读") : (isEnglish ? "Sent" : "已发送") }}</span>
+                  <button v-else type="button" @click="reportMessage(message)">{{ isEnglish ? "Report" : "举报" }}</button>
                 </footer>
               </div>
             </div>
           </template>
-          <el-empty v-if="!messages.length" description="发送第一条消息，确认价格、地点和时间" />
+          <el-empty v-if="!messages.length" :description="isEnglish ? 'Send the first message to discuss price, place, and time' : '发送第一条消息，确认价格、地点和时间'" />
         </div>
 
         <div v-if="tradeCompleted" class="blocked-tip completed-tip">
-          双方已确认成交并完成积分发放，本次私聊已关闭；历史消息仍可查看。
+          {{ isEnglish ? "Both parties confirmed completion and points were granted. This conversation is now closed; message history remains available." : "双方已确认成交并完成积分发放，本次私聊已关闭；历史消息仍可查看。" }}
         </div>
         <div v-else-if="activeConversation.blockedByMe || activeConversation.blockedByCounterpart" class="blocked-tip">
-          {{ activeConversation.blockedByMe ? "你已屏蔽对方，解除后才能继续发送。" : "当前会话暂时无法继续发送消息。" }}
+          {{ activeConversation.blockedByMe
+            ? (isEnglish ? "You blocked this user. Unblock them to continue." : "你已屏蔽对方，解除后才能继续发送。")
+            : (isEnglish ? "Messages are currently disabled in this conversation." : "当前会话暂时无法继续发送消息。") }}
         </div>
         <form v-else class="composer" @submit.prevent="send">
           <div v-if="pendingAttachments.length" class="pending-images">
             <span v-for="(attachment, index) in pendingAttachments" :key="attachment.url">
-              <img :src="attachment.url" alt="待发送图片" />
+              <img :src="attachment.url" :alt="isEnglish ? 'Image ready to send' : '待发送图片'" />
               <button type="button" @click="pendingAttachments.splice(index, 1)">×</button>
             </span>
           </div>
           <div class="composer-row">
             <label class="image-upload" :class="{ disabled: uploading }">
               <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple :disabled="uploading" @change="uploadImages" />
-              {{ uploading ? `${uploadProgress}%` : "图片" }}
+              {{ uploading ? `${uploadProgress}%` : (isEnglish ? "Image" : "图片") }}
             </label>
-            <el-input v-model="draft" maxlength="2000" show-word-limit type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" placeholder="输入消息；请勿发送验证码、密码或提前转账" @keydown.ctrl.enter.prevent="send" />
-            <el-button type="primary" native-type="submit" :loading="sending" :disabled="!canSend">发送</el-button>
+            <el-input v-model="draft" maxlength="2000" show-word-limit type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" :placeholder="isEnglish ? 'Type a message. Never share verification codes or passwords, or pay in advance.' : '输入消息；请勿发送验证码、密码或提前转账'" @keydown.ctrl.enter.prevent="send" />
+            <el-button type="primary" native-type="submit" :loading="sending" :disabled="!canSend">{{ isEnglish ? "Send" : "发送" }}</el-button>
           </div>
-          <small>Ctrl + Enter 发送，单次最多 6 张图片</small>
+          <small>{{ isEnglish ? "Ctrl + Enter to send · Up to 6 images per message" : "Ctrl + Enter 发送，单次最多 6 张图片" }}</small>
         </form>
       </main>
-      <main v-else class="empty-chat"><el-empty description="选择一个会话开始沟通" /></main>
+      <main v-else class="empty-chat"><el-empty :description="isEnglish ? 'Select a conversation to begin' : '选择一个会话开始沟通'" /></main>
     </section>
   </div>
 </template>
@@ -147,6 +149,7 @@ import {
 import { uploadApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { optimizePublishImage } from "@/utils/publishImage";
+import { useLocale } from "@/i18n";
 
 type MessageAttachmentInput = {
   id: number;
@@ -166,6 +169,7 @@ type ChatMessage = MarketMessage & {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { t, isEnglish, locale } = useLocale();
 const conversations = ref<MarketConversation[]>([]);
 const messages = ref<ChatMessage[]>([]);
 const selectedId = ref(0);
@@ -183,12 +187,12 @@ const nextCursor = ref<number | null>(null);
 const messageList = ref<HTMLElement | null>(null);
 const mobileConversation = ref(false);
 const realtimeConnected = ref(false);
-const filterOptions = [
-  { label: "全部", value: "all" },
-  { label: "未读", value: "unread" },
-  { label: "待确认", value: "pending_confirmation" },
-  { label: "已成交", value: "completed" },
-];
+const filterOptions = computed(() => [
+  { label: isEnglish.value ? "All" : "全部", value: "all" },
+  { label: isEnglish.value ? "Unread" : "未读", value: "unread" },
+  { label: isEnglish.value ? "Pending" : "待确认", value: "pending_confirmation" },
+  { label: isEnglish.value ? "Completed" : "已成交", value: "completed" },
+]);
 let pollTimer = 0;
 let searchTimer = 0;
 let realtimeTimer = 0;
@@ -216,6 +220,13 @@ const canConfirm = computed(() => {
   return order.buyerId === auth.user?.id ? !order.buyerConfirmedAt : !order.sellerConfirmedAt;
 });
 const confirmationHeadline = computed(() => {
+  if (isEnglish.value) {
+    if (tradeCompleted.value) return "Both confirmed — trade completed";
+    if (tradeClosedWithoutCompletion.value) return "Trade not confirmed";
+    if (myConfirmed.value) return "You confirmed — waiting for the other party";
+    if (counterpartConfirmed.value) return "The other party confirmed — waiting for you";
+    return "After the real exchange, buyer and seller confirm separately";
+  }
   if (tradeCompleted.value) return "双方已确认，交易完成";
   if (tradeClosedWithoutCompletion.value) return "本次沟通未确认成交";
   if (myConfirmed.value) return "你已确认，正在等待对方";
@@ -223,6 +234,11 @@ const confirmationHeadline = computed(() => {
   return "实际成交后，请买卖双方分别确认";
 });
 const confirmationDescription = computed(() => {
+  if (isEnglish.value) {
+    if (tradeCompleted.value) return "Trade points were granted to both parties and can be used for promotion.";
+    if (tradeClosedWithoutCompletion.value) return "No points were granted because both parties did not confirm.";
+    return "No points are granted unless both confirm. The platform does not handle payment, delivery, or refunds.";
+  }
   if (tradeCompleted.value) return "成交积分已分别发放，可用于后续积分推流。";
   if (tradeClosedWithoutCompletion.value) return "由于没有完成双方确认，系统不会发放成交积分。";
   return "任意一方未确认都不会发放积分；平台不介入付款、交付或退款。";
@@ -246,23 +262,34 @@ function userInitial(user?: MarketUser) {
 
 function shortTime(value?: string | null) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat(locale.value, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 function fullTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat(locale.value, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 function conversationStatus(conversation: MarketConversation) {
   const status = conversation.order?.status || "";
+  if (isEnglish.value) {
+    return ({ negotiating: "Chatting", reserved: "Awaiting confirmation", delivering: "Awaiting confirmation", paid: "Awaiting confirmation", completed: "Completed", cancelled: "Not completed", disputed: "Reported", no_show: "Not completed" } as Record<string, string>)[status] || status;
+  }
   return ({ negotiating: "沟通中", reserved: "待双方确认", delivering: "待双方确认", paid: "待双方确认", completed: "已成交", cancelled: "未成交", disputed: "已投诉", no_show: "未成交" } as Record<string, string>)[status] || status;
 }
 
 function lastMessageText(conversation: MarketConversation) {
   const message = conversation.lastMessage;
-  if (!message) return "开始沟通交易细节";
-  if (message.kind === "image" && !message.content) return "[图片]";
-  return message.content || `[${message.attachments?.length || 0} 张图片]`;
+  if (!message) return isEnglish.value ? "Start discussing trade details" : "开始沟通交易细节";
+  if (message.kind === "image" && !message.content) return isEnglish.value ? "[Image]" : "[图片]";
+  return message.content || (isEnglish.value ? `[${message.attachments?.length || 0} images]` : `[${message.attachments?.length || 0} 张图片]`);
+}
+
+function localizeSystemMessage(content: string) {
+  if (!isEnglish.value) return content;
+  if (/买家已确认/u.test(content)) return "The buyer confirmed the completed trade.";
+  if (/卖家已确认/u.test(content)) return "The seller confirmed the completed trade.";
+  if (/双方已确认/u.test(content) && /积分/u.test(content)) return "Both parties confirmed completion. Trade points were granted and this conversation is closed.";
+  return content;
 }
 
 async function scrollBottom() {
@@ -285,7 +312,7 @@ async function loadConversations(silent = false) {
       nextCursor.value = null;
     }
   } catch (error) {
-    if (!silent) ElMessage.error(error instanceof Error ? error.message : "会话加载失败");
+    if (!silent) ElMessage.error(error instanceof Error ? error.message : (isEnglish.value ? "Could not load conversations" : "会话加载失败"));
   }
 }
 
@@ -304,7 +331,7 @@ async function loadMessages(silent = false) {
     if (changed) await scrollBottom();
     await marketApi.markConversationRead(conversationId).catch(() => null);
   } catch (error) {
-    if (!silent) ElMessage.error(error instanceof Error ? error.message : "消息加载失败");
+    if (!silent) ElMessage.error(error instanceof Error ? error.message : (isEnglish.value ? "Could not load messages" : "消息加载失败"));
   }
 }
 
@@ -348,7 +375,7 @@ async function uploadImages(event: Event) {
           uploadProgress.value = Math.round(((index + state.percent / 100) / files.length) * 100);
         },
       });
-      if (result.kind !== "image") throw new Error("私聊仅支持图片");
+      if (result.kind !== "image") throw new Error(isEnglish.value ? "Chat attachments must be images" : "私聊仅支持图片");
       pendingAttachments.value.push({
         id: -(Date.now() + index),
         url: result.url,
@@ -357,7 +384,7 @@ async function uploadImages(event: Event) {
       });
     }
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : "图片上传失败");
+    ElMessage.error(error instanceof Error ? error.message : (isEnglish.value ? "Image upload failed" : "图片上传失败"));
   } finally {
     uploading.value = false;
     uploadProgress.value = 0;
@@ -421,11 +448,19 @@ async function retryMessage(message: ChatMessage) {
 async function confirmCompleted() {
   const conversation = activeConversation.value;
   if (!conversation?.order || confirming.value) return;
-  await ElMessageBox.confirm("请仅在商品已经实际交付、双方自行结清款项后确认。确认后不可由你自行撤回；只有对方也确认，系统才会认定成交并分别发放积分。", "确认实际成交", { type: "warning", confirmButtonText: "我确认已成交" });
+  await ElMessageBox.confirm(
+    isEnglish.value
+      ? "Confirm only after the item has actually been delivered and payment has been settled directly. You cannot undo your confirmation. The trade completes and points are granted only after the other party also confirms."
+      : "请仅在商品已经实际交付、双方自行结清款项后确认。确认后不可由你自行撤回；只有对方也确认，系统才会认定成交并分别发放积分。",
+    isEnglish.value ? "Confirm completed trade" : "确认实际成交",
+    { type: "warning", confirmButtonText: isEnglish.value ? "Confirm trade completed" : "我确认已成交" },
+  );
   confirming.value = true;
   try {
     const result = await marketApi.confirmConversationCompletion(conversation.id);
-    ElMessage.success(result.completed ? "双方已确认，成交积分已发放" : "你已确认；对方确认前不会发放积分");
+    ElMessage.success(result.completed
+      ? (isEnglish.value ? "Both confirmed. Trade points were granted." : "双方已确认，成交积分已发放")
+      : (isEnglish.value ? "You confirmed. No points will be granted until the other party confirms." : "你已确认；对方确认前不会发放积分"));
     await refreshActiveConversation();
   } finally {
     confirming.value = false;
@@ -436,21 +471,30 @@ async function toggleBlock() {
   if (!activeConversation.value) return;
   const wasBlocked = activeConversation.value.blockedByMe;
   if (!wasBlocked) {
-    await ElMessageBox.confirm("屏蔽后双方都不能继续在该会话发送消息，历史记录仍保留。", "屏蔽对方", { type: "warning" });
+    await ElMessageBox.confirm(
+      isEnglish.value ? "Blocking disables new messages for both parties. Message history will remain available." : "屏蔽后双方都不能继续在该会话发送消息，历史记录仍保留。",
+      isEnglish.value ? "Block user" : "屏蔽对方",
+      { type: "warning" },
+    );
   }
   const result = await marketApi.toggleConversationBlock(activeConversation.value.id);
-  ElMessage.success(result.blocked ? "已屏蔽对方" : "已解除屏蔽");
+  ElMessage.success(result.blocked
+    ? (isEnglish.value ? "User blocked" : "已屏蔽对方")
+    : (isEnglish.value ? "User unblocked" : "已解除屏蔽"));
   await loadConversations(true);
 }
 
 async function reportMessage(message: ChatMessage) {
   if (!activeConversation.value) return;
-  const { value } = await ElMessageBox.prompt("请说明这条消息存在的问题。", "举报消息", {
-    inputPlaceholder: "例如：骚扰、诈骗、发送违禁内容",
-    inputValidator: (input) => input.trim().length >= 2 || "请至少填写 2 个字",
+  const { value } = await ElMessageBox.prompt(
+    isEnglish.value ? "Describe the problem with this message." : "请说明这条消息存在的问题。",
+    isEnglish.value ? "Report message" : "举报消息",
+    {
+    inputPlaceholder: isEnglish.value ? "For example: harassment, fraud, or prohibited content" : "例如：骚扰、诈骗、发送违禁内容",
+    inputValidator: (input) => input.trim().length >= 2 || (isEnglish.value ? "Enter at least 2 characters" : "请至少填写 2 个字"),
   });
   await marketApi.reportMessage(activeConversation.value.id, message.id, { reason: value.trim(), detail: "" });
-  ElMessage.success("举报已提交");
+  ElMessage.success(isEnglish.value ? "Report submitted" : "举报已提交");
 }
 
 function openImage(url: string) {

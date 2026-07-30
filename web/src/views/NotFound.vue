@@ -2,11 +2,17 @@
   <div class="not-found">
     <div class="content">
       <div class="logo">404</div>
-      <p>页面走失了。也许它正在某个药学楼的电梯里...</p>
-      <el-button type="primary" @click="$router.push('/home')">返回首页</el-button>
+      <p>{{ isEnglish ? "This page could not be found." : "页面走失了。也许它正在某个药学楼的电梯里..." }}</p>
+      <el-button type="primary" @click="$router.push('/home')">{{ isEnglish ? "Back to Home" : "返回首页" }}</el-button>
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { useLocale } from "@/i18n";
+
+const { isEnglish } = useLocale();
+</script>
 
 <style scoped>
 .not-found {

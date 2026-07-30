@@ -2,41 +2,41 @@
   <div class="msg-page" v-loading="loading">
     <div class="page-head">
       <div class="page-head-main">
-        <h2 class="page-title">消息中心</h2>
-        <span class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
+        <h2 class="page-title">{{ t("messages.title") }}</h2>
+        <span class="page-sub">{{ unreadCount ? (isEnglish ? `${unreadCount} unread` : `${unreadCount} 条未读`) : (isEnglish ? "All caught up" : "当前全部已读") }}</span>
       </div>
       <div class="page-head-actions">
-        <el-button text :loading="markingAll" :disabled="!unreadCount || markingAll" @click="readAll">全部标为已读</el-button>
+        <el-button text :loading="markingAll" :disabled="!unreadCount || markingAll" @click="readAll">{{ isEnglish ? "Mark all as read" : "全部标为已读" }}</el-button>
       </div>
     </div>
     <div v-if="pageError" class="cpu-card page-error">
       <el-empty :description="pageError">
-        <el-button type="primary" @click="loadPage">重试</el-button>
+        <el-button type="primary" @click="loadPage">{{ t("common.retry") }}</el-button>
       </el-empty>
     </div>
     <el-tabs v-else v-model="tab" class="cpu-card messages-tabs">
-      <el-tab-pane label="全部" name="all">
+      <el-tab-pane :label="isEnglish ? 'All' : '全部'" name="all">
         <MessageList :list="filteredMessages('')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
-      <el-tab-pane label="回复 / 提及" name="reply">
+      <el-tab-pane :label="isEnglish ? 'Replies / mentions' : '回复 / 提及'" name="reply">
         <MessageList :list="filteredMessages('reply')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
-      <el-tab-pane label="点赞" name="like">
+      <el-tab-pane :label="isEnglish ? 'Likes' : '点赞'" name="like">
         <MessageList :list="filteredMessages('like')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
-      <el-tab-pane label="系统 / 站务" name="system">
+      <el-tab-pane :label="isEnglish ? 'System / site' : '系统 / 站务'" name="system">
         <MessageList :list="filteredMessages('system')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
-      <el-tab-pane label="小工具" name="service-tool">
+      <el-tab-pane :label="isEnglish ? 'Tools' : '小工具'" name="service-tool">
         <MessageList :list="filteredMessages('service-tool')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="detailOpen" title="通知详情" width="620px" append-to-body class="notice-dialog">
+    <el-dialog v-model="detailOpen" :title="isEnglish ? 'Notification details' : '通知详情'" width="620px" append-to-body class="notice-dialog">
       <div v-if="activeNotice" class="notice-detail">
         <div class="notice-head">
           <h3 class="notice-title">{{ activeNotice.title }}</h3>
-          <div class="notice-meta">{{ activeNotice.source || "校内" }} · {{ formatNoticeTime(activeNotice.createdAt) }}</div>
+          <div class="notice-meta">{{ activeNotice.source || (isEnglish ? "Campus" : "校内") }} · {{ formatNoticeTime(activeNotice.createdAt) }}</div>
         </div>
         <p class="notice-content">{{ activeNotice.content }}</p>
         <div v-if="reviewStateText" class="review-state" :class="{ done: !canReviewActiveNotice }">
@@ -44,8 +44,8 @@
         </div>
 
         <div v-if="activeNotice.payload?.riskScore !== undefined || activeNotice.payload?.reason" class="notice-risk">
-          <span v-if="activeNotice.payload?.reason">审核说明：{{ activeNotice.payload.reason }}</span>
-          <span v-else>系统判定这条内容需要进一步确认。</span>
+          <span v-if="activeNotice.payload?.reason">{{ isEnglish ? "Review note:" : "审核说明：" }}{{ activeNotice.payload.reason }}</span>
+          <span v-else>{{ isEnglish ? "The system determined that this content needs further review." : "系统判定这条内容需要进一步确认。" }}</span>
         </div>
 
         <div v-if="activeNotice.payload?.title" class="notice-draft">
@@ -55,7 +55,7 @@
       </div>
       <template #footer>
         <div class="notice-actions">
-          <el-button v-if="canOpenActiveNoticeTarget" @click="goNoticeLink">前往查看</el-button>
+          <el-button v-if="canOpenActiveNoticeTarget" @click="goNoticeLink">{{ isEnglish ? "Open" : "前往查看" }}</el-button>
           <el-button
             v-if="canRequestManualReviewFromNotice"
             type="warning"
@@ -63,7 +63,7 @@
             :disabled="requestingManualReview"
             @click="requestManualReviewFromNotice"
           >
-            申请人工复核
+            {{ isEnglish ? "Request manual review" : "申请人工复核" }}
           </el-button>
           <el-button
             v-if="canReviewActiveNotice"
@@ -83,7 +83,7 @@
           >
             {{ reviewActionLabel }}驳回
           </el-button>
-          <el-button @click="detailOpen = false">关闭</el-button>
+          <el-button @click="detailOpen = false">{{ t("common.close") }}</el-button>
         </div>
       </template>
     </el-dialog>
@@ -108,11 +108,13 @@ import {
   isExternalNotificationLink,
   safeNotificationLink,
 } from "@/utils/notificationLink";
+import { useLocale } from "@/i18n";
 
 const route = useRoute();
 const router = useRouter();
 const msg = useMessageStore();
 const auth = useAuthStore();
+const { t, isEnglish } = useLocale();
 
 const messageTabs = new Set(["all", "reply", "like", "system", "service-tool"]);
 const tab = ref(normalizeMessageTab(route.query.tab));
@@ -178,7 +180,7 @@ async function refreshNoticeStateAfterAction() {
     await reloadNoticeState();
   } catch (error) {
     if (disposed) return;
-    ElMessage.warning(normalizeMessageActionError(error, "操作已完成，但消息列表刷新失败"));
+    ElMessage.warning(normalizeMessageActionError(error, isEnglish.value ? "Action completed, but the message list could not refresh" : "操作已完成，但消息列表刷新失败"));
   }
 }
 
@@ -197,7 +199,7 @@ async function onRead(id: number) {
     void msg.refresh();
   } catch (error) {
     if (disposed) return;
-    ElMessage.error(normalizeMessageActionError(error, "消息标记已读失败"));
+    ElMessage.error(normalizeMessageActionError(error, isEnglish.value ? "Could not mark message as read" : "消息标记已读失败"));
   }
 }
 
@@ -208,11 +210,11 @@ async function readAll() {
     await messageApi.readAll({ suppressErrorMessage: true });
     if (disposed) return;
     list.value.forEach((n) => (n.readAt = new Date().toISOString()));
-    ElMessage.success("已全部已读");
+    ElMessage.success(isEnglish.value ? "All messages marked as read" : "已全部已读");
     void msg.refresh();
   } catch (error) {
     if (disposed) return;
-    ElMessage.error(normalizeMessageActionError(error, "全部已读失败"));
+    ElMessage.error(normalizeMessageActionError(error, isEnglish.value ? "Could not mark all messages as read" : "全部已读失败"));
   } finally {
     if (!disposed) markingAll.value = false;
   }
@@ -273,9 +275,11 @@ const canRequestManualReviewFromNotice = computed(() => Boolean(
 const canReviewActiveNotice = computed(() => {
   return Boolean(auth.isMod && reviewTarget.value?.reviewable);
 });
-const reviewActionLabel = computed(() => reviewTarget.value?.kind === "reply" ? "回复" : "帖子");
+const reviewActionLabel = computed(() => reviewTarget.value?.kind === "reply"
+  ? (isEnglish.value ? "Reply " : "回复")
+  : (isEnglish.value ? "Post " : "帖子"));
 const reviewStateText = computed(() => {
-  if (reviewTargetLoading.value) return "正在检查当前审核状态...";
+  if (reviewTargetLoading.value) return isEnglish.value ? "Checking current review status..." : "正在检查当前审核状态...";
   if (!reviewTarget.value) return "";
   return reviewTarget.value.reviewable
     ? `${reviewActionLabel.value}当前仍在待人工审核状态，可直接处理。`
@@ -413,11 +417,11 @@ function normalizeMessageTab(value: unknown) {
 
 function normalizeMessageLoadError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
-  if (status === 401) return "登录已过期，请重新登录";
+  if (status === 401) return isEnglish.value ? "Your session has expired. Please sign in again." : "登录已过期，请重新登录";
   if (status && status < 500) {
-    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "消息加载失败";
+    return (error as { response?: { data?: { message?: string } } })?.response?.data?.message || (isEnglish.value ? "Could not load messages" : "消息加载失败");
   }
-  return "消息加载失败，请稍后再试";
+  return isEnglish.value ? "Could not load messages. Please try again later." : "消息加载失败，请稍后再试";
 }
 
 function normalizeMessageActionError(error: unknown, fallback: string) {

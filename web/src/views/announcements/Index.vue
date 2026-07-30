@@ -1,23 +1,23 @@
 <template>
   <div class="announce-page">
     <header class="page-head">
-      <h1 class="title">📢 校园公告</h1>
-      <p class="sub">汇总融合门户通知与学校公开公告渠道</p>
+      <h1 class="title">📢 {{ isEnglish ? "Campus Announcements" : "校园公告" }}</h1>
+      <p class="sub">{{ isEnglish ? "A shared view of eHall notices and public university announcement channels" : "汇总融合门户通知与学校公开公告渠道" }}</p>
     </header>
 
     <section class="official-section">
       <div class="section-head">
         <div>
           <div class="section-title-row">
-            <span class="official-mark">西</span>
-            <h2>XJTLU 融合门户通知</h2>
-            <span v-if="noticeState === 'ready'" class="live-badge">定时同步</span>
+            <span class="official-mark">X</span>
+            <h2>{{ isEnglish ? "XJTLU eHall Notices" : "XJTLU 融合门户通知" }}</h2>
+            <span v-if="noticeState === 'ready'" class="live-badge">{{ isEnglish ? "Scheduled sync" : "定时同步" }}</span>
           </div>
-          <p>由后台授权账号统一同步并保存，所有人读取同一份公告数据<span v-if="syncedAt"> · 更新于 {{ fmtRelative(syncedAt) }}</span>。</p>
+          <p>{{ isEnglish ? "Synced and stored through an authorized backend account; everyone reads the same announcement dataset" : "由后台授权账号统一同步并保存，所有人读取同一份公告数据" }}<span v-if="syncedAt"> · {{ isEnglish ? "Updated" : "更新于" }} {{ fmtRelative(syncedAt) }}</span>。</p>
         </div>
         <div class="section-actions">
-          <el-button text :loading="noticesLoading" @click="loadNotices">刷新</el-button>
-          <a href="https://ehall.xjtlu.edu.cn/default/index.html#/homeXS" target="_blank" rel="noopener noreferrer">官方页面</a>
+          <el-button text :loading="noticesLoading" @click="loadNotices">{{ isEnglish ? "Refresh" : "刷新" }}</el-button>
+          <a href="https://ehall.xjtlu.edu.cn/default/index.html#/homeXS" target="_blank" rel="noopener noreferrer">{{ isEnglish ? "Official page" : "官方页面" }}</a>
         </div>
       </div>
 
@@ -26,16 +26,16 @@
       </div>
       <div v-else-if="noticeState === 'disconnected'" class="notice-state">
         <div>
-          <strong>公告同步尚未启用</strong>
-          <span>请管理员在后台“公告”页授权一个学校账号。</span>
+          <strong>{{ isEnglish ? "Announcement sync is not enabled" : "公告同步尚未启用" }}</strong>
+          <span>{{ isEnglish ? "An administrator must authorize a university account in the Announcements panel." : "请管理员在后台“公告”页授权一个学校账号。" }}</span>
         </div>
       </div>
       <el-alert v-else-if="noticesError" :title="noticesError" type="warning" :closable="false" show-icon>
         <template #default>
-          <el-button text type="warning" @click="loadNotices">重试</el-button>
+          <el-button text type="warning" @click="loadNotices">{{ isEnglish ? "Try again" : "重试" }}</el-button>
         </template>
       </el-alert>
-      <el-empty v-else-if="!notices.length" description="当前没有新的融合门户通知" :image-size="72" />
+      <el-empty v-else-if="!notices.length" :description="isEnglish ? 'No new eHall notices' : '当前没有新的融合门户通知'" :image-size="72" />
       <div v-else class="notice-list">
         <a
           v-for="notice in notices"
@@ -52,7 +52,7 @@
           <span class="notice-copy">
             <strong>{{ notice.title }}</strong>
             <small>
-              <span>{{ notice.category || '通知' }}</span>
+              <span>{{ notice.category || (isEnglish ? 'Notice' : '通知') }}</span>
               <span v-if="notice.author">{{ notice.author }}</span>
               <span v-if="noticeTime(notice.publishedAt)">{{ noticeTime(notice.publishedAt) }}</span>
             </small>
@@ -65,10 +65,10 @@
     <div v-loading="loading" class="cluster">
       <!-- 错误态：网络失败 / 后端 5xx -->
       <el-empty v-if="!loading && error" :description="error">
-        <el-button type="primary" @click="reload">重试</el-button>
+        <el-button type="primary" @click="reload">{{ isEnglish ? "Try again" : "重试" }}</el-button>
       </el-empty>
       <!-- 空态 -->
-      <el-empty v-else-if="!loading && !boards.length" description="暂无公告来源" />
+      <el-empty v-else-if="!loading && !boards.length" :description="isEnglish ? 'No announcement sources' : '暂无公告来源'" />
       <!-- 列表：router-link 直接跳转，避免 div+click 在移动端偶尔不响应 -->
       <router-link
         v-for="b in boards"
@@ -80,12 +80,12 @@
         <div class="body">
           <div class="name-row">
             <span class="name">{{ b.name }}</span>
-            <span class="count">{{ b.topicCount }} 条</span>
+            <span class="count">{{ b.topicCount }} {{ isEnglish ? "items" : "条" }}</span>
           </div>
           <div class="desc" v-if="b.description">{{ b.description }}</div>
           <div class="meta">
-            <span v-if="b.feedSource?.homepage">同步自 {{ shortHost(b.feedSource.homepage) }}</span>
-            <span v-if="b.feedSource?.lastRunAt" class="time">· 最近更新 {{ fmtRelative(b.feedSource.lastRunAt) }}</span>
+            <span v-if="b.feedSource?.homepage">{{ isEnglish ? "Synced from" : "同步自" }} {{ shortHost(b.feedSource.homepage) }}</span>
+            <span v-if="b.feedSource?.lastRunAt" class="time">· {{ isEnglish ? "Last updated" : "最近更新" }} {{ fmtRelative(b.feedSource.lastRunAt) }}</span>
           </div>
         </div>
         <el-icon class="arrow"><Right /></el-icon>
@@ -100,8 +100,10 @@ import { Right } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 import { ehallApi, type EhallNotice } from "@/api/ehall";
 import { fmtRelative } from "@/utils/format";
+import { useLocale } from "@/i18n";
 
 const all = ref<Board[]>([]);
+const { isEnglish } = useLocale();
 const loading = ref(false);
 const error = ref("");
 const notices = ref<EhallNotice[]>([]);
@@ -153,7 +155,7 @@ async function loadNotices() {
     if (seq !== noticeLoadSeq) return;
     notices.value = [];
     noticeState.value = "idle";
-    noticesError.value = "融合门户通知暂时无法加载，请稍后重试";
+    noticesError.value = isEnglish.value ? "eHall notices are temporarily unavailable. Please try again later." : "融合门户通知暂时无法加载，请稍后重试";
   } finally {
     if (seq === noticeLoadSeq) noticesLoading.value = false;
   }
@@ -184,7 +186,7 @@ function noticeDay(value: string) {
 
 function noticeMonth(value: string) {
   const month = noticeDateParts(value)?.month;
-  return month ? `${String(month).padStart(2, "0")}月` : "日期";
+  return month ? (isEnglish.value ? new Date(2000, month - 1, 1).toLocaleString("en-US", { month: "short" }) : `${String(month).padStart(2, "0")}月`) : (isEnglish.value ? "Date" : "日期");
 }
 
 function noticeTime(value: string) {
@@ -194,9 +196,9 @@ function noticeTime(value: string) {
 function normalizeAnnouncementsError(error_: unknown) {
   const status = (error_ as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status && status < 500) {
-    return (error_ as { response?: { data?: { message?: string } } })?.response?.data?.message || "公告来源加载失败";
+    return (error_ as { response?: { data?: { message?: string } } })?.response?.data?.message || (isEnglish.value ? "Failed to load announcement sources" : "公告来源加载失败");
   }
-  return "公告来源加载失败，请稍后再试";
+  return isEnglish.value ? "Failed to load announcement sources. Please try again later." : "公告来源加载失败，请稍后再试";
 }
 </script>
 

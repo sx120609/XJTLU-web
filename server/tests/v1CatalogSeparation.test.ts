@@ -36,7 +36,8 @@ test("learning publishing is open while moderation and governance remain enforce
 test("homepage has one clear entry into the full marketplace", () => {
   const home = source("../../web/src/views/Home.vue");
 
-  assert.match(home, /<router-link to="\/market">进入市集/);
+  assert.equal((home.match(/<router-link to="\/market"/g) || []).length, 1);
+  assert.match(home, /<router-link to="\/market">\{\{ t\("home\.enterMarket"\) \}\}/);
   assert.doesNotMatch(home, />实体商品<\/router-link>|>学习资料 <el-icon/);
 });
 

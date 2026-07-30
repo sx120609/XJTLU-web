@@ -48,6 +48,7 @@ export function buildSelfUser(u: any) {
     forumEnabledAt: u.forumEnabledAt,
     anonymousState: trust.anonymousState,
     points: Math.max(0, Number(u.transactionPoints ?? 0)),
+    preferredLocale: u.preferredLocale === "zh-CN" ? "zh-CN" : "en-US",
     sponsorTotalCents: u.sponsorTotalCents ?? 0,
     sponsorAmount: sponsorAmount(u),
     status: u.status,

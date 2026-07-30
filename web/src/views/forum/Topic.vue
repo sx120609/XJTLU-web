@@ -38,18 +38,18 @@
           <el-icon><ArrowLeft /></el-icon> {{ backLabel }}
         </button>
         <div class="actions">
-          <el-button v-if="canBoost" text type="primary" @click="boostTopic">积分推流</el-button>
-          <el-button v-if="canEdit" text :disabled="isTopicActionBusy" @click="onEdit">编辑</el-button>
-          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'pin'" :disabled="isTopicActionBusy" @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
-          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'globalPin'" :disabled="isTopicActionBusy" @click="onGlobalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
-          <el-button v-if="canPin" text :loading="topicActionBusy === 'lock'" :disabled="isTopicActionBusy" @click="onLock">{{ topic.locked ? '解锁' : '锁帖' }}</el-button>
-          <el-button v-if="canEdit" text type="danger" :loading="topicActionBusy === 'delete'" :disabled="isTopicActionBusy" @click="onDelete">删除</el-button>
+          <el-button v-if="canBoost" text type="primary" @click="boostTopic">{{ isEnglish ? "Points promotion" : "积分推流" }}</el-button>
+          <el-button v-if="canEdit" text :disabled="isTopicActionBusy" @click="onEdit">{{ isEnglish ? "Edit" : "编辑" }}</el-button>
+          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'pin'" :disabled="isTopicActionBusy" @click="onPin">{{ topic.pinned ? (isEnglish ? 'Unpin from channel' : '取消板块置顶') : (isEnglish ? 'Pin in channel' : '板块置顶') }}</el-button>
+          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'globalPin'" :disabled="isTopicActionBusy" @click="onGlobalPin">{{ topic.globalPinned ? (isEnglish ? 'Remove global pin' : '取消全局置顶') : (isEnglish ? 'Pin globally' : '全局置顶') }}</el-button>
+          <el-button v-if="canPin" text :loading="topicActionBusy === 'lock'" :disabled="isTopicActionBusy" @click="onLock">{{ topic.locked ? (isEnglish ? 'Unlock' : '解锁') : (isEnglish ? 'Lock post' : '锁帖') }}</el-button>
+          <el-button v-if="canEdit" text type="danger" :loading="topicActionBusy === 'delete'" :disabled="isTopicActionBusy" @click="onDelete">{{ isEnglish ? "Delete" : "删除" }}</el-button>
         </div>
       </header>
 
       <h1 v-if="!titlelessWeiwall" class="post-title">
-        <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
-        <span v-if="topic.pinned" class="badge pin">板块置顶</span>
+        <span v-if="topic.globalPinned" class="badge global-pin">{{ isEnglish ? "GLOBAL PIN" : "全局置顶" }}</span>
+        <span v-if="topic.pinned" class="badge pin">{{ isEnglish ? "PINNED" : "板块置顶" }}</span>
         <span v-if="topic.locked" class="badge lock">🔒</span>
         {{ displayTopicTitle }}
       </h1>
@@ -66,31 +66,31 @@
       </div>
 
       <div class="post-meta">
-        <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
+        <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :alt="isEnglish ? 'Author avatar' : '作者头像'" />
         <div class="meta-author">
           <div class="name">
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <span v-else>{{ topic.author?.nickname }}</span>
-            <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
-            <el-tag v-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">逛逛同步</el-tag>
-            <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
-            <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
+            <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">{{ isEnglish ? "Anonymous" : "匿名发布" }}</el-tag>
+            <el-tag v-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">{{ isEnglish ? "External feed" : "逛逛同步" }}</el-tag>
+            <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">{{ isEnglish ? "Notice sync" : "公告同步" }}</el-tag>
+            <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">{{ isEnglish ? "Administrator" : "管理员" }}</el-tag>
             <UserModerationActions
               v-if="topicModerationUser"
               :user="topicModerationUser"
               display="dropdown"
               text
-              label="管理"
+              :label="isEnglish ? 'Manage' : '管理'"
               @updated="applyTopicAuthorModeration"
             />
           </div>
           <div v-if="topic.isAnonymous && topic.realAuthor" class="real-author-line">
-            真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
+            {{ isEnglish ? "Actual author" : "真实作者" }}：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
           </div>
           <div class="meta">
-            发表于 {{ fmtDate(topic.createdAt) }}
-            <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
-            · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
+            {{ isEnglish ? "Posted" : "发表于" }} {{ fmtDate(topic.createdAt) }}
+            <template v-if="topic.editCount && topic.editCount > 0"> · {{ isEnglish ? `Edited ${topic.editCount} time(s)` : `已编辑 ${topic.editCount} 次` }}</template>
+            · {{ isEnglish ? "Popularity" : "热度" }} {{ hotScore }} · {{ isEnglish ? "Views" : "浏览" }} {{ topic.viewCount }} · {{ isEnglish ? "Replies" : "回复" }} {{ topic.replyCount }}
           </div>
         </div>
         <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>
@@ -102,14 +102,14 @@
         <span class="src-text-wrap">
           <span class="src-text">
             <template v-if="topic.metadata?.externalPlatform === 'weiwall'">
-              来自 <b>{{ externalSourceName }}</b> · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+              {{ isEnglish ? "From" : "来自" }} <b>{{ externalSourceName }}</b> · {{ isEnglish ? "Published" : "发布于" }} {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
             <template v-if="topic.metadata?.externalType === 'wechat'">
-              原文发布于 <b>微信公众号</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+              {{ isEnglish ? "Originally published on" : "原文发布于" }} <b>{{ isEnglish ? "WeChat Official Account" : "微信公众号" }}</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
             <template v-else-if="topic.metadata?.externalPlatform !== 'weiwall'">
-              来自 <b>{{ topic.metadata.sourceName || boardDisplayName }}</b>
-              · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
+              {{ isEnglish ? "From" : "来自" }} <b>{{ topic.metadata.sourceName || boardDisplayName }}</b>
+              · {{ isEnglish ? "Published" : "发布于" }} {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
           </span>
           <span v-if="sourceNotice" class="src-notice">{{ sourceNotice }}</span>
@@ -121,11 +121,11 @@
           @click="openWeiwallSource"
         >
           <el-icon><Link /></el-icon>
-          前往逛逛原帖
+          {{ isEnglish ? "Open original post" : "前往逛逛原帖" }}
         </button>
         <a v-else :href="topic.metadata.sourceUrl" target="_blank" rel="noopener noreferrer" class="src-link">
           <el-icon><Link /></el-icon>
-          {{ topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
+          {{ topic.metadata?.externalType === 'wechat' ? (isEnglish ? 'Read on WeChat' : '前往微信阅读全文') : (isEnglish ? 'View on the university site' : '在学校原站查看') }}
         </a>
       </div>
       <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode" class="extra-bar">
@@ -135,11 +135,11 @@
 
       <router-link v-if="topic.linkedMarketItem" :to="topic.linkedMarketItem.category === 'digital_goods' ? `/learning/materials/item/${topic.linkedMarketItem.id}` : `/market/item/${topic.linkedMarketItem.id}`" class="linked-market-card" :class="{ learning: topic.linkedMarketItem.category === 'digital_goods' }">
         <div class="linked-cover"><img v-if="topic.linkedMarketItem.images?.[0]?.url" :src="topic.linkedMarketItem.images[0].url" :alt="topic.linkedMarketItem.title" /><span v-else>{{ topic.linkedMarketItem.category === 'digital_goods' ? '📝' : '🛍️' }}</span></div>
-        <div><small>{{ topic.linkedMarketItem.category === "digital_goods" ? "关联学习资料" : "关联实体商品" }}</small><b>{{ topic.linkedMarketItem.title }}</b><span>¥{{ moneyFromCents(topic.linkedMarketItem.priceCents) }} · {{ linkedStatusLabel(topic.linkedMarketItem.status) }}</span></div><em>查看{{ topic.linkedMarketItem.category === "digital_goods" ? "资料" : "商品" }} →</em>
+        <div><small>{{ topic.linkedMarketItem.category === "digital_goods" ? (isEnglish ? "Linked learning material" : "关联学习资料") : (isEnglish ? "Linked physical item" : "关联实体商品") }}</small><b>{{ topic.linkedMarketItem.title }}</b><span>¥{{ moneyFromCents(topic.linkedMarketItem.priceCents) }} · {{ linkedStatusLabel(topic.linkedMarketItem.status) }}</span></div><em>{{ isEnglish ? `View ${topic.linkedMarketItem.category === "digital_goods" ? "material" : "item"}` : `查看${topic.linkedMarketItem.category === "digital_goods" ? "资料" : "商品"}` }} →</em>
       </router-link>
       <router-link v-else-if="topic.linkedWantedPost" :to="`/market/wanted/${topic.linkedWantedPost.id}`" class="linked-market-card wanted" :class="{ learning: topic.linkedWantedPost.category === 'learning_materials' }">
         <div class="linked-cover"><span>{{ topic.linkedWantedPost.category === "learning_materials" ? "📝" : "📣" }}</span></div>
-        <div><small>{{ topic.linkedWantedPost.category === "learning_materials" ? "学习资料求购" : "关联求购" }}</small><b>{{ topic.linkedWantedPost.title }}</b><span>预算 ¥{{ moneyFromCents(topic.linkedWantedPost.budgetMinCents) }}–{{ moneyFromCents(topic.linkedWantedPost.budgetMaxCents) }} · {{ linkedStatusLabel(topic.linkedWantedPost.status) }}</span></div><em>查看求购 →</em>
+        <div><small>{{ topic.linkedWantedPost.category === "learning_materials" ? (isEnglish ? "Learning material wanted" : "学习资料求购") : (isEnglish ? "Linked request" : "关联求购") }}</small><b>{{ topic.linkedWantedPost.title }}</b><span>{{ isEnglish ? "Budget" : "预算" }} ¥{{ moneyFromCents(topic.linkedWantedPost.budgetMinCents) }}–{{ moneyFromCents(topic.linkedWantedPost.budgetMaxCents) }} · {{ linkedStatusLabel(topic.linkedWantedPost.status) }}</span></div><em>{{ isEnglish ? "View request" : "查看求购" }} →</em>
       </router-link>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
@@ -208,13 +208,13 @@
 
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy" @click="onLike">
-          {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
+          {{ liked ? (isEnglish ? 'Liked' : '已点赞') : (isEnglish ? 'Like' : '点赞') }} · {{ topic.likeCount }}
         </el-button>
         <el-button :type="topic.favorited ? 'primary' : 'default'" :loading="topicActionBusy === 'favorite'" :disabled="isTopicActionBusy" @click="onFavorite">
-          {{ topic.favorited ? "已收藏" : "收藏" }}
+          {{ topic.favorited ? (isEnglish ? "Saved" : "已收藏") : (isEnglish ? "Save" : "收藏") }}
         </el-button>
-        <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
-        <el-button @click="shareDialogOpen = true">分享</el-button>
+        <el-button :icon="ChatLineRound" @click="openReplyDialog">{{ isEnglish ? "Reply" : "回复" }} · {{ topic.replyCount }}</el-button>
+        <el-button @click="shareDialogOpen = true">{{ isEnglish ? "Share" : "分享" }}</el-button>
       </footer>
 
       <section v-if="showWeiwallContactSection" class="weiwall-contact-card">
@@ -246,12 +246,12 @@
 
     <!-- 回复列表 -->
     <section class="replies cpu-card" ref="repliesEl">
-      <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
+      <h3 class="cpu-section-title">{{ topic.replyCount }} {{ isEnglish ? "replies" : "条回复" }}</h3>
       <div v-if="repliesLoading" class="replies-loading" aria-busy="true">
         <el-skeleton animated :rows="3" />
         <el-skeleton animated :rows="3" />
       </div>
-      <el-empty v-else-if="!replies.length" description="还没有回复，来聊两句吧" />
+      <el-empty v-else-if="!replies.length" :description="isEnglish ? 'No replies yet. Start the conversation.' : '还没有回复，来聊两句吧'" />
       <template v-else>
         <div
           v-for="entry in displayReplies"
@@ -261,33 +261,33 @@
           :class="{ nested: entry.depth > 0 }"
           :style="{ marginLeft: `${Math.min(entry.depth, 4) * 24}px` }"
         >
-          <UserAvatar :size="32" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" alt="回复头像" />
+          <UserAvatar :size="32" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :alt="isEnglish ? 'Reply avatar' : '回复头像'" />
           <div class="reply-body">
             <div class="reply-meta">
               <span class="floor">#{{ entry.item.floor }}</span>
               <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
               <span v-else class="author">{{ entry.item.author?.nickname }}</span>
-              <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
+              <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">{{ isEnglish ? "Anonymous" : "匿名" }}</el-tag>
               <UserModerationActions
                 v-if="replyModerationUser(entry.item)"
                 :user="replyModerationUser(entry.item)"
                 display="dropdown"
                 text
-                label="管理"
+                :label="isEnglish ? 'Manage' : '管理'"
                 @updated="applyReplyAuthorModeration(entry.item, $event)"
               />
               <span v-if="entry.item.isAnonymous && entry.item.realAuthor" class="real-author-inline">
-                真实作者：{{ entry.item.realAuthor.nickname }}<template v-if="entry.item.realAuthor.username"> @{{ entry.item.realAuthor.username }}</template>
+                {{ isEnglish ? "Actual author" : "真实作者" }}：{{ entry.item.realAuthor.nickname }}<template v-if="entry.item.realAuthor.username"> @{{ entry.item.realAuthor.username }}</template>
               </span>
-              <span v-if="entry.parent" class="reply-parent-chip">回复 {{ entry.parent.author?.nickname || "同学" }} · #{{ entry.parent.floor }}</span>
+              <span v-if="entry.parent" class="reply-parent-chip">{{ isEnglish ? "Replying to" : "回复" }} {{ entry.parent.author?.nickname || (isEnglish ? "student" : "同学") }} · #{{ entry.parent.floor }}</span>
               <span class="dot">·</span>
               <span>{{ fmtRelative(entry.item.createdAt) }}</span>
             </div>
             <MarkdownView :content="entry.item.content" class="reply-content topic-markdown reply-markdown" clickable-images media-loading="eager" />
             <div class="reply-actions">
-              <el-button text size="small" @click="quoteReply(entry.item)">引用</el-button>
-              <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
-              <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
+              <el-button text size="small" @click="quoteReply(entry.item)">{{ isEnglish ? "Quote" : "引用" }}</el-button>
+              <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">{{ isEnglish ? "Edit" : "编辑" }}</el-button>
+              <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">{{ isEnglish ? "Delete" : "删除" }}</el-button>
               <el-button text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
             </div>
           </div>
@@ -298,40 +298,40 @@
     <el-dialog
       v-if="canReply"
       v-model="replyDialogOpen"
-      title="回复"
+      :title="isEnglish ? 'Reply' : '回复'"
       width="min(720px, calc(100dvw - 24px))"
       append-to-body
       align-center
       class="reply-dialog"
     >
       <div v-if="replyParentPreview && !editingReplyId" class="reply-target-bar">
-        <span>正在回复 {{ replyParentPreview.author?.nickname || "同学" }} 的 #{{ replyParentPreview.floor }} 楼</span>
-        <el-button text size="small" @click="clearReplyParent">取消</el-button>
+        <span>{{ isEnglish ? "Replying to" : "正在回复" }} {{ replyParentPreview.author?.nickname || (isEnglish ? "student" : "同学") }} · #{{ replyParentPreview.floor }}</span>
+        <el-button text size="small" @click="clearReplyParent">{{ isEnglish ? "Cancel" : "取消" }}</el-button>
       </div>
       <div v-if="topic?.board?.anonymousEnabled" class="reply-anonymous-box" :class="{ disabled: !replyAnonymousEnabled }">
         <el-switch v-model="replyAnonymous" :disabled="!replyAnonymousEnabled" />
         <div class="reply-anonymous-copy">
-          <b>匿名回复</b>
+          <b>{{ isEnglish ? "Reply anonymously" : "匿名回复" }}</b>
           <p>{{ replyAnonymousHint }}</p>
         </div>
       </div>
       <RichTextEditor
         ref="replyEditorRef"
         v-model="replyText"
-        label="写回复"
-        placeholder="写下你的回复，可以直接粘贴图片。"
-        footer-text="支持排版、图片和草稿保存。"
+        :label="isEnglish ? 'Write a reply' : '写回复'"
+        :placeholder="isEnglish ? 'Write your reply. You can paste images directly.' : '写下你的回复，可以直接粘贴图片。'"
+        :footer-text="isEnglish ? 'Formatting, images, and draft saving are supported.' : '支持排版、图片和草稿保存。'"
         :max-length="REPLY_MAX"
         :draft-key="replyDraftKey"
         toolbar-mode="static"
         @draft-restored="replyText = $event"
       />
       <div class="reply-form-actions reply-dialog-actions">
-        <span class="cpu-muted">离开页面后会保留未发送的内容。</span>
+        <span class="cpu-muted">{{ isEnglish ? "Unsent content is kept when you leave the page." : "离开页面后会保留未发送的内容。" }}</span>
         <div class="reply-submit-actions">
-          <el-button v-if="editingReplyId" :disabled="replying" @click="cancelReplyEdit">取消编辑</el-button>
+          <el-button v-if="editingReplyId" :disabled="replying" @click="cancelReplyEdit">{{ isEnglish ? "Cancel editing" : "取消编辑" }}</el-button>
           <el-button type="primary" :loading="replying" :disabled="replying" @click="submitReply">
-            {{ editingReplyId ? "保存修改" : "发布回复" }}
+            {{ editingReplyId ? (isEnglish ? "Save changes" : "保存修改") : (isEnglish ? "Publish reply" : "发布回复") }}
           </el-button>
         </div>
       </div>
@@ -339,31 +339,31 @@
 
     <el-dialog
       v-model="shareDialogOpen"
-      title="分享帖子"
+      :title="isEnglish ? 'Share post' : '分享帖子'"
       width="420px"
       append-to-body
       class="share-dialog"
     >
       <div class="share-panel">
-        <p class="share-copy">分享这里收成两件事：要么复制链接，要么直接保存一张分享卡片。</p>
+        <p class="share-copy">{{ isEnglish ? "Copy the link or save a share card." : "分享这里收成两件事：要么复制链接，要么直接保存一张分享卡片。" }}</p>
         <div class="share-actions">
-          <el-button v-if="canUseNativeShare" type="primary" class="share-action-btn" @click="shareViaSystem">系统分享</el-button>
-          <el-button class="share-action-btn" @click="copyShareDialogOpen = true">复制链接</el-button>
-          <el-button type="primary" plain class="share-action-btn" @click="openShareCard">保存分享卡片</el-button>
+          <el-button v-if="canUseNativeShare" type="primary" class="share-action-btn" @click="shareViaSystem">{{ isEnglish ? "System share" : "系统分享" }}</el-button>
+          <el-button class="share-action-btn" @click="copyShareDialogOpen = true">{{ isEnglish ? "Copy link" : "复制链接" }}</el-button>
+          <el-button type="primary" plain class="share-action-btn" @click="openShareCard">{{ isEnglish ? "Save share card" : "保存分享卡片" }}</el-button>
         </div>
       </div>
     </el-dialog>
 
     <el-dialog
       v-model="copyShareDialogOpen"
-      title="分享链接"
+      :title="isEnglish ? 'Share link' : '分享链接'"
       width="380px"
       append-to-body
       class="copy-share-dialog"
     >
       <div class="copy-share-panel">
-        <el-button class="share-action-btn" @click="copyShareLinkOnly">只复制链接</el-button>
-        <el-button type="primary" plain class="share-action-btn" @click="copyShareTitleAndLink">复制标题和链接</el-button>
+        <el-button class="share-action-btn" @click="copyShareLinkOnly">{{ isEnglish ? "Copy link only" : "只复制链接" }}</el-button>
+        <el-button type="primary" plain class="share-action-btn" @click="copyShareTitleAndLink">{{ isEnglish ? "Copy title and link" : "复制标题和链接" }}</el-button>
       </div>
     </el-dialog>
 
@@ -633,8 +633,8 @@
 
   <div v-else class="topic-page topic-page-empty">
     <section class="cpu-card topic-empty-card">
-      <el-empty :description="loadError || '帖子不存在或暂时不可见'">
-        <el-button v-if="loadError" type="primary" @click="load">重试</el-button>
+      <el-empty :description="loadError || (isEnglish ? 'This post does not exist or is currently unavailable' : '帖子不存在或暂时不可见')">
+        <el-button v-if="loadError" type="primary" @click="load">{{ isEnglish ? "Try again" : "重试" }}</el-button>
       </el-empty>
     </section>
   </div>
@@ -662,18 +662,23 @@ import { copyText } from "@/utils/userGroup";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import { useLocale } from "@/i18n";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const site = useSiteStore();
+const { isEnglish } = useLocale();
 
 function moneyFromCents(value: number) {
   return (Number(value || 0) / 100).toFixed(2).replace(/\.00$/, "");
 }
 
 function linkedStatusLabel(value: string) {
-  return ({ active: "进行中", reserved: "已预留", sold: "已成交", withdrawn: "已撤回", responded: "已有回应", matched: "已匹配", completed: "已完成", cancelled: "已取消", expired: "已过期" } as Record<string, string>)[value] || value;
+  return (isEnglish.value
+    ? ({ active: "Active", reserved: "Reserved", sold: "Sold", withdrawn: "Withdrawn", responded: "Responses received", matched: "Matched", completed: "Completed", cancelled: "Cancelled", expired: "Expired" } as Record<string, string>)
+    : ({ active: "进行中", reserved: "已预留", sold: "已成交", withdrawn: "已撤回", responded: "已有回应", matched: "已匹配", completed: "已完成", cancelled: "已取消", expired: "已过期" } as Record<string, string>)
+  )[value] || value;
 }
 
 const topic = ref<Topic | null>(null);
@@ -773,14 +778,14 @@ const hotScore = computed(() => {
     : (topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03;
   return Math.max(0, Math.min(100, Math.round(score)));
 });
-const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || site.siteName));
+const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? (isEnglish.value ? "Campus Feed" : "逛逛") : (topic.value?.board?.name || site.siteName));
 const shareCardHost = computed(() => {
   try { return new URL(site.siteOrigin || window.location.origin).host; }
   catch { return window.location.host; }
 });
 const displayTopicTitle = computed(() => topic.value?.title || "");
 const externalSourceName = computed(() => {
-  return String(topic.value?.metadata?.sourceName || "").trim() || "逛逛";
+  return String(topic.value?.metadata?.sourceName || "").trim() || (isEnglish.value ? "Campus Feed" : "逛逛");
 });
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
 const topicModerationUser = computed(() => {
@@ -823,8 +828,8 @@ const replyAnonymousEnabled = computed(() => {
   return Boolean(topic.value?.board?.anonymousEnabled);
 });
 const replyAnonymousHint = computed(() => {
-  if (!topic.value?.board?.anonymousEnabled) return "当前板块暂不支持匿名回复。";
-  return "匿名回复免费，不消耗积分，也不影响信誉值。";
+  if (!topic.value?.board?.anonymousEnabled) return isEnglish.value ? "This channel does not support anonymous replies." : "当前板块暂不支持匿名回复。";
+  return isEnglish.value ? "Anonymous replies are free and do not use points or affect reputation." : "匿名回复免费，不消耗积分，也不影响信誉值。";
 });
 const canEdit = computed(() => {
   if (topic.value?.metadata?.kind === "wanted_demand") return false;
@@ -869,11 +874,13 @@ const canReviewTopicVideos = computed(() => (
   )
 ));
 const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
-const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}` : "你当前已被禁言，暂时无法回复");
+const currentMuteMessage = computed(() => auth.user?.mutedUntil
+  ? (isEnglish.value ? `You are muted until ${fmtDate(auth.user.mutedUntil)}` : `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}`)
+  : (isEnglish.value ? "You are currently muted and cannot reply" : "你当前已被禁言，暂时无法回复"));
 const shareLandingUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}`, window.location.origin).toString() : "");
 const shareSummary = computed(() => {
   const raw = stripTextForShare(displayContent.value || topic.value?.content || "");
-  return raw ? raw.slice(0, 80) : `来自 ${boardDisplayName.value} 的帖子`;
+  return raw ? raw.slice(0, 80) : (isEnglish.value ? `A post from ${boardDisplayName.value}` : `来自 ${boardDisplayName.value} 的帖子`);
 });
 const canUseNativeShare = computed(() => (
   isIosDevice() &&
@@ -883,8 +890,9 @@ const canUseNativeShare = computed(() => (
 const isNativeAppClient = computed(() => typeof navigator !== "undefined" && (isAndroidNativeApp() || isHarmonyNativeApp()));
 const hasNativeSaveBridge = computed(() => hasNativeImageSaveBridge());
 const shareCardDownloadName = computed(() => {
-  const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
-  return `${safeTitle || "分享卡片"}-cpu-share.png`;
+  const fallback = isEnglish.value ? "share-card" : "分享卡片";
+  const safeTitle = (topic.value?.title || fallback).replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
+  return `${safeTitle || fallback}-cpu-share.png`;
 });
 const shareCardAccent = computed(() => topic.value?.board?.color || "#168776");
 const shareCardSoftBg = computed(() => `linear-gradient(135deg, ${hexToRgba(shareCardAccent.value, 0.08)} 0%, #f7fbff 100%)`);
@@ -892,10 +900,12 @@ const shareCardSoftOrb = computed(() => hexToRgba(shareCardAccent.value, 0.13));
 const shareCardSoftLine = computed(() => hexToRgba(shareCardAccent.value, 0.22));
 const shareCardSubtitle = computed(() => {
   const board = boardDisplayName.value;
-  const author = topic.value?.author?.nickname || "同学";
+  const author = topic.value?.author?.nickname || (isEnglish.value ? "Student" : "同学");
   return `${board} · ${author}`;
 });
-const shareCardStats = computed(() => `${topic.value?.replyCount ?? 0} 条回复 · ${topic.value?.viewCount ?? 0} 浏览`);
+const shareCardStats = computed(() => isEnglish.value
+  ? `${topic.value?.replyCount ?? 0} replies · ${topic.value?.viewCount ?? 0} views`
+  : `${topic.value?.replyCount ?? 0} 条回复 · ${topic.value?.viewCount ?? 0} 浏览`);
 const inAppBrowser = computed(() => detectInAppBrowser());
 const weiwallSourceUrl = computed(() => String(topic.value?.metadata?.sourceUrl ?? "").trim());
 const weiwallSourceHint = computed(() => {
@@ -916,16 +926,18 @@ const displayContent = computed(() => {
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";
   if (topic.value?.metadata?.externalPlatform === "weiwall") {
-    return "这是逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
+    return isEnglish.value
+      ? "This is mirrored external content and does not enter this site's trending or latest feeds. Updates are synced for three days; use the original post if comments or content are incomplete."
+      : "这是逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
   }
   if (topic.value?.metadata?.externalType === "wechat") {
-    return "微信文章可能无法在站内完整展示，建议前往微信阅读全文。";
+    return isEnglish.value ? "WeChat articles may not render fully here. Open WeChat to read the complete article." : "微信文章可能无法在站内完整展示，建议前往微信阅读全文。";
   }
   const compact = displayContent.value.replace(/\s/g, "");
   if (!compact || /未能提取正文|正文为微信公众号文章/.test(displayContent.value)) {
-    return "如果正文为空、排版异常或无法查看正常内容，建议前往学校原站查看。";
+    return isEnglish.value ? "If content is empty or malformed, view it on the original university site." : "如果正文为空、排版异常或无法查看正常内容，建议前往学校原站查看。";
   }
-  return "如遇正文缺失、附件打不开或排版异常，可前往学校原站查看。";
+  return isEnglish.value ? "If content, attachments, or formatting are incomplete, view the original university page." : "如遇正文缺失、附件打不开或排版异常，可前往学校原站查看。";
 });
 
 const isCampusWallTopic = computed(() => topic.value?.board?.slug === "campus-wall" || topic.value?.metadata?.externalPlatform === "weiwall");
@@ -940,12 +952,12 @@ const backTargetFromQuery = computed(() => {
   return text.startsWith("/") ? text : "";
 });
 const backLabel = computed(() => {
-  if (backTargetFromQuery.value.includes("/forum/b/campus-wall")) return "返回逛逛";
-  if (backTargetFromQuery.value.includes("/forum/latest")) return "返回最新";
-  if (backTargetFromQuery.value.includes("/forum/hot")) return "返回热榜";
-  if (isCampusWallTopic.value) return "返回逛逛";
-  if (isAnnouncementTopic.value) return "返回上页";
-  return "返回最新";
+  if (backTargetFromQuery.value.includes("/forum/b/campus-wall")) return isEnglish.value ? "Back to Campus Feed" : "返回逛逛";
+  if (backTargetFromQuery.value.includes("/forum/latest")) return isEnglish.value ? "Back to Latest" : "返回最新";
+  if (backTargetFromQuery.value.includes("/forum/hot")) return isEnglish.value ? "Back to Trending" : "返回热榜";
+  if (isCampusWallTopic.value) return isEnglish.value ? "Back to Campus Feed" : "返回逛逛";
+  if (isAnnouncementTopic.value) return isEnglish.value ? "Back" : "返回上页";
+  return isEnglish.value ? "Back to Latest" : "返回最新";
 });
 
 function normalizeWeiwallContactType(value: unknown): 0 | 1 | 2 | null {

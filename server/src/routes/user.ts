@@ -64,6 +64,11 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
     for (const k of ["nickname", "bio", "college", "enrollYear", "avatar"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
     }
+    if (body.preferredLocale !== undefined) {
+      const locale = z.enum(["en-US", "zh-CN"]).safeParse(body.preferredLocale);
+      if (!locale.success) throw Errors.badRequest("不支持的语言设置");
+      allowed.preferredLocale = locale.data;
+    }
     if (body.dataAuthAgreed === true) {
       allowed.dataAuthAgreedAt = new Date();
     }

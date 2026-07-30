@@ -19,6 +19,7 @@ import {
 } from "./middleware/browserSession";
 import { getSiteLogoUrl, getSiteName, getSiteSubtitle } from "./services/siteSettings";
 import { requestObservability } from "./middleware/requestObservability";
+import { localizeApiMessage, requestLocale } from "./i18n";
 
 export function createApp() {
   const app = express();
@@ -62,8 +63,12 @@ export function createApp() {
   app.use("/share", shareRouter);
   app.use("/api", router);
 
-  app.use("/api/*", (_req, res) => {
-    res.status(404).json({ code: 4004, data: null, message: "接口不存在" });
+  app.use("/api/*", (req, res) => {
+    res.status(404).json({
+      code: 4004,
+      data: null,
+      message: localizeApiMessage("接口不存在", requestLocale(req)),
+    });
   });
 
   // 生产模式：直接 serve 前端 dist（避免再起 nginx）

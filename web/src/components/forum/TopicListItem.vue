@@ -7,11 +7,11 @@
     @keydown.enter.prevent="openTopic"
     @keydown.space.prevent="openTopic"
   >
-    <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
+    <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :alt="isEnglish ? 'Author avatar' : '作者头像'" />
     <div class="main">
       <div class="line1">
-        <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">全局置顶</el-tag>
-        <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">板块置顶</el-tag>
+        <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">{{ isEnglish ? "Global pin" : "全局置顶" }}</el-tag>
+        <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">{{ isEnglish ? "Pinned" : "板块置顶" }}</el-tag>
         <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
           {{ boardDisplayName }}
         </el-tag>
@@ -27,21 +27,21 @@
           {{ tag.name }}
         </el-tag>
         <el-tag v-if="topic.locked" size="small" type="info" class="tag">🔒</el-tag>
-        <el-tag v-if="metaSolved" size="small" type="success" class="tag">已解决</el-tag>
-        <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
-        <el-tag v-if="topic.linkedMarketItem" size="small" :type="topic.linkedMarketItem.category === 'digital_goods' ? 'primary' : 'success'" effect="plain" class="tag">{{ topic.linkedMarketItem.category === "digital_goods" ? "关联学习资料" : "关联实体商品" }}</el-tag>
-        <el-tag v-else-if="topic.linkedWantedPost" size="small" :type="topic.linkedWantedPost.category === 'learning_materials' ? 'primary' : 'success'" effect="plain" class="tag">{{ topic.linkedWantedPost.category === "learning_materials" ? "学习资料求购" : "关联求购" }}</el-tag>
+        <el-tag v-if="metaSolved" size="small" type="success" class="tag">{{ isEnglish ? "Solved" : "已解决" }}</el-tag>
+        <el-tag v-if="metaBounty" size="small" type="warning" class="tag">{{ isEnglish ? "Bounty" : "悬赏" }} {{ metaBounty }}</el-tag>
+        <el-tag v-if="topic.linkedMarketItem" size="small" :type="topic.linkedMarketItem.category === 'digital_goods' ? 'primary' : 'success'" effect="plain" class="tag">{{ topic.linkedMarketItem.category === "digital_goods" ? (isEnglish ? "Linked material" : "关联学习资料") : (isEnglish ? "Linked item" : "关联实体商品") }}</el-tag>
+        <el-tag v-else-if="topic.linkedWantedPost" size="small" :type="topic.linkedWantedPost.category === 'learning_materials' ? 'primary' : 'success'" effect="plain" class="tag">{{ topic.linkedWantedPost.category === "learning_materials" ? (isEnglish ? "Material wanted" : "学习资料求购") : (isEnglish ? "Linked request" : "关联求购") }}</el-tag>
       </div>
       <div class="line2">
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
-        <span v-if="topic.isAnonymous" class="anon">匿名</span>
-        <span v-if="topic.metadata?.externalPlatform === 'weiwall'" class="bot">📮 逛逛同步</span>
-        <span v-else-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
+        <span v-if="topic.isAnonymous" class="anon">{{ isEnglish ? "Anonymous" : "匿名" }}</span>
+        <span v-if="topic.metadata?.externalPlatform === 'weiwall'" class="bot">📮 {{ isEnglish ? "External feed" : "逛逛同步" }}</span>
+        <span v-else-if="topic.author?.role === 'bot'" class="bot">🤖 {{ isEnglish ? "Notice sync" : "公告同步" }}</span>
         <span class="dot">·</span>
         <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
-        <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
+        <span v-if="topic.editCount && topic.editCount > 0" class="edited">{{ isEnglish ? `Edited ${topic.editCount} time(s)` : `已编辑 ${topic.editCount} 次` }}</span>
         <span class="dot">·</span>
-        <span class="heat">热度 {{ hotScore }}</span>
+        <span class="heat">{{ isEnglish ? "Popularity" : "热度" }} {{ hotScore }}</span>
         <span class="dot">·</span>
         <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
         <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
@@ -65,14 +65,16 @@ import { useRoute, useRouter } from "vue-router";
 import { View, ChatLineRound, Star } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";
+import { useLocale } from "@/i18n";
 
 const props = defineProps<{ topic: any }>();
 const route = useRoute();
 const router = useRouter();
+const { isEnglish } = useLocale();
 const metaPrice = computed(() => props.topic.metadata?.price);
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
 const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
-const boardDisplayName = computed(() => props.topic.board?.slug === "campus-wall" ? "逛逛" : (props.topic.board?.name || ""));
+const boardDisplayName = computed(() => props.topic.board?.slug === "campus-wall" ? (isEnglish.value ? "Campus Feed" : "逛逛") : (props.topic.board?.name || ""));
 const metaRating = computed(() => {
   const r = props.topic.metadata?.ratings?.recommend;
   return typeof r === "number" ? r : 0;

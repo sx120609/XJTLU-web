@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { getActiveLocale } from "@/i18n";
 
 export function fmtDate(d: string | Date | null | undefined, pattern = "YYYY-MM-DD HH:mm") {
   if (!d) return "—";
@@ -10,28 +11,25 @@ export function fmtRelative(d: string | Date | null | undefined) {
   const target = dayjs(d);
   const now = dayjs();
   const diffMin = target.diff(now, "minute");
-  if (Math.abs(diffMin) < 1) return "刚刚";
-  if (diffMin > 0) {
-    if (diffMin < 60) return `${diffMin} 分钟后`;
-    const h = Math.floor(diffMin / 60);
-    if (h < 24) return `${h} 小时后`;
-    return target.format("MM-DD HH:mm");
-  } else {
-    const m = -diffMin;
-    if (m < 60) return `${m} 分钟前`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h} 小时前`;
-    const day = Math.floor(h / 24);
-    if (day < 30) return `${day} 天前`;
-    return target.format("YYYY-MM-DD");
-  }
+  const relative = new Intl.RelativeTimeFormat(getActiveLocale(), { numeric: "auto" });
+  if (Math.abs(diffMin) < 1) return relative.format(0, "minute");
+  if (Math.abs(diffMin) < 60) return relative.format(diffMin, "minute");
+  const diffHours = Math.trunc(diffMin / 60);
+  if (Math.abs(diffHours) < 24) return relative.format(diffHours, "hour");
+  const diffDays = Math.trunc(diffHours / 24);
+  if (Math.abs(diffDays) < 30) return relative.format(diffDays, "day");
+  return new Intl.DateTimeFormat(getActiveLocale(), {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(target.toDate());
 }
 
 export function fmtMoney(cents: number | string) {
-  if (typeof cents === "string") return `¥${cents}`;
-  return `¥${(cents / 100).toFixed(2)}`;
+  const amount = typeof cents === "string" ? Number(cents) : cents / 100;
+  return new Intl.NumberFormat(getActiveLocale(), { style: "currency", currency: "CNY" }).format(amount);
 }
 
 export function fmtKWh(v: number) {
-  return `${v.toFixed(1)} 度`;
+  return `${new Intl.NumberFormat(getActiveLocale(), { maximumFractionDigits: 1 }).format(v)} ${getActiveLocale() === "zh-CN" ? "度" : "kWh"}`;
 }

@@ -3,20 +3,20 @@
     <section class="market-hero">
       <div>
         <span class="eyebrow">{{ site.siteName }} · MARKET</span>
-        <h1>{{ site.siteName }}校园市集</h1>
-        <p>只面向 XJTLUer 的校内闲置空间：有意向直接私聊，当面验货，双方直接付款并确认成交。</p>
+        <h1>{{ site.siteName }} · {{ t("market.title") }}</h1>
+        <p>{{ t("market.subtitle") }}</p>
       </div>
       <div class="hero-actions">
         <el-button v-if="auth.isLoggedIn" class="trade-message-entry" @click="$router.push({ name: 'market-messages' })">
           <span v-if="tradeUnreadCount" class="unread-dot" aria-hidden="true"></span>
-          交易消息<span v-if="tradeUnreadCount">（{{ tradeUnreadCount }}）</span>
+          {{ t("market.tradeMessages") }}<span v-if="tradeUnreadCount"> ({{ tradeUnreadCount }})</span>
         </el-button>
-        <el-button v-if="auth.isLoggedIn" @click="$router.push({ name: 'market-mine' })">我的交易</el-button>
-        <el-button v-if="auth.isLoggedIn" @click="$router.push('/market/promotions')">推广服务</el-button>
+        <el-button v-if="auth.isLoggedIn" @click="$router.push({ name: 'market-mine' })">{{ t("market.myTrades") }}</el-button>
+        <el-button v-if="auth.isLoggedIn" @click="$router.push('/market/promotions')">{{ isEnglish ? "Promotion Services" : "推广服务" }}</el-button>
         <el-button v-if="auth.isLoggedIn" type="primary" @click="$router.push({ name: 'publish-listing' })">
-          <el-icon><Plus /></el-icon> 发布商品
+          <el-icon><Plus /></el-icon> {{ isEnglish ? "List an item" : "发布商品" }}
         </el-button>
-        <el-button v-else type="primary" @click="$router.push({ name: 'login', query: { redirect: '/market' } })">登录后交易</el-button>
+        <el-button v-else type="primary" @click="$router.push({ name: 'login', query: { redirect: '/market' } })">{{ isEnglish ? "Sign in to trade" : "登录后交易" }}</el-button>
       </div>
     </section>
 
@@ -24,26 +24,26 @@
       class="materials-feature"
       role="link"
       tabindex="0"
-      aria-label="进入靠浦特色学习资料商城"
+      :aria-label="isEnglish ? 'Enter Kaopu Learning Materials' : '进入靠浦特色学习资料商城'"
       @click="router.push({ name: 'market-learning-materials' })"
       @keydown.enter="router.push({ name: 'market-learning-materials' })"
     >
       <div class="materials-mark"><img src="/brand/kaopu-cloud.svg" alt="" /></div>
       <div class="materials-copy">
-        <span>KAOPU FEATURED · 独立学习资料馆</span>
-        <h2>靠浦特色学习资料商城</h2>
+        <span>KAOPU FEATURED · {{ isEnglish ? "INDEPENDENT LIBRARY" : "独立学习资料馆" }}</span>
+        <h2>{{ isEnglish ? "Kaopu Learning Materials" : "靠浦特色学习资料商城" }}</h2>
       </div>
-      <div class="materials-enter">进入专区 <b>→</b></div>
+      <div class="materials-enter">{{ isEnglish ? "Enter" : "进入专区" }} <b>→</b></div>
     </section>
 
     <section class="search-bar cpu-card">
-      <el-input v-model="filters.q" clearable size="large" placeholder="搜索商品、教材或交易地点" @keyup.enter="search">
+      <el-input v-model="filters.q" clearable size="large" :placeholder="isEnglish ? 'Search items, textbooks, or meetup locations' : '搜索商品、教材或交易地点'" @keyup.enter="search">
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-button type="primary" size="large" @click="search">搜索</el-button>
+      <el-button type="primary" size="large" @click="search">{{ t("common.search") }}</el-button>
     </section>
 
-    <section class="category-strip" aria-label="商品分类">
+    <section class="category-strip" :aria-label="isEnglish ? 'Item categories' : '商品分类'">
       <button
         v-for="category in categories"
         :key="category.slug"
@@ -52,36 +52,36 @@
         @click="selectCategory(category.slug)"
       >
         <span>{{ category.icon }}</span>
-        <b>{{ category.name }}</b>
+        <b>{{ categoryName(category) }}</b>
       </button>
     </section>
 
     <section class="market-body">
       <aside class="filter-panel cpu-card" :class="{ 'is-mobile-open': mobileFiltersOpen }">
-        <div class="filter-title"><strong>筛选商品</strong><button type="button" @click="resetFilters">重置</button></div>
-        <div class="channel-tip"><b>当前频道：闲置出售</b><router-link to="/market/wanted">去求购频道</router-link></div>
-        <label>价格区间</label>
+        <div class="filter-title"><strong>{{ isEnglish ? "Filter items" : "筛选商品" }}</strong><button type="button" @click="resetFilters">{{ isEnglish ? "Reset" : "重置" }}</button></div>
+        <div class="channel-tip"><b>{{ isEnglish ? "Channel: Items for sale" : "当前频道：闲置出售" }}</b><router-link to="/market/wanted">{{ isEnglish ? "Go to Wanted" : "去求购频道" }}</router-link></div>
+        <label>{{ isEnglish ? "Price range" : "价格区间" }}</label>
         <div class="price-range">
-          <el-input-number v-model="filters.minPrice" :min="0" :controls="false" placeholder="最低" />
+          <el-input-number v-model="filters.minPrice" :min="0" :controls="false" :placeholder="isEnglish ? 'Min' : '最低'" />
           <span>—</span>
-          <el-input-number v-model="filters.maxPrice" :min="0" :controls="false" placeholder="最高" />
+          <el-input-number v-model="filters.maxPrice" :min="0" :controls="false" :placeholder="isEnglish ? 'Max' : '最高'" />
         </div>
-        <label>成色</label>
-        <el-select v-model="filters.condition" clearable placeholder="全部成色">
+        <label>{{ isEnglish ? "Condition" : "成色" }}</label>
+        <el-select v-model="filters.condition" clearable :placeholder="isEnglish ? 'All conditions' : '全部成色'">
           <el-option v-for="item in conditionOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-        <label>交付方式</label>
-        <el-select v-model="filters.tradeMode" placeholder="任意交付方式">
+        <label>{{ isEnglish ? "Delivery" : "交付方式" }}</label>
+        <el-select v-model="filters.tradeMode" :placeholder="marketTradeModeLabel('any')">
           <el-option v-for="mode in tradeModes" :key="mode" :label="marketTradeModeLabel(mode)" :value="mode" />
         </el-select>
-        <label>校区</label>
-        <el-select v-model="filters.campus" clearable placeholder="全部校区">
+        <label>{{ isEnglish ? "Campus" : "校区" }}</label>
+        <el-select v-model="filters.campus" clearable :placeholder="isEnglish ? 'All campuses' : '全部校区'">
           <el-option v-for="campus in MARKET_CAMPUSES" :key="campus" :label="campus" :value="campus" />
         </el-select>
-        <el-button type="primary" plain @click="search">应用筛选</el-button>
+        <el-button type="primary" plain @click="search">{{ isEnglish ? "Apply filters" : "应用筛选" }}</el-button>
         <div class="trust-note">
-          <b>校内交易提示</b>
-          <span>XJTLU 身份认证 · 公共区域见面 · 当面验货 · 商品款直接支付给卖家 · 支持举报</span>
+          <b>{{ isEnglish ? "Campus trade reminder" : "校内交易提示" }}</b>
+          <span>{{ isEnglish ? "Verified XJTLU identity · Meet in public · Inspect in person · Pay the seller directly · Reporting available" : "XJTLU 身份认证 · 公共区域见面 · 当面验货 · 商品款直接支付给卖家 · 支持举报" }}</span>
         </div>
       </aside>
 
@@ -89,15 +89,15 @@
         <div class="goods-toolbar">
           <div>
             <h2>{{ activeCategoryLabel }}</h2>
-            <span>{{ total }} 件商品</span>
+            <span>{{ total }} {{ isEnglish ? "items" : "件商品" }}</span>
           </div>
           <div class="toolbar-actions">
-            <el-button class="mobile-filter-btn" plain @click="mobileFiltersOpen=!mobileFiltersOpen"><el-icon><Filter /></el-icon>筛选</el-button>
+            <el-button class="mobile-filter-btn" plain @click="mobileFiltersOpen=!mobileFiltersOpen"><el-icon><Filter /></el-icon>{{ isEnglish ? "Filter" : "筛选" }}</el-button>
             <el-select v-model="filters.sort" class="sort-select" @change="search">
-              <el-option label="最新发布" value="new" />
-              <el-option label="人气优先" value="popular" />
-              <el-option label="价格从低到高" value="price_asc" />
-              <el-option label="价格从高到低" value="price_desc" />
+              <el-option :label="isEnglish ? 'Newest' : '最新发布'" value="new" />
+              <el-option :label="isEnglish ? 'Most popular' : '人气优先'" value="popular" />
+              <el-option :label="isEnglish ? 'Price: low to high' : '价格从低到高'" value="price_asc" />
+              <el-option :label="isEnglish ? 'Price: high to low' : '价格从高到低'" value="price_desc" />
             </el-select>
           </div>
         </div>
@@ -105,14 +105,14 @@
         <div v-if="loading" class="goods-grid">
           <article v-for="i in 8" :key="i" class="goods-card skeleton-card"><el-skeleton animated><template #template><el-skeleton-item variant="image" class="skeleton-image" /><el-skeleton-item variant="h3" /><el-skeleton-item variant="text" /></template></el-skeleton></article>
         </div>
-        <el-alert v-else-if="error" type="error" :closable="false" show-icon :title="error"><template #default><el-button size="small" @click="load">重试</el-button></template></el-alert>
+        <el-alert v-else-if="error" type="error" :closable="false" show-icon :title="error"><template #default><el-button size="small" @click="load">{{ t("common.retry") }}</el-button></template></el-alert>
         <div v-else-if="items.length" class="goods-grid">
           <article v-for="item in items" :key="item.id" class="goods-card" :class="{ promoted: item.promotions.pinned }" @click="openItem(item)">
             <div class="cover-wrap">
               <img v-if="item.cover" :src="item.cover" :alt="item.title" loading="lazy" />
               <div v-else class="cover-empty">{{ categoryIcon(item.category) }}</div>
-              <PromotionLabel v-if="item.promotions.pinned" label="置顶" kind="pin" />
-              <span v-if="item.status === 'reserved'" class="status-badge">历史洽谈</span>
+              <PromotionLabel v-if="item.promotions.pinned" :label="t('home.pinned')" kind="pin" />
+              <span v-if="item.status === 'reserved'" class="status-badge">{{ isEnglish ? "Previous discussion" : "历史洽谈" }}</span>
               <button v-if="auth.isLoggedIn" type="button" class="favorite-btn" :class="{ active: item.favorited }" @click.stop="toggleFavorite(item)">
                 <el-icon><StarFilled v-if="item.favorited" /><Star v-else /></el-icon>
               </button>
@@ -122,7 +122,7 @@
               <div class="price-line">
                 <strong><small>¥</small>{{ item.price }}</strong>
                 <del v-if="item.originalPrice">¥{{ item.originalPrice }}</del>
-                <em v-if="item.negotiable">可议价</em>
+                <em v-if="item.negotiable">{{ t("common.negotiable") }}</em>
               </div>
               <div class="item-tags">
                 <span>{{ conditionLabel(item.condition) }}</span>
@@ -131,14 +131,14 @@
               </div>
               <div class="seller-line">
                 <UserAvatar :size="25" :src="item.seller?.avatar" :name="item.seller?.nickname" />
-                <span>{{ item.seller?.nickname || "校园用户" }}</span>
-                <i>已认证</i>
+                <span>{{ item.seller?.nickname || (isEnglish ? "Campus user" : "校园用户") }}</span>
+                <i>{{ isEnglish ? "Verified" : "已认证" }}</i>
                 <time>{{ fmtRelative(item.createdAt) }}</time>
               </div>
             </div>
           </article>
         </div>
-        <el-empty v-else description="没有找到符合条件的商品"><el-button type="primary" plain @click="resetFilters">清空筛选</el-button></el-empty>
+        <el-empty v-else :description="isEnglish ? 'No matching items found' : '没有找到符合条件的商品'"><el-button type="primary" plain @click="resetFilters">{{ isEnglish ? "Clear filters" : "清空筛选" }}</el-button></el-empty>
 
         <el-pagination v-if="total > pageSize" v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" background @current-change="load" />
       </main>
@@ -157,11 +157,13 @@ import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import PromotionLabel from "@/components/market/PromotionLabel.vue";
+import { useLocale } from "@/i18n";
 
 const auth = useAuthStore();
 const site = useSiteStore();
 const route = useRoute();
 const router = useRouter();
+const { t, isEnglish } = useLocale();
 const items = ref<MarketItem[]>([]);
 const loading = ref(false);
 const error = ref("");
@@ -175,10 +177,14 @@ let tradeEventSource: EventSource | null = null;
 let unreadRefreshTimer = 0;
 
 const categories = ref<Array<MarketCategoryOption & { slug: string }>>([{ id: 0, slug: "", name: "全部商品", icon: "🛍️", description: "", fulfillmentType: "physical", imageRequired: false, enabled: true, sort: 0 }]);
-const conditionOptions = ref<Array<{ label: string; value: Exclude<MarketCondition, "wanted"> }>>(Object.entries(MARKET_CONDITION_LABELS).map(([value, label]) => ({ label, value: value as Exclude<MarketCondition, "wanted"> })));
+const conditionValues = ref<Array<Exclude<MarketCondition, "wanted">>>(Object.keys(MARKET_CONDITION_LABELS) as Array<Exclude<MarketCondition, "wanted">>);
+const conditionOptions = computed(() => conditionValues.value.map((value) => ({ value, label: marketConditionLabel(value) })));
 const tradeModes = ref<MarketTradeMode[]>(Object.keys(MARKET_TRADE_MODE_LABELS) as MarketTradeMode[]);
 const filters = reactive({ q: "", category: "", listingType: "sell", condition: "", tradeMode: "any" as MarketTradeMode, campus: "", minPrice: undefined as number | undefined, maxPrice: undefined as number | undefined, sort: "new" as "new" | "popular" | "price_asc" | "price_desc" });
-const activeCategoryLabel = computed(() => categories.value.find((item) => item.slug === filters.category)?.name || "全部商品");
+const activeCategoryLabel = computed(() => {
+  const category = categories.value.find((item) => item.slug === filters.category);
+  return category ? categoryName(category) : (isEnglish.value ? "All items" : "全部商品");
+});
 
 onMounted(async () => {
   hydrateFiltersFromRoute();
@@ -190,7 +196,7 @@ onMounted(async () => {
   try {
     const meta = await marketApi.meta({ suppressErrorMessage: true });
     categories.value = [categories.value[0], ...meta.categories];
-    conditionOptions.value = meta.conditions.map((value) => ({ value, label: MARKET_CONDITION_LABELS[value] }));
+    conditionValues.value = meta.conditions;
     tradeModes.value = meta.tradeModes;
   } catch { /* 商品列表仍可独立加载 */ }
   await load();
@@ -238,7 +244,7 @@ async function load() {
   } catch (reason) {
     if (seq !== requestSeq) return;
     items.value = [];
-    error.value = reason instanceof Error ? reason.message : "商品加载失败";
+    error.value = reason instanceof Error ? reason.message : (isEnglish.value ? "Could not load items" : "商品加载失败");
   } finally {
     if (seq === requestSeq) loading.value = false;
   }
@@ -260,11 +266,25 @@ async function toggleFavorite(item: MarketItem) {
     const result = await marketApi.favorite(item.id);
     item.favorited = result.favorited;
     item.favoriteCount = result.favoriteCount;
-  } catch { ElMessage.error("收藏操作失败"); }
+  } catch { ElMessage.error(isEnglish.value ? "Could not update favorite" : "收藏操作失败"); }
 }
 const conditionLabel = marketConditionLabel;
 const tradeModeLabel = marketTradeModeLabel;
 function categoryIcon(value: string) { return categories.value.find((item) => item.slug === value)?.icon || "📦"; }
+function categoryName(category: MarketCategoryOption) {
+  if (!isEnglish.value) return category.name;
+  return ({
+    "": "All items",
+    digital: "Electronics",
+    books: "Books",
+    dorm: "Dorm & Home",
+    appliance: "Appliances",
+    fashion: "Fashion",
+    sports: "Sports",
+    tickets: "Tickets",
+    other: "Other",
+  } as Record<string, string>)[category.slug] || category.name;
+}
 function hydrateFiltersFromRoute() {
   const first = (value: unknown) => Array.isArray(value) ? value[0] : value;
   const sort = String(first(route.query.sort) || "new");

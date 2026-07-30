@@ -1,6 +1,6 @@
 <template>
   <div class="message-list">
-    <el-empty v-if="!list.length" description="暂无消息" class="empty-state" />
+    <el-empty v-if="!list.length" :description="isEnglish ? 'No messages' : '暂无消息'" class="empty-state" />
     <button
       v-for="n in list"
       :key="n.id"
@@ -16,13 +16,13 @@
             <span v-if="platformTag(n.targetClient)" class="tag tag-target" :class="platformTagClass(n.targetClient)">
               {{ platformTag(n.targetClient) }}
             </span>
-            <span v-if="n.level === 'strong'" class="tag tag-strong">强提醒</span>
+            <span v-if="n.level === 'strong'" class="tag tag-strong">{{ isEnglish ? "Important" : "强提醒" }}</span>
           </div>
           <span class="time">{{ fmtRelative(n.createdAt) }}</span>
         </div>
         <div class="title">{{ n.title }}</div>
         <div class="content">{{ n.content }}</div>
-        <div class="meta">{{ n.source || "校内" }}<span v-if="n.link"> · 点按查看</span></div>
+        <div class="meta">{{ n.source || (isEnglish ? "Campus" : "校内") }}<span v-if="n.link"> · {{ isEnglish ? "Open" : "点按查看" }}</span></div>
       </div>
       <el-icon class="arrow"><ArrowRight /></el-icon>
     </button>
@@ -31,8 +31,12 @@
 
 <script setup lang="ts">
 import { ArrowRight } from "@element-plus/icons-vue";
+import { computed } from "vue";
 import type { MessageNotification } from "@/api/message";
 import { fmtRelative } from "@/utils/format";
+import { useLocale } from "@/i18n";
+
+const { isEnglish } = useLocale();
 
 const emit = defineEmits<{
   (e: "read", id: number): void;
@@ -40,12 +44,12 @@ const emit = defineEmits<{
 }>();
 defineProps<{ list: MessageNotification[] }>();
 
-const platformLabels: Record<string, string> = {
+const platformLabels = computed<Record<string, string>>(() => ({
   ios: "iOS",
-  android: "安卓",
-  harmony: "鸿蒙",
-  web: "网页版",
-};
+  android: isEnglish.value ? "Android" : "安卓",
+  harmony: isEnglish.value ? "HarmonyOS" : "鸿蒙",
+  web: isEnglish.value ? "Web" : "网页版",
+}));
 
 function onClick(n: MessageNotification) {
   if (!n.readAt) emit("read", n.id);
@@ -58,14 +62,14 @@ function parseTargetClient(targetClient?: string | null) {
     targetClient
       .split(",")
       .map((item) => item.trim().toLowerCase())
-      .filter((item) => platformLabels[item]),
+      .filter((item) => platformLabels.value[item]),
   );
-  return Object.keys(platformLabels).filter((item) => selected.has(item));
+  return Object.keys(platformLabels.value).filter((item) => selected.has(item));
 }
 
 function platformTag(targetClient?: string | null) {
   const targets = parseTargetClient(targetClient);
-  return targets.map((item) => platformLabels[item]).join(" / ");
+  return targets.map((item) => platformLabels.value[item]).join(" / ");
 }
 
 function platformTagClass(targetClient?: string | null) {
@@ -74,6 +78,14 @@ function platformTagClass(targetClient?: string | null) {
 }
 
 function categoryLabel(category?: string | null) {
+  if (isEnglish.value) {
+    if (category === "reply") return "Reply";
+    if (category === "like") return "Like";
+    if (category === "system") return "System";
+    if (category === "school" || category === "school-feed") return "Notice";
+    if (category === "service-tool") return "Tool";
+    return category || "Message";
+  }
   if (category === "reply") return "回复";
   if (category === "like") return "点赞";
   if (category === "system") return "系统";

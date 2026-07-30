@@ -1,75 +1,75 @@
 <template>
   <div class="materials-page">
-    <nav class="crumb"><router-link to="/market">市集</router-link><span>/</span><b>靠浦特色学习资料商城</b></nav>
+    <nav class="crumb"><router-link to="/market">{{ isEnglish ? "Market" : "市集" }}</router-link><span>/</span><b>{{ isEnglish ? "Kaopu Learning Materials" : "靠浦特色学习资料商城" }}</b></nav>
 
     <section class="materials-hero">
       <div class="hero-copy">
         <span>KAOPU FEATURED LEARNING</span>
-        <h1>靠浦特色学习资料商城</h1>
-        <p>按课程代码、学习阶段和资料类型，查找同学原创或已获授权的课程笔记、备考资料与学习工具。</p>
-        <div><em>人人可发布</em><em>课程维度检索</em></div>
+        <h1>{{ isEnglish ? "Kaopu Learning Materials" : "靠浦特色学习资料商城" }}</h1>
+        <p>{{ isEnglish ? "Find original or authorized course notes, exam preparation materials, and study tools by course code, study stage, and type." : "按课程代码、学习阶段和资料类型，查找同学原创或已获授权的课程笔记、备考资料与学习工具。" }}</p>
+        <div><em>{{ isEnglish ? "Open publishing" : "人人可发布" }}</em><em>{{ isEnglish ? "Course-based search" : "课程维度检索" }}</em></div>
       </div>
       <div class="hero-side">
-        <strong>{{ total }}</strong><small>份在架资料</small>
-        <el-button v-if="auth.isLoggedIn" type="primary" size="large" @click="router.push({name:'market-learning-creator'})"><el-icon><Plus /></el-icon> 发布资料</el-button>
-        <el-button v-else type="primary" size="large" @click="login">登录后发布</el-button>
+        <strong>{{ total }}</strong><small>{{ isEnglish ? "active materials" : "份在架资料" }}</small>
+        <el-button v-if="auth.isLoggedIn" type="primary" size="large" @click="router.push({name:'market-learning-creator'})"><el-icon><Plus /></el-icon> {{ isEnglish ? "Publish material" : "发布资料" }}</el-button>
+        <el-button v-else type="primary" size="large" @click="login">{{ isEnglish ? "Sign in to publish" : "登录后发布" }}</el-button>
       </div>
     </section>
 
     <section class="filter-card cpu-card">
       <div class="search-line">
-        <el-input v-model="filters.q" clearable size="large" placeholder="搜索资料名称、学院、专业或课程代码" @keyup.enter="search"><template #prefix><el-icon><Search /></el-icon></template></el-input>
-        <el-button type="primary" size="large" @click="search">搜索资料</el-button>
+        <el-input v-model="filters.q" clearable size="large" :placeholder="isEnglish ? 'Search title, school, programme, or course code' : '搜索资料名称、学院、专业或课程代码'" @keyup.enter="search"><template #prefix><el-icon><Search /></el-icon></template></el-input>
+        <el-button type="primary" size="large" @click="search">{{ isEnglish ? "Search" : "搜索资料" }}</el-button>
       </div>
       <div class="filter-grid">
-        <el-input v-model="filters.courseCode" clearable placeholder="课程代码，如 CPT111" @keyup.enter="search" />
-        <el-select v-model="filters.semester" clearable placeholder="适用学期" @change="search"><el-option v-for="row in meta.semesters" :key="row.value" :label="row.label" :value="row.value" /></el-select>
-        <el-select v-model="filters.typeId" clearable filterable placeholder="资料类型" @change="search"><el-option v-for="row in approvedTypes" :key="row.id" :label="row.name" :value="row.id" /></el-select>
-        <el-select v-model="filters.format" clearable placeholder="文件格式" @change="search"><el-option v-for="row in meta.formats" :key="row.value" :label="row.label" :value="row.value" /></el-select>
-        <el-button plain @click="resetFilters">重置筛选</el-button>
+        <el-input v-model="filters.courseCode" clearable :placeholder="isEnglish ? 'Course code, e.g. CPT111' : '课程代码，如 CPT111'" @keyup.enter="search" />
+        <el-select v-model="filters.semester" clearable :placeholder="isEnglish ? 'Applicable semester' : '适用学期'" @change="search"><el-option v-for="row in meta.semesters" :key="row.value" :label="optionLabel(row)" :value="row.value" /></el-select>
+        <el-select v-model="filters.typeId" clearable filterable :placeholder="isEnglish ? 'Material type' : '资料类型'" @change="search"><el-option v-for="row in approvedTypes" :key="row.id" :label="materialTypeLabel(row.name)" :value="row.id" /></el-select>
+        <el-select v-model="filters.format" clearable :placeholder="isEnglish ? 'File format' : '文件格式'" @change="search"><el-option v-for="row in meta.formats" :key="row.value" :label="optionLabel(row)" :value="row.value" /></el-select>
+        <el-button plain @click="resetFilters">{{ isEnglish ? "Reset filters" : "重置筛选" }}</el-button>
       </div>
     </section>
 
     <section class="results-head">
-      <div><span>LEARNING LIBRARY</span><h2>{{ hasFilter ? "筛选结果" : "全部学习资料" }} <small>{{ total }}份</small></h2></div>
-      <el-select v-model="filters.sort" class="sort-select" @change="search"><el-option label="最新发布" value="new" /><el-option label="人气优先" value="popular" /></el-select>
+      <div><span>LEARNING LIBRARY</span><h2>{{ hasFilter ? (isEnglish ? "Results" : "筛选结果") : (isEnglish ? "All learning materials" : "全部学习资料") }} <small>{{ total }}{{ isEnglish ? "" : "份" }}</small></h2></div>
+      <el-select v-model="filters.sort" class="sort-select" @change="search"><el-option :label="isEnglish ? 'Newest' : '最新发布'" value="new" /><el-option :label="isEnglish ? 'Most popular' : '人气优先'" value="popular" /></el-select>
     </section>
 
     <div v-if="loading" class="materials-grid"><article v-for="i in 8" :key="i" class="material-card loading"><el-skeleton animated :rows="5" /></article></div>
-    <el-alert v-else-if="error" type="error" :closable="false" show-icon :title="error"><template #default><el-button size="small" @click="load">重新加载</el-button></template></el-alert>
+    <el-alert v-else-if="error" type="error" :closable="false" show-icon :title="error"><template #default><el-button size="small" @click="load">{{ isEnglish ? "Reload" : "重新加载" }}</el-button></template></el-alert>
     <div v-else-if="items.length" class="materials-grid">
       <article v-for="item in items" :key="item.id" class="material-card" @click="openItem(item.id)">
         <div class="material-cover">
           <img v-if="item.cover" :src="item.cover" :alt="item.title" loading="lazy" />
           <div v-else class="cover-fallback"><img src="/brand/kaopu-cloud.svg" alt="" /><b>KAOPU LEARNING</b></div>
-          <span v-if="item.material?.courseCode">{{ item.material.courseCode }}</span><span v-else class="legacy">待补充信息</span>
+          <span v-if="item.material?.courseCode">{{ item.material.courseCode }}</span><span v-else class="legacy">{{ isEnglish ? "Details pending" : "待补充信息" }}</span>
           <button type="button" :class="{active:item.favorited}" @click.stop="favorite(item)"><el-icon><StarFilled v-if="item.favorited" /><Star v-else /></el-icon></button>
         </div>
         <div class="material-copy">
           <div class="meta-tags"><em>{{ typeLabel(item) }}</em><em>{{ semesterLabel(item.material?.applicableSemester) }}</em></div>
           <h3>{{ item.title }}</h3><p>{{ item.description }}</p>
-          <div class="format-line"><span v-for="format in item.material?.fileFormats?.slice(0,3)" :key="format">{{ format }}</span><small v-if="item.material?.pageCount">{{ item.material.pageCount }}页</small></div>
+          <div class="format-line"><span v-for="format in item.material?.fileFormats?.slice(0,3)" :key="format">{{ format }}</span><small v-if="item.material?.pageCount">{{ item.material.pageCount }} {{ isEnglish ? "pages" : "页" }}</small></div>
           <div class="price-line"><small>¥</small><strong>{{ item.price }}</strong><del v-if="item.originalPrice">¥{{ item.originalPrice }}</del></div>
-          <footer><UserAvatar :size="30" :src="item.seller.avatar" :name="item.seller.nickname" /><div><b>{{ item.seller.nickname||item.seller.username }}</b><span>校园资料发布者</span></div><em>{{ item.favoriteCount }} 收藏</em></footer>
+          <footer><UserAvatar :size="30" :src="item.seller.avatar" :name="item.seller.nickname" /><div><b>{{ item.seller.nickname||item.seller.username }}</b><span>{{ isEnglish ? "Campus publisher" : "校园资料发布者" }}</span></div><em>{{ item.favoriteCount }} {{ isEnglish ? "favorites" : "收藏" }}</em></footer>
         </div>
       </article>
     </div>
-    <el-empty v-else description="没有找到符合条件的学习资料"><el-button type="primary" @click="resetFilters">清除筛选</el-button></el-empty>
+    <el-empty v-else :description="isEnglish ? 'No matching learning materials found' : '没有找到符合条件的学习资料'"><el-button type="primary" @click="resetFilters">{{ isEnglish ? "Clear filters" : "清除筛选" }}</el-button></el-empty>
     <el-pagination v-if="total>pageSize" v-model:current-page="page" background layout="prev, pager, next" :page-size="pageSize" :total="total" @current-change="load" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed,onMounted,reactive,ref } from "vue";import { useRoute,useRouter } from "vue-router";import { Plus,Search,Star,StarFilled } from "@element-plus/icons-vue";import { ElMessage } from "element-plus";import { learningMaterialsApi,type LearningMaterialItem,type LearningMaterialMeta } from "@/api/learningMaterials";import { marketApi } from "@/api/market";import { useAuthStore } from "@/stores/auth";import UserAvatar from "@/components/common/UserAvatar.vue";
-const route=useRoute(),router=useRouter(),auth=useAuthStore();const items=ref<LearningMaterialItem[]>([]),loading=ref(false),error=ref(""),total=ref(0),page=ref(1);const pageSize=24;
+import { computed,onMounted,reactive,ref } from "vue";import { useRoute,useRouter } from "vue-router";import { Plus,Search,Star,StarFilled } from "@element-plus/icons-vue";import { ElMessage } from "element-plus";import { learningMaterialsApi,type LearningMaterialItem,type LearningMaterialMeta } from "@/api/learningMaterials";import { marketApi } from "@/api/market";import { useAuthStore } from "@/stores/auth";import UserAvatar from "@/components/common/UserAvatar.vue";import { useLocale } from "@/i18n";import { learningMaterialOptionLabel,learningMaterialTypeLabel } from "@/utils/learningMaterialLocale";
+const route=useRoute(),router=useRouter(),auth=useAuthStore();const {isEnglish}=useLocale();const items=ref<LearningMaterialItem[]>([]),loading=ref(false),error=ref(""),total=ref(0),page=ref(1);const pageSize=24;
 const meta=reactive<LearningMaterialMeta>({category:{id:0,slug:"digital_goods",name:"电子资料",icon:"📁",description:"",fulfillmentType:"digital",imageRequired:false,enabled:true,sort:30,itemCount:0},semesters:[],formats:[],languages:[],originalityOptions:[],supportCategories:[],types:[],contentRules:[],legacyIncompleteCount:0});
 const filters=reactive({q:String(route.query.q||""),courseCode:String(route.query.courseCode||""),semester:String(route.query.semester||""),typeId:route.query.typeId?Number(route.query.typeId):undefined as number|undefined,format:String(route.query.format||""),sort:(String(route.query.sort||"new") as "new"|"popular")});
 const approvedTypes=computed(()=>meta.types.filter(row=>row.status==="approved"));const hasFilter=computed(()=>Boolean(filters.q||filters.courseCode||filters.semester||filters.typeId||filters.format));onMounted(async()=>{try{Object.assign(meta,await learningMaterialsApi.meta({suppressErrorMessage:true}))}catch{}await load()});
-async function load(){loading.value=true;error.value="";try{const result=await learningMaterialsApi.items({page:page.value,size:pageSize,q:filters.q||undefined,courseCode:filters.courseCode||undefined,semester:filters.semester||undefined,typeId:filters.typeId,format:filters.format||undefined,sort:filters.sort},{suppressErrorMessage:true});items.value=result.list;total.value=result.total}catch(e){error.value=e instanceof Error?e.message:"资料加载失败"}finally{loading.value=false}}
+async function load(){loading.value=true;error.value="";try{const result=await learningMaterialsApi.items({page:page.value,size:pageSize,q:filters.q||undefined,courseCode:filters.courseCode||undefined,semester:filters.semester||undefined,typeId:filters.typeId,format:filters.format||undefined,sort:filters.sort},{suppressErrorMessage:true});items.value=result.list;total.value=result.total}catch(e){error.value=e instanceof Error?e.message:(isEnglish.value?"Could not load learning materials":"资料加载失败")}finally{loading.value=false}}
 async function search(){page.value=1;await router.replace({query:{...(filters.q?{q:filters.q}:{}),...(filters.courseCode?{courseCode:filters.courseCode.toUpperCase()}:{}),...(filters.semester?{semester:filters.semester}:{}),...(filters.typeId?{typeId:String(filters.typeId)}:{}),...(filters.format?{format:filters.format}:{}),...(filters.sort!=="new"?{sort:filters.sort}:{})}});await load()}
 async function resetFilters(){Object.assign(filters,{q:"",courseCode:"",semester:"",typeId:undefined,format:"",sort:"new"});await search()}
-function openItem(id:number){router.push({name:"market-learning-material-item",params:{id}})}function login(){router.push({name:"login",query:{redirect:route.fullPath}})}function semesterLabel(value?:string){return meta.semesters.find(row=>row.value===value)?.label||"学期待补充"}function typeLabel(item:LearningMaterialItem){return item.material?.type?.name||"资料类型待补充"}
-async function favorite(item:LearningMaterialItem){if(!auth.isLoggedIn)return login();try{const result=await marketApi.favorite(item.id);item.favorited=result.favorited;item.favoriteCount=result.favoriteCount}catch{ElMessage.error("收藏操作失败")}}
+function openItem(id:number){router.push({name:"market-learning-material-item",params:{id}})}function login(){router.push({name:"login",query:{redirect:route.fullPath}})}function optionLabel(option:{value:string;label:string}){return learningMaterialOptionLabel(option,isEnglish.value)}function materialTypeLabel(name?:string|null){return learningMaterialTypeLabel(name,isEnglish.value)}function semesterLabel(value?:string){return learningMaterialOptionLabel(meta.semesters.find(row=>row.value===value),isEnglish.value)||(isEnglish.value?"Semester pending":"学期待补充")}function typeLabel(item:LearningMaterialItem){return materialTypeLabel(item.material?.type?.name)||(isEnglish.value?"Type pending":"资料类型待补充")}
+async function favorite(item:LearningMaterialItem){if(!auth.isLoggedIn)return login();try{const result=await marketApi.favorite(item.id);item.favorited=result.favorited;item.favoriteCount=result.favoriteCount}catch{ElMessage.error(isEnglish.value?"Could not update favorite":"收藏操作失败")}}
 </script>
 
 <style scoped>

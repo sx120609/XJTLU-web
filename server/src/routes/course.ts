@@ -100,7 +100,7 @@ courseRouter.get("/:id", async (req, res, next) => {
         courseTeachers: { include: { teacher: true } },
       },
     }));
-    if (!course) return res.status(404).json({ code: 4004, data: null, message: "课程不存在" });
+    if (!course) throw Errors.notFound("课程不存在");
     const ratings = await withCache("courses", ["ratings", id], 5 * 60_000, async () => prisma.courseRating.findMany({
       where: { courseId: id },
       orderBy: { createdAt: "desc" },

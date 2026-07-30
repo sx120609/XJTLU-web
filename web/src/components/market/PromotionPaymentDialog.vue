@@ -1,40 +1,40 @@
 <template>
-  <el-dialog v-model="visible" title="推广服务付款确认" width="min(92vw, 560px)" destroy-on-close append-to-body @closed="emit('closed')">
+  <el-dialog v-model="visible" :title="isEnglish ? 'Promotion payment confirmation' : '推广服务付款确认'" width="min(92vw, 560px)" destroy-on-close append-to-body @closed="emit('closed')">
     <div v-if="order" class="payment-flow">
       <el-alert
         v-if="order.status === 'waitlisted'"
         type="warning"
         :closable="false"
         show-icon
-        title="目前推广服务已满"
-        description="申请已进入候补队列。位置空出后系统会发送站内消息，再请你付款；不会自动扣款或自动启用。"
+        :title="isEnglish ? 'Promotion capacity is full' : '目前推广服务已满'"
+        :description="isEnglish ? 'Your request is waitlisted. You will receive an in-app message when space opens, and only then should you pay. There is no automatic charge or activation.' : '申请已进入候补队列。位置空出后系统会发送站内消息，再请你付款；不会自动扣款或自动启用。'"
       />
       <template v-else>
         <div class="payment-main">
-          <img :src="order.paymentQrUrl || '/promotion-payment-placeholder.svg'" alt="推广服务收款码占位图" />
+          <img :src="order.paymentQrUrl || '/promotion-payment-placeholder.svg'" :alt="isEnglish ? 'Promotion collection QR code' : '推广服务收款码占位图'" />
           <div class="payment-copy">
-            <span>应付金额</span>
+            <span>{{ isEnglish ? "Amount due" : "应付金额" }}</span>
             <strong>¥{{ order.amount }}</strong>
-            <p>扫码付款时，请务必在付款备注中填写下面的四位秘钥。</p>
-            <div class="secret" aria-label="付款备注秘钥">{{ order.paymentCode }}</div>
-            <small v-if="order.paymentExpiresAt && !order.paymentSubmittedAt">付款位置保留至 {{ formatTime(order.paymentExpiresAt) }}</small>
+            <p>{{ isEnglish ? "When paying by QR code, enter the four-digit key below in the payment note." : "扫码付款时，请务必在付款备注中填写下面的四位秘钥。" }}</p>
+            <div class="secret" :aria-label="isEnglish ? 'Payment note key' : '付款备注秘钥'">{{ order.paymentCode }}</div>
+            <small v-if="order.paymentExpiresAt && !order.paymentSubmittedAt">{{ isEnglish ? "Placement reserved until" : "付款位置保留至" }} {{ formatTime(order.paymentExpiresAt) }}</small>
           </div>
         </div>
-        <el-alert type="info" :closable="false" show-icon title="当前为人工收款核验" description="扫码不会自动启用推广。付款后在下方再次输入同一四位秘钥，管理员还会核对实收金额、收款流水和付款备注。" />
+        <el-alert type="info" :closable="false" show-icon :title="isEnglish ? 'Payment is verified manually' : '当前为人工收款核验'" :description="isEnglish ? 'Scanning does not activate promotion automatically. After paying, re-enter the same four-digit key below. An administrator will verify the amount, transaction, and note.' : '扫码不会自动启用推广。付款后在下方再次输入同一四位秘钥，管理员还会核对实收金额、收款流水和付款备注。'" />
         <div v-if="order.paymentSubmittedAt" class="submitted-state">
-          <el-tag type="success">已提交付款确认</el-tag>
-          <span>{{ formatTime(order.paymentSubmittedAt) }} · 等待管理员人工核验</span>
+          <el-tag type="success">{{ isEnglish ? "Payment confirmation submitted" : "已提交付款确认" }}</el-tag>
+          <span>{{ formatTime(order.paymentSubmittedAt) }} · {{ isEnglish ? "Awaiting administrator verification" : "等待管理员人工核验" }}</span>
         </div>
         <el-form v-else label-position="top" @submit.prevent="submitClaim">
-          <el-form-item label="订单页确认秘钥（必填）">
-            <el-input v-model="claimCode" maxlength="4" inputmode="numeric" placeholder="请输入付款备注中的 4 位数字" @input="normalizeCode" />
+          <el-form-item :label="isEnglish ? 'Order confirmation key (required)' : '订单页确认秘钥（必填）'">
+            <el-input v-model="claimCode" maxlength="4" inputmode="numeric" :placeholder="isEnglish ? 'Enter the 4 digits from the payment note' : '请输入付款备注中的 4 位数字'" @input="normalizeCode" />
           </el-form-item>
         </el-form>
       </template>
     </div>
     <template #footer>
-      <el-button @click="visible = false">{{ order?.paymentSubmittedAt || order?.status === 'waitlisted' ? '关闭' : '稍后付款' }}</el-button>
-      <el-button v-if="order?.status === 'pending' && !order.paymentSubmittedAt" type="primary" :loading="submitting" :disabled="claimCode.length !== 4" @click="submitClaim">我已付款并确认秘钥</el-button>
+      <el-button @click="visible = false">{{ order?.paymentSubmittedAt || order?.status === 'waitlisted' ? (isEnglish ? 'Close' : '关闭') : (isEnglish ? 'Pay later' : '稍后付款') }}</el-button>
+      <el-button v-if="order?.status === 'pending' && !order.paymentSubmittedAt" type="primary" :loading="submitting" :disabled="claimCode.length !== 4" @click="submitClaim">{{ isEnglish ? "I paid and confirm the key" : "我已付款并确认秘钥" }}</el-button>
     </template>
   </el-dialog>
 </template>
@@ -43,11 +43,13 @@
 import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { marketApi, type PromotionOrder } from "@/api/market";
+import { useLocale } from "@/i18n";
 
 const props = defineProps<{ modelValue: boolean; order: PromotionOrder | null }>();
 const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void; (event: "submitted", order: PromotionOrder): void; (event: "closed"): void }>();
 const claimCode = ref("");
 const submitting = ref(false);
+const { isEnglish, locale } = useLocale();
 const visible = computed({ get: () => props.modelValue, set: (value) => emit("update:modelValue", value) });
 
 watch(() => props.order?.id, () => { claimCode.value = ""; });
@@ -61,7 +63,7 @@ async function submitClaim() {
   submitting.value = true;
   try {
     const next = await marketApi.submitPromotionPaymentClaim(props.order.id, claimCode.value);
-    ElMessage.success("付款确认已提交，请等待管理员人工核验");
+    ElMessage.success(isEnglish.value ? "Payment confirmation submitted. Await administrator verification." : "付款确认已提交，请等待管理员人工核验");
     emit("submitted", next);
   } finally {
     submitting.value = false;
@@ -69,7 +71,7 @@ async function submitClaim() {
 }
 
 function formatTime(value: string) {
-  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+  return new Date(value).toLocaleString(locale.value, { hour12: false });
 }
 </script>
 

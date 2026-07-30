@@ -9,16 +9,16 @@ function source(relativePath: string) {
 test("phase 1 desktop and mobile navigation use the same five current product destinations", () => {
   const layout = source("../../web/src/layouts/MainLayout.vue");
   for (const entry of [
-    '{ to: "/home", label: "首页"',
-    '{ to: "/market", label: "市集"',
-    '{ to: "/square", label: "广场"',
-    '{ to: "/services", label: "工具"',
-    '{ to: "/profile", label: "我的"',
+    '{ to: "/home", label: t("nav.home")',
+    '{ to: "/market", label: t("nav.market")',
+    '{ to: "/square", label: t("nav.square")',
+    '{ to: "/services", label: t("nav.tools")',
+    '{ to: "/profile", label: t("nav.mine")',
   ]) {
     assert.match(layout, new RegExp(entry.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.doesNotMatch(layout, /mobile-tab--publish|PublishActionSheet|label: "发布"/);
-  assert.match(layout, /搜索商品 \/ 求购 \/ 帖子 \/ 校园资源/);
+  assert.match(layout, /t\("nav\.searchPlaceholder"\)/);
 });
 
 test("phase 1 keeps direct publishing routes while retiring the unified publish center", () => {
@@ -35,7 +35,7 @@ test("phase 1 keeps direct publishing routes while retiring the unified publish 
 
 test("market hero removes merchant onboarding and keeps direct V1 publishing", () => {
   const market = source("../../web/src/views/market/Index.vue");
-  const markers = ["我的交易", "推广服务", "发布商品"];
+  const markers = ["market-messages", "market-mine", "/market/promotions", "publish-listing"];
   let cursor = -1;
   for (const marker of markers) {
     const next = market.indexOf(marker);
@@ -61,14 +61,14 @@ test("homepage contains exactly the two focused content sections and no campus r
   assert.match(home, /marketApi\.items\(\{ page: 1, size: 12, listingType: "sell", sort: "popular"/);
   assert.match(home, /learningMaterialsApi\.items\(\{ page: 1, size: 12, sort: "popular"/);
   assert.match(home, /\/learning\/materials\/item\//);
-  assert.match(home, /学习资料/);
+  assert.match(home, /t\("home\.learning"\)/);
   assert.match(home, /slice\(0, 8\)/);
-  assert.match(home, /<h2>推荐好物<\/h2>/);
-  assert.match(home, /<h2>热议与求购<\/h2>/);
+  assert.match(home, /<h2>\{\{ t\("home\.recommended"\) \}\}<\/h2>/);
+  assert.match(home, /<h2>\{\{ t\("home\.hot"\) \}\}<\/h2>/);
   assert.match(home, /summary\.value\?\.hotTopics/);
-  assert.match(home, /title: "我要出售"/);
-  assert.match(home, /title: "我要求购"/);
-  assert.match(home, /title: "我要发帖"[^\n]+to: "\/post"/);
+  assert.match(home, /title: t\("home\.sell"\)/);
+  assert.match(home, /title: t\("home\.wanted"\)/);
+  assert.match(home, /title: t\("home\.post"\)[^\n]+to: "\/post"/);
   assert.equal((home.match(/<section class="home-section/g) || []).length, 2);
   assert.doesNotMatch(home, /marketApi\.wanted|WantedPreviewCard|wantedItems/);
   assert.doesNotMatch(home, /校园资源|CAMPUS RESOURCES|校园公告与动态|OFFICIAL UPDATES|STUDY GOODS|SPONSORED|resourceEntries|announcementEntries/);
@@ -158,7 +158,7 @@ test("current market keeps product categories but removes the retired section st
   assert.doesNotMatch(market, /学习资料与实体商品完全分开|审核交付/);
 
   assert.match(learning, /KAOPU FEATURED LEARNING/);
-  assert.match(learning, /<h1>靠浦特色学习资料商城<\/h1>/);
+  assert.match(learning, /<h1>\{\{ isEnglish \? "Kaopu Learning Materials" : "靠浦特色学习资料商城" \}\}<\/h1>/);
   assert.match(learning, /<div class="price-line">/);
   assert.doesNotMatch(learning, /免费获取/);
 });
@@ -168,13 +168,13 @@ test("tools hub exposes exactly the three planned entries and preserves campus r
   const resources = source("../../web/src/views/services/CampusResources.vue");
   const routes = source("../../web/src/router/index.ts");
 
-  const entries = tools.match(/\{ to: "\/[^"]+", icon: "[^"]+", title: "[^"]+", description: "[^"]+" \}/g) || [];
+  const entries = tools.match(/\{ to: "\/[^"]+", icon: "[^"]+", title: t\("tools\.[^"]+"\), description: t\("tools\.[^"]+"\) \}/g) || [];
   assert.equal(entries.length, 3);
-  assert.match(tools, /title: "我的教务"/);
-  assert.match(tools, /title: "校园工具"/);
-  assert.match(tools, /title: "校园资源"/);
+  assert.match(tools, /title: t\("tools\.academic"\)/);
+  assert.match(tools, /title: t\("tools\.toolbox"\)/);
+  assert.match(tools, /title: t\("tools\.resources"\)/);
   assert.doesNotMatch(tools, /EhallServicesPane|toolsApi|v-for="tool in/);
   assert.match(routes, /path: "services\/resources".*CampusResources\.vue/);
   assert.match(resources, /EhallServicesPane/);
-  assert.match(resources, /官方融合门户/);
+  assert.match(resources, /Open official e-Hall[\s\S]*打开官方融合门户/);
 });

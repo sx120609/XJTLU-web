@@ -1,5 +1,6 @@
 import { request, type RequestOptions } from "./request";
 import type { EpaySubmit, PayType } from "./payments";
+import { getActiveLocale } from "@/i18n";
 
 export type MarketCategory = string;
 export type MarketCondition = "new" | "like_new" | "good" | "fair" | "wanted";
@@ -35,10 +36,28 @@ export const MARKET_TRADE_MODE_LABELS: Record<MarketTradeMode, string> = {
 };
 
 export function marketConditionLabel(value: string) {
+  if (getActiveLocale() === "en-US") {
+    return ({
+      new: "New",
+      like_new: "Like new",
+      good: "Good",
+      fair: "Well used",
+      wanted: "Wanted",
+    } as Record<string, string>)[value] || value;
+  }
   return value === "wanted" ? "求购" : MARKET_CONDITION_LABELS[value as Exclude<MarketCondition, "wanted">] || value;
 }
 
 export function marketTradeModeLabel(value: string) {
+  if (getActiveLocale() === "en-US") {
+    return ({
+      meetup: "Meet on campus",
+      shipping: "Shipping",
+      online: "Online delivery",
+      any: "Any delivery method",
+      both: "Any delivery method",
+    } as Record<string, string>)[value] || value;
+  }
   return value === "both" ? MARKET_TRADE_MODE_LABELS.any : MARKET_TRADE_MODE_LABELS[value as MarketTradeMode] || value;
 }
 

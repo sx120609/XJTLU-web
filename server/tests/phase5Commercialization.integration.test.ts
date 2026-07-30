@@ -73,6 +73,7 @@ test("stage 5 real routes keep three content promotion flows and reject V1 merch
       method,
       signal: AbortSignal.timeout(20_000),
       headers: {
+        "Accept-Language": "zh-CN",
         ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         ...(payload === undefined ? {} : { "Content-Type": "application/json" }),
       },

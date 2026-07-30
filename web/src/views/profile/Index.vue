@@ -2,45 +2,45 @@
   <div class="profile" v-loading="profileLoading">
     <div v-if="profileLoadError" class="cpu-card profile-load-error">
       <el-empty :description="profileLoadError">
-        <el-button type="primary" :loading="profileLoading" @click="loadProfilePage">重试</el-button>
+        <el-button type="primary" :loading="profileLoading" @click="loadProfilePage">{{ t("common.retry") }}</el-button>
       </el-empty>
     </div>
 
     <div class="cpu-card profile-card">
-      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" alt="用户头像" />
+      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" :alt="isEnglish ? 'Profile image' : '用户头像'" />
       <div class="avatar-actions">
-        <el-button size="small" plain :loading="avatarSaving" :disabled="avatarSaving" @click="pickAvatar">上传头像</el-button>
-        <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" :disabled="avatarSaving" @click="removeAvatar">移除头像</el-button>
+        <el-button size="small" plain :loading="avatarSaving" :disabled="avatarSaving" @click="pickAvatar">{{ isEnglish ? "Upload image" : "上传头像" }}</el-button>
+        <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" :disabled="avatarSaving" @click="removeAvatar">{{ isEnglish ? "Remove image" : "移除头像" }}</el-button>
       </div>
       <h3 class="name">
         {{ user?.nickname }}
-        <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
-        <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
+        <el-tag v-if="user?.role === 'admin'" size="small" type="danger">{{ isEnglish ? "Admin" : "管理员" }}</el-tag>
+        <el-tag v-else-if="user?.role === 'mod'" size="small">{{ isEnglish ? "Moderator" : "论坛管理员" }}</el-tag>
       </h3>
-      <p class="account-note">{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
-      <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
+      <p class="account-note">{{ user?.studentSso ? (isEnglish ? "Your student ID is used only for sign-in and verification and is never displayed publicly." : "学号仅用于登录和身份校验，不会公开展示") : (isEnglish ? "Your sign-in account is private and never displayed publicly." : "登录账号仅自己可见，不会公开展示") }}</p>
+      <p class="bio">{{ user?.bio || (isEnglish ? "No bio yet" : "这个人很懒，什么都没写") }}</p>
       <ul class="kv">
-        <li><span>院系</span><span>{{ user?.college || "—" }}</span></li>
-        <li><span>入学</span><span>{{ user?.enrollYear || "—" }}</span></li>
-        <li><span>发帖</span><span>{{ user?.postCount }}</span></li>
-        <li><span>回复</span><span>{{ user?.replyCount }}</span></li>
-        <li><span>声望</span><span>{{ user?.reputation }}</span></li>
+        <li><span>{{ isEnglish ? "School" : "院系" }}</span><span>{{ user?.college || "—" }}</span></li>
+        <li><span>{{ isEnglish ? "Entry year" : "入学" }}</span><span>{{ user?.enrollYear || "—" }}</span></li>
+        <li><span>{{ isEnglish ? "Posts" : "发帖" }}</span><span>{{ user?.postCount }}</span></li>
+        <li><span>{{ isEnglish ? "Replies" : "回复" }}</span><span>{{ user?.replyCount }}</span></li>
+        <li><span>{{ isEnglish ? "Reputation" : "声望" }}</span><span>{{ user?.reputation }}</span></li>
       </ul>
       <div class="profile-actions">
-        <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
-        <el-button plain :disabled="logoutBusy" @click="scrollToSection('trust')">校园身份与信用</el-button>
-        <el-button plain :disabled="logoutBusy" @click="scrollToSection('favorites')">我的收藏</el-button>
-        <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
-        <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
+        <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">{{ isEnglish ? "Edit profile" : "编辑资料" }}</el-button>
+        <el-button plain :disabled="logoutBusy" @click="scrollToSection('trust')">{{ t("profile.identity") }}</el-button>
+        <el-button plain :disabled="logoutBusy" @click="scrollToSection('favorites')">{{ t("profile.favorites") }}</el-button>
+        <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">{{ isEnglish ? "Change password" : "修改密码" }}</el-button>
+        <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">{{ t("common.logout") }}</el-button>
       </div>
     </div>
 
     <div class="cpu-card appearance-card">
       <div class="appearance-copy">
-        <h3 class="cpu-section-title">外观偏好</h3>
-        <p>当前为{{ appearance.modeLabel }}，{{ appearance.isDark ? "正在使用深色界面。" : "正在使用浅色界面。" }}</p>
+        <h3 class="cpu-section-title">{{ isEnglish ? "Appearance" : "外观偏好" }}</h3>
+        <p>{{ isEnglish ? `Currently using ${appearance.isDark ? "dark" : "light"} mode.` : `当前为${appearance.modeLabel}，${appearance.isDark ? "正在使用深色界面。" : "正在使用浅色界面。"}` }}</p>
       </div>
-      <div class="appearance-options" role="radiogroup" aria-label="外观模式">
+      <div class="appearance-options" role="radiogroup" :aria-label="t('common.appearance')">
         <button
           v-for="item in appearanceOptions"
           :key="item.value"
@@ -59,45 +59,45 @@
     <div id="trust" class="cpu-card trust-card" v-if="user">
       <div class="trust-head">
         <div class="trust-copy">
-          <h3 class="cpu-section-title">校园身份与信用</h3>
-          <p class="trust-sub">身份、信誉和成交表现属于个人账户能力。成交率只统计公开实物商品的在售与已售卖状态；好评率默认 100%，仅管理员可依据投诉核验结果调整。</p>
+          <h3 class="cpu-section-title">{{ t("profile.identity") }}</h3>
+          <p class="trust-sub">{{ isEnglish ? "Identity, reputation, and trade performance belong to your account. Completion rate counts only public physical items that are for sale or sold. Positive rating defaults to 100% and can only be adjusted by admins after reviewing complaints." : "身份、信誉和成交表现属于个人账户能力。成交率只统计公开实物商品的在售与已售卖状态；好评率默认 100%，仅管理员可依据投诉核验结果调整。" }}</p>
           <div class="trust-inline-summary">
-            <span>{{ trust?.identity.label || (user.studentSso ? "校园身份已核验" : "校园身份未核验") }}</span>
-            <span>信誉与积分相互独立</span>
-            <span>匿名发帖与回复免费</span>
+            <span>{{ isEnglish ? (user.studentSso ? "Campus identity verified" : "Campus identity not verified") : (trust?.identity.label || (user.studentSso ? "校园身份已核验" : "校园身份未核验")) }}</span>
+            <span>{{ isEnglish ? "Reputation and points are independent" : "信誉与积分相互独立" }}</span>
+            <span>{{ isEnglish ? "Anonymous posts and replies are free" : "匿名发帖与回复免费" }}</span>
           </div>
         </div>
-        <div class="trust-score"><b>{{ trust?.score ?? user.reputation }}</b><small>信誉值</small></div>
+        <div class="trust-score"><b>{{ trust?.score ?? user.reputation }}</b><small>{{ t("profile.trust") }}</small></div>
       </div>
 
       <div class="trust-grid">
         <div class="trust-item">
-          <span>校园身份</span>
-          <b>{{ trust?.identity.verified ? "已核验" : "未核验" }}</b>
+          <span>{{ isEnglish ? "Campus identity" : "校园身份" }}</span>
+          <b>{{ trust?.identity.verified ? (isEnglish ? "Verified" : "已核验") : (isEnglish ? "Not verified" : "未核验") }}</b>
         </div>
         <div class="trust-item">
-          <span>已售卖</span>
+          <span>{{ isEnglish ? "Sold" : "已售卖" }}</span>
           <b>{{ trust?.physicalSoldItemCount ?? 0 }}</b>
         </div>
         <div class="trust-item">
-          <span>成交率</span>
+          <span>{{ isEnglish ? "Completion rate" : "成交率" }}</span>
           <b>{{ trust?.completionRate ?? 0 }}%</b>
         </div>
         <div class="trust-item">
-          <span>好评率</span>
+          <span>{{ isEnglish ? "Positive rating" : "好评率" }}</span>
           <b>{{ trust?.positiveRate ?? 100 }}%</b>
         </div>
       </div>
 
       <div class="account-assets">
         <div class="points-summary">
-          <span>积分资产</span>
+          <span>{{ isEnglish ? "Points balance" : "积分资产" }}</span>
           <strong>{{ trust?.points.points ?? user.points ?? 0 }}</strong>
-          <small>积分是流动的推流货币，不影响信誉值，也不能提现。</small>
-          <el-button type="primary" plain @click="router.push({ name: 'market-promotions', query: { mode: 'points' } })">积分推流</el-button>
+          <small>{{ isEnglish ? "Points are used for promotion. They do not affect reputation and cannot be withdrawn." : "积分是流动的推流货币，不影响信誉值，也不能提现。" }}</small>
+          <el-button type="primary" plain @click="router.push({ name: 'market-promotions', query: { mode: 'points' } })">{{ t("market.points") }}</el-button>
         </div>
         <div class="point-ledger">
-          <b>最近积分流水</b>
+          <b>{{ isEnglish ? "Recent points activity" : "最近积分流水" }}</b>
           <ol v-if="trust?.points.recentEntries?.length">
             <li v-for="entry in trust.points.recentEntries.slice(0, 6)" :key="entry.id">
               <span>{{ entry.reason }}</span>
@@ -105,14 +105,14 @@
               <time>{{ fmtDate(entry.createdAt, "MM-DD HH:mm") }}</time>
             </li>
           </ol>
-          <p v-else>完成真实交易等行为会生成可追溯的积分流水。</p>
+          <p v-else>{{ isEnglish ? "Verified actions such as completed trades create traceable points activity." : "完成真实交易等行为会生成可追溯的积分流水。" }}</p>
         </div>
       </div>
 
       <div class="trust-preferences">
         <div>
-          <b>求购与闲置匹配提醒</b>
-          <small>出现高匹配度商品或求购时通知我</small>
+          <b>{{ isEnglish ? "Wanted and item match alerts" : "求购与闲置匹配提醒" }}</b>
+          <small>{{ isEnglish ? "Notify me when a strong match appears" : "出现高匹配度商品或求购时通知我" }}</small>
         </div>
         <el-switch v-model="marketPreferences.matchNotificationsEnabled" :loading="savingMarketPreferences" @change="saveMarketPreferences" />
       </div>
@@ -128,18 +128,18 @@
         </div>
       </div>
       <div v-else class="trust-section">
-        <div class="trust-section-title">信用状态正常</div>
-        <p class="trust-section-tip">当前没有生效中的市集治理限制。普通发帖、私聊和交易不会消耗信誉值。</p>
+        <div class="trust-section-title">{{ isEnglish ? "Reputation status: normal" : "信用状态正常" }}</div>
+        <p class="trust-section-tip">{{ isEnglish ? "There are no active Market restrictions. Normal posts, chats, and trades do not consume reputation." : "当前没有生效中的市集治理限制。普通发帖、私聊和交易不会消耗信誉值。" }}</p>
       </div>
     </div>
 
     <div id="favorites" class="cpu-card favorites-card">
       <div class="favorites-head">
         <div>
-          <h3 class="cpu-section-title">我的收藏</h3>
-          <p>收藏是全站资料库，与点赞分开；帖子、商品和学习资料都在这里管理。</p>
+          <h3 class="cpu-section-title">{{ t("profile.favorites") }}</h3>
+          <p>{{ isEnglish ? "Favorites are separate from likes. Manage saved posts, items, and learning materials here." : "收藏是全站资料库，与点赞分开；帖子、商品和学习资料都在这里管理。" }}</p>
         </div>
-        <span>{{ favoriteCounts.all }} 项</span>
+        <span>{{ favoriteCounts.all }} {{ isEnglish ? "saved" : "项" }}</span>
       </div>
       <el-segmented v-model="favoriteType" :options="favoriteOptions" @change="loadFavorites(true)" />
       <div v-loading="favoritesLoading" class="favorite-list">
@@ -151,25 +151,25 @@
           <span class="favorite-copy">
             <small>{{ favoriteTypeLabel(favorite.type) }} · {{ favorite.meta }}</small>
             <b>{{ favorite.title }}</b>
-            <span>{{ favorite.description || "点击查看详情" }}</span>
+            <span>{{ favorite.description || (isEnglish ? "Open details" : "点击查看详情") }}</span>
           </span>
           <time>{{ fmtDate(favorite.savedAt, "MM-DD") }}</time>
         </button>
-        <el-empty v-if="!favoritesLoading && !favorites.length" description="这个分类还没有收藏" />
+        <el-empty v-if="!favoritesLoading && !favorites.length" :description="isEnglish ? 'No favorites in this category' : '这个分类还没有收藏'" />
       </div>
-      <el-button v-if="favoriteNextCursor" class="favorite-more" :loading="favoritesLoading" @click="loadFavorites(false)">加载更多</el-button>
+      <el-button v-if="favoriteNextCursor" class="favorite-more" :loading="favoritesLoading" @click="loadFavorites(false)">{{ isEnglish ? "Load more" : "加载更多" }}</el-button>
     </div>
 
     <div class="cpu-card user-group-card">
       <div>
-        <h3 class="cpu-section-title">加入用户 QQ 群</h3>
-        <p class="user-group-placeholder" aria-label="群号暂未填写">&nbsp;</p>
+        <h3 class="cpu-section-title">{{ isEnglish ? "User community" : "加入用户 QQ 群" }}</h3>
+        <p class="user-group-placeholder" :aria-label="isEnglish ? 'Details not available yet' : '群号暂未填写'">&nbsp;</p>
       </div>
     </div>
 
     <div class="cpu-card">
-      <h3 class="cpu-section-title">我发布的帖子</h3>
-      <el-empty v-if="!myTopics.length" description="还没有发过帖子" />
+      <h3 class="cpu-section-title">{{ isEnglish ? "My posts" : "我发布的帖子" }}</h3>
+      <el-empty v-if="!myTopics.length" :description="isEnglish ? 'You have not published a post' : '还没有发过帖子'" />
       <div
         v-for="t in myTopics"
         :key="t.id"
@@ -181,7 +181,7 @@
         @keydown.space.prevent="openMyTopic(t.id)"
       >
         <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
-        <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
+        <span v-if="t.isAnonymous" class="anon-tag">{{ isEnglish ? "Anonymous" : "匿名" }}</span>
         <span class="title">{{ t.title }}</span>
         <span class="meta">{{ fmtRelative(t.createdAt) }}</span>
       </div>
@@ -260,10 +260,12 @@ import {
   type ProfileFavorite,
   type ProfileFavoriteType,
 } from "@/api/profile";
+import { useLocale } from "@/i18n";
 
 const auth = useAuthStore();
 const appearance = useAppearanceStore();
 const router = useRouter();
+const { t, isEnglish } = useLocale();
 const user = computed(() => auth.user);
 const myTopics = ref<any[]>([]);
 const boards = ref<Board[]>([]);
@@ -308,15 +310,15 @@ const anonymousResetText = computed(() => {
   const nextResetAt = user.value?.anonymousState?.nextResetAt;
   return nextResetAt ? fmtDate(nextResetAt, "MM-DD HH:mm") : "—";
 });
-const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
-  { value: "light", label: "浅色", icon: Sunny },
-  { value: "dark", label: "深色", icon: Moon },
-];
+const appearanceOptions = computed<Array<{ value: AppearanceMode; label: string; icon: unknown }>>(() => [
+  { value: "light", label: t("common.light"), icon: Sunny },
+  { value: "dark", label: t("common.dark"), icon: Moon },
+]);
 const favoriteOptions = computed(() => [
-  { label: `全部 ${favoriteCounts.all}`, value: "all" },
-  { label: `帖子 ${favoriteCounts.topic}`, value: "topic" },
-  { label: `商品 ${favoriteCounts.market_item}`, value: "market_item" },
-  { label: `学习资料 ${favoriteCounts.learning_material}`, value: "learning_material" },
+  { label: `${isEnglish.value ? "All" : "全部"} ${favoriteCounts.all}`, value: "all" },
+  { label: `${isEnglish.value ? "Posts" : "帖子"} ${favoriteCounts.topic}`, value: "topic" },
+  { label: `${isEnglish.value ? "Items" : "商品"} ${favoriteCounts.market_item}`, value: "market_item" },
+  { label: `${isEnglish.value ? "Learning" : "学习资料"} ${favoriteCounts.learning_material}`, value: "learning_material" },
 ]);
 
 watch(passwordDialog, (v) => {
@@ -344,7 +346,7 @@ async function loadProfilePage() {
     if (!auth.user) await auth.fetchMe();
     if (seq !== profileLoadSeq) return;
     if (!auth.user) {
-      profileLoadError.value = "登录状态已失效，请重新登录";
+      profileLoadError.value = isEnglish.value ? "Your session has expired. Please sign in again." : "登录状态已失效，请重新登录";
       return;
     }
     const [topicResult, boardResult] = await Promise.allSettled([
@@ -355,7 +357,7 @@ async function loadProfilePage() {
     myTopics.value = topicResult.status === "fulfilled" ? topicResult.value : [];
     boards.value = boardResult.status === "fulfilled" ? boardResult.value : [];
     if (topicResult.status === "rejected" || boardResult.status === "rejected") {
-      profileLoadError.value = "部分个人资料加载失败，已显示可用内容";
+      profileLoadError.value = isEnglish.value ? "Some profile data could not be loaded. Available content is shown." : "部分个人资料加载失败，已显示可用内容";
     }
 
     await Promise.all([
@@ -407,7 +409,7 @@ async function saveMarketPreferences() {
   savingMarketPreferences.value = true;
   try {
     Object.assign(marketPreferences, await marketApi.updatePreferences(marketPreferences));
-    ElMessage.success("提醒偏好已保存");
+    ElMessage.success(isEnglish.value ? "Notification preference saved" : "提醒偏好已保存");
   } finally {
     savingMarketPreferences.value = false;
   }
@@ -432,11 +434,15 @@ function scrollToSection(id: string) {
 }
 
 function favoriteIcon(type: ProfileFavorite["type"]) {
-  return ({ topic: "帖", market_item: "物", learning_material: "学" } as const)[type];
+  return isEnglish.value
+    ? ({ topic: "P", market_item: "I", learning_material: "L" } as const)[type]
+    : ({ topic: "帖", market_item: "物", learning_material: "学" } as const)[type];
 }
 
 function favoriteTypeLabel(type: ProfileFavorite["type"]) {
-  return ({ topic: "帖子", market_item: "商品", learning_material: "学习资料" } as const)[type];
+  return isEnglish.value
+    ? ({ topic: "Post", market_item: "Item", learning_material: "Learning material" } as const)[type]
+    : ({ topic: "帖子", market_item: "商品", learning_material: "学习资料" } as const)[type];
 }
 
 async function saveEdit() {

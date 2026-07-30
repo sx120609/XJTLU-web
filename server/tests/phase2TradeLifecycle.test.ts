@@ -140,10 +140,10 @@ test("current physical trade exposes direct chat, dual confirmation and moderati
   assert.match(market, /acquireMarketOrderLock\(tx, orderId\)/);
   assert.match(market, /\w+Router\.patch\(\s*"\/admin\/wanted\/:id"/);
   assert.match(market, /\["active", "expired", "withdrawn", "sold"\]\.includes\(current\.status\)/);
-  assert.match(detail, /\['expired', 'withdrawn', 'sold'\]\.includes\(item\.status\)[^\n]+重新上架/);
+  assert.match(detail, /\['expired', 'withdrawn', 'sold'\]\.includes\(item\.status\)[^\n]+Relist[^\n]+重新上架/);
   assert.match(mine, /const relistItemStatuses = \["expired", "withdrawn", "sold"\]/);
-  assert.match(mine, /relistItemStatuses\.includes\(item\.status\)[^\n]+重新上架/);
-  assert.match(mine, /\{ label: "全部", value: "all" \}[\s\S]*\{ label: "在售", value: "active" \}[\s\S]*\{ label: "已售出", value: "sold" \}[\s\S]*\{ label: "草稿", value: "draft" \}[\s\S]*\{ label: "已下架", value: "withdrawn" \}/);
+  assert.match(mine, /relistItemStatuses\.includes\(item\.status\)[^\n]+Relist[^\n]+重新上架/);
+  assert.match(mine, /value: "all"[\s\S]*value: "active"[\s\S]*value: "sold"[\s\S]*value: "draft"[\s\S]*value: "withdrawn"/);
   assert.doesNotMatch(mine, /联系方式|续期 21 天/);
   assert.match(router, /path: "market\/wanted\/:id"/);
   assert.match(router, /path: "market\/seller\/:id"/);

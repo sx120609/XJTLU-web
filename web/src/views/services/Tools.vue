@@ -5,24 +5,24 @@
         <el-icon><component :is="toolHubIntro.iconComponent" /></el-icon>
       </div>
       <div class="hero-copy">
-        <div class="hero-kicker">校园服务</div>
-        <h2>{{ toolHubIntro.title }}</h2>
-        <p>{{ toolHubIntro.subtitle }}</p>
+        <div class="hero-kicker">{{ isEnglish ? "CAMPUS SERVICES" : "校园服务" }}</div>
+        <h2>{{ isEnglish ? toolHubIntro.titleEn : toolHubIntro.title }}</h2>
+        <p>{{ isEnglish ? toolHubIntro.subtitleEn : toolHubIntro.subtitle }}</p>
       </div>
     </section>
 
     <section class="tools-panel">
       <div class="panel-head">
         <div>
-          <h3>工具列表</h3>
-          <p>常用工具会陆续补齐，也欢迎先把需求告诉我们。</p>
+          <h3>{{ isEnglish ? "Tools" : "工具列表" }}</h3>
+          <p>{{ isEnglish ? "More useful tools are on the way. You can send us your requests now." : "常用工具会陆续补齐，也欢迎先把需求告诉我们。" }}</p>
         </div>
         <div class="panel-actions">
           <el-button v-if="canManageAny" plain type="primary" @click="openManage">
             <el-icon><Setting /></el-icon>
-            管理
+            {{ isEnglish ? "Manage" : "管理" }}
           </el-button>
-          <el-tag round type="success">{{ visibleTools.length }} 个入口</el-tag>
+          <el-tag round type="success">{{ visibleTools.length }} {{ isEnglish ? "tools" : "个入口" }}</el-tag>
         </div>
       </div>
 
@@ -41,18 +41,18 @@
           </span>
           <span class="tool-main">
             <span class="tool-title-row">
-              <span class="tool-title">{{ tool.name }}</span>
+              <span class="tool-title">{{ isEnglish ? tool.nameEn : tool.name }}</span>
               <el-tag
                 size="small"
                 :type="isLoginRequired(tool.slug) ? 'warning' : 'success'"
                 effect="plain"
                 round
               >
-                {{ isLoginRequired(tool.slug) ? "需登录" : "免登录" }}
+                {{ isLoginRequired(tool.slug) ? (isEnglish ? "Sign-in required" : "需登录") : (isEnglish ? "No sign-in" : "免登录") }}
               </el-tag>
             </span>
-            <span class="tool-summary">{{ tool.summary }}</span>
-            <span class="tool-meta">{{ tool.category }}</span>
+            <span class="tool-summary">{{ isEnglish ? tool.summaryEn : tool.summary }}</span>
+            <span class="tool-meta">{{ isEnglish ? tool.categoryEn : tool.category }}</span>
           </span>
           <el-icon class="tool-arrow"><Right /></el-icon>
         </button>
@@ -68,8 +68,10 @@ import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
 import { toolsApi, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { serviceTools, toolHubIntro, type ServiceTool } from "@/data/serviceTools";
+import { useLocale } from "@/i18n";
 
 const router = useRouter();
+const { isEnglish } = useLocale();
 const manageable = ref<ServiceToolCode[]>([]);
 const toolMetas = ref<ToolMeta[]>([]);
 const canManageAny = computed(() => manageable.value.length > 0 || toolMetas.value.some((item) => item.canManage));
