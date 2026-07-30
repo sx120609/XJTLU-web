@@ -2,7 +2,7 @@
   <div class="material-publish-page">
     <header class="page-head">
       <div>
-        <span>KAOPU CREATOR STUDIO</span>
+        <span>KAOPU LEARNING PUBLISHER</span>
         <h1>{{ editingId ? "编辑付费学习资料" : "发布付费学习资料" }}</h1>
         <p>设置合理价格并完整说明课程、内容范围与资料来源；提交后由平台人工审核。</p>
       </div>
@@ -174,11 +174,11 @@ async function load(){
       ElMessage.warning("付费学习资料当前尚未开放");
       return router.replace({name:"market-learning-materials"});
     }
-    if(creator.profile?.status!=="active"){
-      ElMessage.warning("请先完成创作者认证");
+    if(creator.publishingAllowed===false||["suspended","revoked"].includes(creator.publishingStatus)){
+      ElMessage.warning("当前资料发布权限受限，请先查看治理记录");
       return router.replace({name:"market-learning-creator"});
     }
-    hasCollectionMethod.value=creator.profile.collectionMethods.some(row=>row.status==="active");
+    hasCollectionMethod.value=creator.profile?.collectionMethods?.some(row=>row.status==="active")||false;
     if(editingId){
       const item=await learningMaterialsApi.item(editingId,{suppressErrorMessage:true});
       if(!item.mine){
@@ -223,7 +223,7 @@ async function submit(draft:boolean){
   if(form.originalPrice!==undefined&&form.originalPrice<form.price)return ElMessage.warning("参考原价不能低于当前售价");
   if(!draft){
     try{await formRef.value?.validate()}catch{return}
-    if(!hasCollectionMethod.value)return ElMessage.warning("请先在创作者中心配置有效收款码");
+    if(!hasCollectionMethod.value)return ElMessage.warning("请先在资料发布中心配置有效收款码");
     if(!editingId&&!pendingFiles.value.length)return ElMessage.warning("提交审核前请上传至少一个资料文件");
     if(editingId&&!existingFiles.value.length&&!pendingFiles.value.length)return ElMessage.warning("提交审核前请上传至少一个资料文件");
     const pendingPdf=pendingFiles.value.filter(isPdf);const hasPreview=pendingPdf.some(file=>{const range=previewRanges[fileKey(file)];return range&&range.start>=1&&range.end>=range.start&&range.end-range.start<10})||existingFiles.value.some(file=>file.format==="PDF"&&file.previewEnabled);

@@ -22,9 +22,11 @@ import {
   TRANSACTION_POINT_RULES,
   awardTransactionPointsBatchInTransaction,
   awardTransactionPointsInTransaction,
-  restoreViolationPointsInTransaction,
-  violationPointPenalty,
 } from "./transactionPoints";
+import {
+  applyReputationPenalty,
+  restoreReputationPenalty,
+} from "./reputation";
 
 export const marketReviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
@@ -108,6 +110,12 @@ export const marketAdminReportActionSchema = z.object({
   }
 });
 
+export const marketPositiveRateAdjustmentSchema = z.object({
+  positiveRate: z.number().int().min(0).max(100),
+  reason: z.string().trim().min(2).max(500),
+  reportId: z.number().int().positive(),
+}).strict();
+
 export type MarketGovernanceActor = {
   userId: number;
   role: string;
@@ -123,6 +131,7 @@ export type MarketViolationCreateInput = z.infer<typeof marketViolationCreateSch
 export type MarketViolationRevokeInput = z.infer<typeof marketViolationRevokeSchema>;
 export type MarketAppealActionInput = z.infer<typeof marketAppealActionSchema>;
 export type MarketAdminReportActionInput = z.infer<typeof marketAdminReportActionSchema>;
+export type MarketPositiveRateAdjustmentInput = z.infer<typeof marketPositiveRateAdjustmentSchema>;
 
 export type MarketReportTarget =
   | { kind: "item"; id: number }
@@ -133,6 +142,12 @@ export type MarketReportTarget =
 export function requireMarketGovernanceStaff(role: string) {
   if (!["admin", "mod"].includes(role)) {
     throw Errors.forbidden("需要商城管理权限");
+  }
+}
+
+export function requireMarketPositiveRateAdmin(role: string) {
+  if (role !== "admin") {
+    throw Errors.forbidden("只有管理员可以调整用户好评率");
   }
 }
 
@@ -290,6 +305,79 @@ export async function getPublicMarketTrustProfile(userId: number) {
 
 export async function getPrivateMarketTrustProfile(userId: number) {
   return getMarketTrustProfile(prisma, userId, true);
+}
+
+export async function adjustMarketPositiveRate(
+  actor: MarketGovernanceActor,
+  userId: number,
+  input: MarketPositiveRateAdjustmentInput,
+) {
+  requireMarketPositiveRateAdmin(actor.role);
+  const result = await prisma.$transaction(async (tx) => {
+    const target = await tx.user.findUnique({
+      where: { id: userId },
+      select: {
+        ...MARKET_PUBLIC_USER_SELECT,
+        marketPositiveRate: true,
+      },
+    });
+    if (!target) throw Errors.notFound("用户不存在");
+
+    const report = await tx.marketReport.findUnique({
+      where: { id: input.reportId },
+      select: { id: true, reportedUserId: true, status: true },
+    });
+    if (!report) throw Errors.notFound("关联投诉不存在");
+    if (report.reportedUserId !== userId) {
+      throw Errors.badRequest("关联投诉与好评率调整对象不一致");
+    }
+    if (report.status !== "resolved") {
+      throw Errors.badRequest("只有管理员确认成立的投诉才能作为好评率调整依据");
+    }
+
+    const updated = await tx.user.update({
+      where: { id: userId },
+      data: {
+        marketPositiveRate: input.positiveRate,
+        marketPositiveRateReason: input.reason,
+        marketPositiveRateUpdatedAt: new Date(),
+      },
+      select: {
+        ...MARKET_PUBLIC_USER_SELECT,
+        marketPositiveRate: true,
+        marketPositiveRateReason: true,
+        marketPositiveRateUpdatedAt: true,
+      },
+    });
+    await logMarketAdminAction(tx, {
+      actorId: actor.userId,
+      action: "market.positive_rate.adjust",
+      targetType: "user",
+      targetId: userId,
+      summary: `调整市集好评率：${target.nickname}`,
+      detail: {
+        previousPositiveRate: target.marketPositiveRate,
+        positiveRate: updated.marketPositiveRate,
+        reason: input.reason,
+        reportId: input.reportId,
+      },
+      ip: actor.ip,
+    });
+    return updated;
+  });
+
+  await notifyMarketUser(
+    userId,
+    "市集好评率已更新",
+    `管理员依据投诉核验结果将你的好评率调整为 ${result.marketPositiveRate}%：${input.reason}`,
+    "/profile",
+    {
+      type: "market-positive-rate-adjusted",
+      positiveRate: result.marketPositiveRate,
+      reportId: input.reportId,
+    },
+  );
+  return result;
 }
 
 export async function createMarketAppeal(
@@ -668,16 +756,13 @@ export async function createMarketViolation(
     });
     if (!target) throw Errors.notFound("处理对象不存在");
     await validateViolationReference(tx, input);
+    const reputationDelta = await applyReputationPenalty(tx, input.userId, input.level);
     const violation = await tx.marketViolation.create({
-      data: { ...input, createdById: actor.userId },
-    });
-    await awardTransactionPointsInTransaction(tx, {
-      userId: input.userId,
-      delta: violationPointPenalty(input.level),
-      event: "market_violation",
-      sourceType: "market_violation",
-      sourceId: violation.id,
-      reason: `市集违规：${input.reason}`,
+      data: {
+        ...input,
+        createdById: actor.userId,
+        reputationDelta,
+      },
     });
     await logMarketAdminAction(tx, {
       actorId: actor.userId,
@@ -738,14 +823,7 @@ export async function revokeMarketViolation(
     const violation = await tx.marketViolation.findUniqueOrThrow({
       where: { id: violationId },
     });
-    await restoreViolationPointsInTransaction(tx, {
-      userId: current.userId,
-      originalEvent: "market_violation",
-      restoreEvent: "market_violation_restored",
-      sourceType: "market_violation",
-      sourceId: violationId,
-      reason: input.note || "市集违规处理撤销，返还原扣积分",
-    });
+    await restoreReputationPenalty(tx, current.userId, current.reputationDelta);
     await logMarketAdminAction(tx, {
       actorId: actor.userId,
       action: "market.violation.revoke",
@@ -808,14 +886,11 @@ export async function handleMarketAppeal(
         where: { id: current.violationId },
         data: { status: "revoked", revokedAt: new Date() },
       });
-      await restoreViolationPointsInTransaction(tx, {
-        userId: current.userId,
-        originalEvent: "market_violation",
-        restoreEvent: "market_violation_restored",
-        sourceType: "market_violation",
-        sourceId: current.violationId,
-        reason: "市集申诉通过，返还原扣积分",
-      });
+      await restoreReputationPenalty(
+        tx,
+        current.userId,
+        current.violation.reputationDelta,
+      );
     }
     const appeal = await tx.marketAppeal.findUniqueOrThrow({
       where: { id: appealId },

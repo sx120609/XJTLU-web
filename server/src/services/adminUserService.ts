@@ -101,6 +101,7 @@ const adminUserSelect = {
   postCount: true,
   replyCount: true,
   reputation: true,
+  transactionPoints: true,
   forumEnabled: true,
   forumEnabledAt: true,
   anonymousCredits: true,
@@ -347,7 +348,6 @@ export async function listAdminUsers(
       return {
         ...user,
         reputation: trust.reputation,
-        reputationLevel: trust.reputationLevel,
         reputationBreakdown: trust.reputationBreakdown,
         anonymousState: trust.anonymousState,
       };
@@ -448,7 +448,6 @@ export async function updateAdminUser(
       anonymousCreditsFrozen: user.anonymousCreditsFrozen,
       anonymousState: trust.anonymousState,
       reputation: trust.reputation,
-      reputationLevel: trust.reputationLevel,
     };
   });
 }
@@ -471,7 +470,6 @@ export async function createAdminUser(
           enrollYear: input.enrollYear,
         },
       });
-      await tx.messageSetting.create({ data: { userId: user.id } });
       return {
         id: user.id,
         username: user.username,

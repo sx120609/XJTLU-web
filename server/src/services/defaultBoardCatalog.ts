@@ -25,7 +25,7 @@ export const COMMUNITY_BOARD_DEFS: readonly CommunityBoardDefinition[] = [
 
   // 学习交流
   { slug: "study", name: "课程学习", description: "课程学习、作业思路、考试复习与学术交流", icon: "📚", color: "#2563eb", order: 110, type: "normal", section: "study", anonymousEnabled: true },
-  { slug: "ielts", name: "科研实习", description: "科研项目、实验室机会、实习招聘与经验交流", icon: "🔬", color: "#7c3aed", order: 120, type: "normal", section: "study", anonymousEnabled: true },
+  { slug: "ielts", name: "2+2专区", description: "西浦2+2交流专区", icon: "🌍", color: "#7c3aed", order: 120, type: "normal", section: "study", anonymousEnabled: true },
   { slug: "study-abroad", name: "雅思留学", description: "雅思备考、选校申请、文书签证与海外生活交流", icon: "🌍", color: "#0891b2", order: 130, type: "normal", section: "study", anonymousEnabled: true },
   { slug: "coursereview", name: "课程点评", description: "分享课程体验、选课建议与学习心得", icon: "📊", color: "#8b5cf6", order: 140, type: "normal", section: "study", anonymousEnabled: true },
 

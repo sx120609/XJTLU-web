@@ -25,6 +25,7 @@ import { parseHotSignals } from "./v1DiscoveryService";
 export const ITEM_CONDITIONS = ["new", "like_new", "good", "fair"] as const;
 export const TRADE_MODES = ["meetup", "shipping", "online", "any"] as const;
 export const LISTING_TYPES = ["sell", "wanted"] as const;
+export const LEARNING_MATERIAL_WANTED_CATEGORY = "learning_materials";
 
 const MARKET_CONFIG_ID = 1;
 const DEFAULT_COMMISSION_BPS = 0;
@@ -32,7 +33,7 @@ const DEFAULT_LEARNING_MATERIAL_COMMISSION_BPS = 0;
 const DEFAULT_CATEGORIES = [
   { slug: "digital", name: "数码 3C", icon: "💻", description: "手机、电脑、数码配件", fulfillmentType: "physical", imageRequired: true, sort: 10 },
   { slug: "books", name: "教材书籍", icon: "📚", description: "教材、课外书与纸质资料", fulfillmentType: "physical", imageRequired: true, sort: 20 },
-  { slug: "digital_goods", name: "付费学习资料", icon: "📁", description: "经创作者认证与人工审核的校园学习资料，卖家确认收款后自动交付", fulfillmentType: "digital", imageRequired: false, enabled: true, sort: 30 },
+  { slug: "digital_goods", name: "付费学习资料", icon: "📁", description: "校园用户均可发布、经内容审核后上架的学习资料，卖家确认收款后自动交付", fulfillmentType: "digital", imageRequired: false, enabled: true, sort: 30 },
   { slug: "dorm", name: "宿舍用品", icon: "🛏️", description: "宿舍与日常生活用品", fulfillmentType: "physical", imageRequired: true, sort: 40 },
   { slug: "appliance", name: "小家电", icon: "🔌", description: "小型电器与配件", fulfillmentType: "physical", imageRequired: true, sort: 50 },
   { slug: "fashion", name: "服饰鞋包", icon: "👕", description: "服饰、鞋履与箱包", fulfillmentType: "physical", imageRequired: true, sort: 60 },
@@ -47,7 +48,7 @@ export const itemInclude: any = {
   topic: { select: { id: true, replyCount: true, likeCount: true, hidden: true, aiReviewStatus: true } },
   pinnedPromotionOrder: { select: { id: true, status: true, type: true, startsAt: true, expiresAt: true } },
   homePromotionOrder: { select: { id: true, status: true, type: true, startsAt: true, expiresAt: true } },
-  _count: { select: { favorites: true, offers: true, tradeIntents: true } },
+  _count: { select: { favorites: true, offers: true, tradeIntents: true, conversations: true } },
 } as const;
 
 export function normalizeMarketTradeMode(value: unknown) {
@@ -109,17 +110,18 @@ export function serializeItem(item: any, viewerId?: number) {
     accessories: item.accessories || "",
     testAllowed: item.testAllowed !== false,
     availableTime: item.availableTime || "",
-    contactVisibility: item.contactVisibility || "after_accept",
     expiresAt: item.expiresAt,
     renewedAt: item.renewedAt,
     visibility: item.visibility || "public",
     status: item.status,
     viewCount: item.viewCount,
     favoriteCount: item._count?.favorites ?? item.favoriteCount ?? 0,
-    offerCount: item._count?.tradeIntents ?? item._count?.offers ?? item.offerCount ?? 0,
+    offerCount: item._count?.conversations ?? item.offerCount ?? 0,
     hotScore: item.hotScore || 0,
     hotReasons: parseHotSignals(item.hotSignals).reasons,
     hotScoreUpdatedAt: item.hotScoreUpdatedAt,
+    boostedUntil: item.boostedUntil,
+    boostPointsSpent: item.boostPointsSpent || 0,
     images: (item.images || []).map((image: any) => ({ id: image.id, url: image.url, sort: image.sort })),
     cover: item.images?.[0]?.url || extractImagesFromContent(item.description || "")[0] || "",
     seller: item.seller,
@@ -203,6 +205,21 @@ export function buildMarketMeta(
   const { market: categories } = splitMarketCategories(allCategories);
   return {
     categories,
+    wantedCategories: [
+      ...categories,
+      {
+        id: -1,
+        slug: LEARNING_MATERIAL_WANTED_CATEGORY,
+        name: "学习资料",
+        icon: "📝",
+        description: "课程笔记、备考资料与其他学习资料求购",
+        fulfillmentType: "digital",
+        imageRequired: false,
+        enabled: true,
+        sort: 1000,
+        special: true,
+      },
+    ],
     campuses: MARKET_CAMPUSES,
     featuredLearningMaterials: null,
     conditions: ITEM_CONDITIONS,

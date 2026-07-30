@@ -7,13 +7,13 @@ process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
 process.env.JWT_SECRET = "phase-8-matching-secret";
 
-test("stage 8 real routes match public listings, persist preferences and send one meetup reminder", async (t) => {
+test("stage 8 real routes match public listings, persist preferences and keep fulfillment in direct chat", async (t) => {
   const express = (await import("express")).default;
   const { router } = await import("../src/routes");
   const { errorHandler } = await import("../src/middleware/error");
   const { signToken } = await import("../src/utils/jwt");
   const { prisma } = await import("../src/prisma");
-  const { notifyMatchesForItem, runMarketMeetupReminders } = await import("../src/services/marketMatching");
+  const { notifyMatchesForItem } = await import("../src/services/marketMatching");
   const suffix = `${Date.now()}_${Math.floor(Math.random() * 100_000)}`;
   const [seller, buyer] = await Promise.all(["seller", "buyer"].map((label) => prisma.user.create({
     data: {
@@ -71,6 +71,8 @@ test("stage 8 real routes match public listings, persist preferences and send on
   t.after(async () => {
     await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.marketMatchNotice.deleteMany({ where: { recipientId: { in: userIds } } });
+    await prisma.transactionPointEntry.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.marketConversation.deleteMany({ where: { OR: [{ buyerId: { in: userIds } }, { sellerId: { in: userIds } }] } });
     await prisma.marketOrder.deleteMany({ where: { OR: [{ buyerId: { in: userIds } }, { sellerId: { in: userIds } }] } });
     await prisma.marketPreference.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.wantedPost.deleteMany({ where: { authorId: { in: userIds } } });
@@ -119,44 +121,47 @@ test("stage 8 real routes match public listings, persist preferences and send on
   assert.equal(wantedMatches[0].item.id, item.id);
 
   const buyerToken = token(buyer);
+  const sellerToken = token(seller);
   const defaults = await api("/market/preferences", buyerToken);
   assert.equal(defaults.matchNotificationsEnabled, true);
-  assert.equal(defaults.meetupRemindersEnabled, true);
+  assert.equal("meetupRemindersEnabled" in defaults, false);
   const invalidPreference = await call("/market/preferences", buyerToken, "PATCH", { meetupRemindersEnabled: false });
   assert.equal(invalidPreference.response.status, 400);
-  const preference = await api("/market/preferences", buyerToken, "PATCH", { matchNotificationsEnabled: true, meetupRemindersEnabled: false });
-  assert.equal(preference.meetupRemindersEnabled, false);
+  const preference = await api("/market/preferences", buyerToken, "PATCH", { matchNotificationsEnabled: false });
+  assert.equal(preference.matchNotificationsEnabled, false);
 
+  await api("/market/preferences", buyerToken, "PATCH", { matchNotificationsEnabled: true });
   assert.equal(await notifyMatchesForItem(item.id), 1);
   assert.equal(await notifyMatchesForItem(item.id), 0);
   assert.equal(await prisma.marketMatchNotice.count({ where: { itemId: item.id, wantedPostId: wanted.id, recipientId: buyer.id } }), 1);
 
-  await prisma.marketItem.update({ where: { id: item.id }, data: { status: "reserved" } });
-  const order = await prisma.marketOrder.create({
-    data: {
-      itemId: item.id,
-      buyerId: buyer.id,
-      sellerId: seller.id,
-      outTradeNo: `P8${Date.now()}${Math.floor(Math.random() * 1000)}`,
-      amountCents: item.priceCents,
-      platformFeeCents: 0,
-      sellerAmountCents: item.priceCents,
-      deliveryType: "physical",
-      status: "reserved",
-      expiresAt: new Date(Date.now() + 72 * 60 * 60_000),
-    },
+  const conversation = await api(
+    `/market/items/${item.id}/conversations`,
+    buyerToken,
+    "POST",
+    { message: "匹配结果合适，直接私聊确认。" },
+  );
+  const negotiating = await prisma.marketOrder.findUniqueOrThrow({
+    where: { id: conversation.orderId },
   });
-  const meetupTime = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
-  const updated = await api(`/market/orders/${order.id}`, buyerToken, "PATCH", { action: "set_meetup", meetupTime, meetupLocation: "中心楼大堂", note: "到达后站内联系" });
-  assert.equal(updated.meetupLocation, "中心楼大堂");
-  assert.equal("meetupReminderSentAt" in updated, false);
-
-  const reminder = await runMarketMeetupReminders(new Date());
-  assert.deepEqual(reminder, { orders: 1, notifications: 1 });
-  const repeatedReminder = await runMarketMeetupReminders(new Date());
-  assert.deepEqual(repeatedReminder, { orders: 0, notifications: 0 });
-  const reminderNotifications = await prisma.notification.count({ where: { userId: seller.id, payload: { contains: "market-meetup-reminder" } } });
-  assert.equal(reminderNotifications, 1);
-  const buyerReminderNotifications = await prisma.notification.count({ where: { userId: buyer.id, payload: { contains: "market-meetup-reminder" } } });
-  assert.equal(buyerReminderNotifications, 0);
+  assert.equal(negotiating.status, "negotiating");
+  assert.equal(negotiating.meetupTime, null);
+  assert.equal(negotiating.meetupLocation, "");
+  await Promise.all([
+    api(`/market/orders/${negotiating.id}`, buyerToken, "PATCH", { action: "buyer_confirm" }),
+    api(`/market/orders/${negotiating.id}`, sellerToken, "PATCH", { action: "seller_confirm" }),
+  ]);
+  assert.equal(
+    (await prisma.marketOrder.findUniqueOrThrow({ where: { id: negotiating.id } })).status,
+    "completed",
+  );
+  assert.equal(
+    await prisma.notification.count({
+      where: {
+        userId: { in: userIds },
+        payload: { contains: "market-meetup-reminder" },
+      },
+    }),
+    0,
+  );
 });

@@ -5,7 +5,7 @@
       <el-button @click="$router.push('/forum/b/wanted-demand')">返回求购需求</el-button>
     </header>
 
-    <el-form label-position="top" class="wanted-form cpu-card" v-loading="loading">
+    <el-form label-position="top" class="wanted-form cpu-card" :class="{ 'learning-wanted-form': form.category === 'learning_materials' }" v-loading="loading">
       <aside class="publish-readiness" aria-live="polite">
         <div><span>信息完整度</span><strong>{{ qualityScore }}%</strong></div>
         <small>{{ qualityHints.length ? `建议补充：${qualityHints.join('、')}` : '需求清楚，可以发布' }}</small>
@@ -15,13 +15,14 @@
         <h2>想要什么</h2>
         <el-form-item label="求购标题" required><el-input v-model="form.title" maxlength="120" show-word-limit placeholder="例如：求一台成色良好的二手显示器" /></el-form-item>
         <div class="two-cols">
-          <el-form-item label="物品分类" required><el-select v-model="form.category"><el-option v-for="category in categories" :key="category.slug" :label="`${category.icon} ${category.name}`" :value="category.slug" /></el-select></el-form-item>
+          <el-form-item label="求购分类" required><el-select v-model="form.category"><el-option v-for="category in categories" :key="category.slug" :label="`${category.icon} ${category.name}${category.special ? ' · 专区' : ''}`" :value="category.slug" /></el-select></el-form-item>
           <el-form-item label="品牌 / 型号"><el-input v-model="form.brandModel" maxlength="160" placeholder="可接受多个型号时也可以写在这里" /></el-form-item>
         </div>
         <div class="two-cols">
           <el-form-item label="最低预算（元）" required><el-input-number v-model="form.budgetMin" :min="0" :max="999999" :precision="2" :step="10" controls-position="right" /></el-form-item>
           <el-form-item label="最高预算（元）" required><el-input-number v-model="form.budgetMax" :min="0" :max="999999" :precision="2" :step="10" controls-position="right" /></el-form-item>
         </div>
+        <el-alert v-if="form.category === 'learning_materials'" type="success" :closable="false" show-icon title="这是学习资料求购，会以专区色标展示；响应者可关联自己已在学习资料专区上架的资料。" />
         <el-form-item label="需求说明" required><el-input v-model="form.description" type="textarea" :rows="7" maxlength="5000" show-word-limit placeholder="说明用途、必须满足的条件、不能接受的瑕疵，以及希望附带的配件。请勿填写联系方式。" /></el-form-item>
       </section>
 
@@ -42,7 +43,7 @@
             <p>{{ anonymousHint }}</p>
           </div>
         </div>
-        <el-alert class="rule-alert" type="info" :closable="false" show-icon title="联系方式不会公开。你接受一个响应后，系统才会创建双方可见的交易会话和校内预约。" />
+        <el-alert class="rule-alert" type="info" :closable="false" show-icon title="联系方式不会公开。看到合适响应后可直接发起私聊；实际成交后由双方分别确认。" />
       </section>
 
       <el-alert type="warning" :closable="false" show-icon title="禁止求购违法违规物品、账号、处方药、考试作弊资料、危险品或来源不明商品。" />
@@ -82,17 +83,11 @@ const qualityHints = computed(() => {
 });
 const qualityScore = computed(() => Math.round(((6 - qualityHints.value.length) / 6) * 100));
 const anonymousEnabledForForm = computed(() => {
-  if (editingId) return true;
-  const state = auth.user?.anonymousState;
-  return Boolean(state?.eligible && !state?.frozen && (state?.availableCredits ?? 0) > 0);
+  return true;
 });
 const anonymousHint = computed(() => {
-  const state = auth.user?.anonymousState;
   if (editingId) return form.anonymous ? "这条求购会继续匿名展示，编辑不会公开真实身份。" : "已发布的求购不能在编辑时改为匿名。";
-  if (!state?.eligible) return `信誉值达到 ${state?.minReputation ?? 30} 后才能匿名发布。`;
-  if (state?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
-  if ((state?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
-  return `发布后消耗 1 点匿名积分，本周还剩 ${state?.availableCredits ?? 0} / ${state?.weeklyQuota ?? 0} 点。`;
+  return "匿名发布免费，不消耗积分；平台仍保留必要的安全审核能力。";
 });
 watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId) form.anonymous = false;
@@ -110,7 +105,7 @@ onMounted(async () => {
   loading.value = true;
   try {
     const meta = await marketApi.meta({ suppressErrorMessage: true });
-    categories.value = meta.categories.filter((item) => item.fulfillmentType === "physical");
+    categories.value = meta.wantedCategories || meta.categories.filter((item) => item.fulfillmentType === "physical");
     if (!editingId) {
       const localDraft = readPublishDraft<Record<string, unknown>>("market-wanted", auth.user?.id);
       if (localDraft) {
@@ -169,4 +164,5 @@ async function submit() {
 .wanted-publish{display:flex;max-width:960px;margin:0 auto;flex-direction:column;gap:18px}.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px}.page-head span{color:var(--cpu-primary);font-size:10px;letter-spacing:.14em}.page-head h1{margin:5px 0;font-size:28px}.page-head p{margin:0;color:var(--cpu-text-secondary);font-size:12px}.wanted-form{padding:26px}.wanted-form section+section{margin-top:26px;padding-top:22px;border-top:1px solid var(--cpu-border-soft)}.wanted-form h2{margin:0 0 14px;font-size:17px}.two-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}.rule-alert{margin-top:14px}.wanted-form footer{display:flex;justify-content:flex-end;gap:8px;margin-top:22px;padding-top:20px;border-top:1px solid var(--cpu-border-soft)}@media(max-width:680px){.page-head{align-items:flex-start;flex-direction:column}.wanted-form{padding:16px}.two-cols{grid-template-columns:1fr}.wanted-form footer .el-button{flex:1}}
 .publish-readiness{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:5px 14px;margin-bottom:22px;padding:14px 16px;border:1px solid color-mix(in srgb,var(--cpu-primary) 24%,var(--cpu-border-soft));border-radius:13px;background:var(--cpu-primary-soft)}.publish-readiness>div{display:flex;align-items:baseline;gap:8px}.publish-readiness span,.publish-readiness small,.publish-readiness em{color:var(--cpu-text-secondary);font-size:11px}.publish-readiness strong{color:var(--cpu-primary);font-size:19px}.publish-readiness em{font-size:10px;font-style:normal;white-space:nowrap}@media(max-width:680px){.publish-readiness{grid-template-columns:1fr}.wanted-form footer{position:sticky;z-index:5;bottom:calc(66px + env(safe-area-inset-bottom));margin:22px -16px -16px;padding:12px 16px;background:var(--cpu-card);box-shadow:0 -8px 20px rgba(15,23,42,.06)}}
 .anonymous-box{display:flex;align-items:flex-start;gap:12px;margin-top:14px;padding:13px 15px;border:1px solid color-mix(in srgb,var(--cpu-primary) 25%,var(--cpu-border-soft));border-radius:12px;background:color-mix(in srgb,var(--cpu-primary) 7%,var(--cpu-card))}.anonymous-box.disabled{border-color:var(--cpu-border-soft);background:var(--cpu-surface-subtle)}.anonymous-box strong{display:block;color:var(--cpu-text);font-size:13px}.anonymous-box p{margin:4px 0 0;color:var(--cpu-text-secondary);font-size:11px;line-height:1.55}
+.wanted-form.learning-wanted-form{border-color:#c084fc;box-shadow:0 8px 28px rgba(147,51,234,.09)}
 </style>

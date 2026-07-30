@@ -63,9 +63,6 @@ import {
   type FileCollectRules,
   type PatchFileCollectInput,
 } from "../../services/toolSchemas";
-import {
-  notifyFileCollectSubmissionForQqBot,
-} from "../../services/toolQqReminders";
 
 const toolsRouter = Router();
 export { toolsRouter as toolFileCollectionsRouter };
@@ -426,20 +423,10 @@ toolsRouter.post("/file-collections/:slug/submissions", authOptional, fileCollec
         data: { status: "submitted" },
       });
       await refreshFileCollectTaskCounters(tx, current.taskId);
-      return { submission, files: fileRows, task: current.task, oldPaths };
+      return { submission, files: fileRows, oldPaths };
     });
     pendingSubmissionId = null;
     await Promise.all(result.oldPaths.map((relativePath) => unlinkFileCollectPath(relativePath)));
-    await notifyFileCollectSubmissionForQqBot({
-      task: result.task,
-      submission: {
-        id: result.submission.id,
-        identity: result.submission.identity,
-        submitterId: result.submission.submitterId,
-        data: result.submission.data,
-      },
-      fileCount: result.files.length,
-    }).catch((error) => console.warn("[tools] file collect qqbot reminder failed", error));
     ok(res, {
       id: result.submission.id,
       createdAt: result.submission.createdAt,

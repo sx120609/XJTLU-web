@@ -111,7 +111,6 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
         usedHarmonyClient: client.client === "harmony",
       },
     });
-    await prisma.messageSetting.create({ data: { userId: user.id } });
     const token = signToken({ userId: user.id, studentId: user.username, role: user.role, campus: "" });
     await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
       console.warn("[admin-stats] failed to record register login", error);
@@ -146,7 +145,6 @@ async function finishXjtluSiteLogin(
         role: "user",
       },
     });
-    await prisma.messageSetting.create({ data: { userId: user.id } });
   } else if (!user.studentSso) {
     throw Errors.conflict("该 XJTLU 账号标识与现有站内账号冲突，请联系管理员处理");
   }

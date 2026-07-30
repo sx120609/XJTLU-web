@@ -119,41 +119,45 @@ enum LearningCreatorAppealStatus {
 // ============ 用户（站内独立账号，不接学校账号） ============
 
 model User {
-  id                     Int       @id @default(autoincrement())
-  username               String    @unique // 登录名（学校账号登录时即为学号）
-  passwordHash           String
-  nickname               String // 显示名（学校账号首次登录时为空，强制设置）
-  email                  String?   @unique
-  avatar                 String?
-  bio                    String? // 自我介绍
-  college                String? // 自报院系（可选，仅展示用）
-  enrollYear             Int? // 自报入学年份（可选）
-  role                   String    @default("user") // user / mod / admin / bot
+  id                          Int       @id @default(autoincrement())
+  username                    String    @unique // 登录名（学校账号登录时即为学号）
+  passwordHash                String
+  nickname                    String // 显示名（学校账号首次登录时为空，强制设置）
+  email                       String?   @unique
+  avatar                      String?
+  bio                         String? // 自我介绍
+  college                     String? // 自报院系（可选，仅展示用）
+  enrollYear                  Int? // 自报入学年份（可选）
+  role                        String    @default("user") // user / mod / admin / bot
   // 是否通过学校 SSO 登录认证（学号身份已验证）。alice 等示例账号为 false
-  studentSso             Boolean   @default(false)
-  status                 String    @default("active") // active / banned / muted
-  mutedUntil             DateTime?
-  postCount              Int       @default(0)
-  replyCount             Int       @default(0)
-  reputation             Int       @default(0)
-  lastSeenAt             DateTime  @default(now())
-  lastLoginAt            DateTime?
-  lastLoginClient        String?
-  usedIosClient          Boolean   @default(false)
-  usedAndroidClient      Boolean   @default(false)
-  usedHarmonyClient      Boolean   @default(false)
-  topicSubmissionLocked  Boolean   @default(false)
-  aiReviewWhitelisted    Boolean   @default(false)
-  dataAuthAgreedAt       DateTime?
-  forumEnabled           Boolean   @default(false)
-  forumEnabledAt         DateTime?
-  anonymousCredits       Int       @default(0)
-  anonymousWeekKey       String?
-  anonymousCreditsFrozen Boolean   @default(false)
-  sponsorTotalCents      Int       @default(0)
-  transactionPoints      Int       @default(0)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  studentSso                  Boolean   @default(false)
+  status                      String    @default("active") // active / banned / muted
+  mutedUntil                  DateTime?
+  postCount                   Int       @default(0)
+  replyCount                  Int       @default(0)
+  reputation                  Int       @default(100)
+  lastSeenAt                  DateTime  @default(now())
+  lastLoginAt                 DateTime?
+  lastLoginClient             String?
+  usedIosClient               Boolean   @default(false)
+  usedAndroidClient           Boolean   @default(false)
+  usedHarmonyClient           Boolean   @default(false)
+  topicSubmissionLocked       Boolean   @default(false)
+  aiReviewWhitelisted         Boolean   @default(false)
+  dataAuthAgreedAt            DateTime?
+  forumEnabled                Boolean   @default(false)
+  forumEnabledAt              DateTime?
+  anonymousCredits            Int       @default(0)
+  anonymousWeekKey            String?
+  anonymousCreditsFrozen      Boolean   @default(false)
+  sponsorTotalCents           Int       @default(0)
+  transactionPoints           Int       @default(0)
+  // 市集好评率由管理员根据投诉审核结果维护，普通用户评价不直接改写。
+  marketPositiveRate          Int       @default(100)
+  marketPositiveRateReason    String    @default("")
+  marketPositiveRateUpdatedAt DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   topics                                 Topic[]
   manualReviewedTopics                   Topic[]                          @relation("ManualReviewedTopics")
@@ -162,6 +166,7 @@ model User {
   manualReviewedVideos                   ForumVideoAsset[]                @relation("ManualReviewedVideos")
   replies                                Reply[]
   likes                                  Like[]
+  topicFavorites                         TopicFavorite[]
   notifications                          Notification[]
   notificationReads                      NotificationRead[]
   messageSetting                         MessageSetting?
@@ -194,6 +199,8 @@ model User {
   marketBuyerConversations               MarketConversation[]             @relation("MarketConversationBuyer")
   marketSellerConversations              MarketConversation[]             @relation("MarketConversationSeller")
   marketMessages                         MarketMessage[]                  @relation("MarketMessageSender")
+  marketConversationBlocksCreated        MarketConversationBlock[]        @relation("MarketConversationBlocker")
+  marketConversationBlocksReceived       MarketConversationBlock[]        @relation("MarketConversationBlocked")
   marketReviewsAuthored                  MarketReview[]                   @relation("MarketReviewAuthor")
   marketReviewsReceived                  MarketReview[]                   @relation("MarketReviewTarget")
   marketReports                          MarketReport[]                   @relation("MarketReportReporter")
@@ -204,7 +211,6 @@ model User {
   wantedResponses                        WantedResponse[]                 @relation("WantedResponseSeller")
   tradeIntents                           TradeIntent[]                    @relation("TradeIntentBuyer")
   cancelledMarketOrders                  MarketOrder[]                    @relation("MarketOrderCancelledBy")
-  marketContactCard                      MarketContactCard?
   marketViolations                       MarketViolation[]                @relation("MarketViolationUser")
   marketViolationsCreated                MarketViolation[]                @relation("MarketViolationCreator")
   marketAppeals                          MarketAppeal[]                   @relation("MarketAppealUser")
@@ -252,6 +258,7 @@ model User {
   marketPreference                       MarketPreference?
   marketMatchNotices                     MarketMatchNotice[]
   transactionPointEntries                TransactionPointEntry[]
+  pointBoosts                            PointBoost[]
   productActivityDays                    ProductActivityDaily[]
 }
 
@@ -327,6 +334,8 @@ model Topic {
   hotScore           Int       @default(0)
   hotSignals         String    @default("{}")
   hotScoreUpdatedAt  DateTime?
+  boostedUntil       DateTime?
+  boostPointsSpent   Int       @default(0)
   lastReplyAt        DateTime? // 用于排序
   lastReplyById      Int?
   createdAt          DateTime  @default(now())
@@ -336,6 +345,7 @@ model Topic {
   author           User             @relation(fields: [authorId], references: [id])
   replies          Reply[]
   likes            Like[]
+  favorites        TopicFavorite[]
   tags             TopicTag[]
   manualReviewedBy User?            @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
   weiwallMap       WeiwallTopicMap?
@@ -348,6 +358,7 @@ model Topic {
   @@index([hidden, createdAt])
   @@index([hidden, lastReplyAt])
   @@index([hidden, hotScore, createdAt])
+  @@index([hidden, boostedUntil, createdAt])
   @@index([authorId])
   @@index([authorId, aiReviewStatus])
   @@index([linkedMarketItemId, createdAt])
@@ -404,6 +415,20 @@ model Like {
   reply Reply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, topicId, replyId])
+}
+
+model TopicFavorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  topicId   Int
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([userId, createdAt])
+  @@index([topicId, createdAt])
 }
 
 model ForumImageAsset {
@@ -1099,7 +1124,6 @@ model MarketItem {
   accessories              String    @default("")
   testAllowed              Boolean   @default(true)
   availableTime            String    @default("")
-  contactVisibility        String    @default("after_accept")
   expiresAt                DateTime?
   renewedAt                DateTime?
   visibility               String    @default("public") // public / targeted
@@ -1110,13 +1134,15 @@ model MarketItem {
   pinnedPromotionOrderId   Int?      @unique
   homeFeaturedUntil        DateTime?
   homePromotionOrderId     Int?      @unique
-  status                   String    @default("active") // draft / reviewing / active / reserved / sold / withdrawn / hidden
+  status                   String    @default("active") // draft / reviewing / active / negotiating / reserved(历史) / sold / withdrawn / expired / hidden / targeted
   viewCount                Int       @default(0)
   favoriteCount            Int       @default(0)
   offerCount               Int       @default(0)
   hotScore                 Int       @default(0)
   hotSignals               String    @default("{}")
   hotScoreUpdatedAt        DateTime?
+  boostedUntil             DateTime?
+  boostPointsSpent         Int       @default(0)
   soldAt                   DateTime?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
@@ -1147,6 +1173,7 @@ model MarketItem {
   @@index([sellerId, status, updatedAt])
   @@index([listingType, status, createdAt])
   @@index([listingType, status, hotScore, createdAt])
+  @@index([listingType, status, boostedUntil, createdAt])
   @@index([priceCents])
   @@index([status, priceCents])
   @@index([condition, status, createdAt])
@@ -1248,6 +1275,8 @@ model WantedPost {
   hotScore               Int       @default(0)
   hotSignals             String    @default("{}")
   hotScoreUpdatedAt      DateTime?
+  boostedUntil           DateTime?
+  boostPointsSpent       Int       @default(0)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -1264,6 +1293,7 @@ model WantedPost {
 
   @@index([status, createdAt])
   @@index([status, hotScore, createdAt])
+  @@index([status, boostedUntil, createdAt])
   @@index([category, status, createdAt])
   @@index([authorId, status, updatedAt])
   @@index([expiresAt, status])
@@ -1277,7 +1307,7 @@ model WantedResponse {
   priceCents    Int
   description   String   @default("")
   availableTime String   @default("")
-  status        String   @default("pending") // pending / accepted / rejected / cancelled / expired
+  status        String   @default("pending") // pending / accepted(已发起私聊) / rejected / cancelled / expired
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -1309,7 +1339,7 @@ model MarketOrder {
   deliveryType             String    @default("physical") // order-time fulfillment snapshot
   digitalDeliveryEncrypted String?
   digitalDeliveredAt       DateTime?
-  status                   String    @default("pending_payment") // pending_payment / paid / delivering / completed / cancelled / refund_pending / refunded / disputed
+  status                   String    @default("pending_payment") // negotiating / pending_payment / paid / delivering / completed / cancelled / refund_pending / refunded / disputed
   meetupTime               DateTime?
   meetupLocation           String    @default("")
   meetupReminderSentAt     DateTime?
@@ -1357,20 +1387,24 @@ model MarketOrder {
 }
 
 model MarketConversation {
-  id            Int       @id @default(autoincrement())
-  itemId        Int
-  orderId       Int?      @unique
-  buyerId       Int
-  sellerId      Int
-  lastMessageAt DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               Int       @id @default(autoincrement())
+  itemId           Int
+  orderId          Int?      @unique
+  buyerId          Int
+  sellerId         Int
+  lastMessageAt    DateTime?
+  buyerLastReadAt  DateTime?
+  sellerLastReadAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  item     MarketItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  order    MarketOrder?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  buyer    User            @relation("MarketConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
-  seller   User            @relation("MarketConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  item     MarketItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  order    MarketOrder?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  buyer    User                      @relation("MarketConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller   User                      @relation("MarketConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
   messages MarketMessage[]
+  blocks   MarketConversationBlock[]
+  reports  MarketReport[]
 
   @@unique([itemId, buyerId, sellerId])
   @@index([buyerId, lastMessageAt])
@@ -1378,18 +1412,51 @@ model MarketConversation {
 }
 
 model MarketMessage {
-  id             Int       @id @default(autoincrement())
-  conversationId Int
-  senderId       Int
-  content        String
-  readAt         DateTime?
-  createdAt      DateTime  @default(now())
+  id              Int       @id @default(autoincrement())
+  conversationId  Int
+  senderId        Int
+  content         String
+  kind            String    @default("text") // text / image / system
+  clientMessageId String?
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
 
-  conversation MarketConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User               @relation("MarketMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation MarketConversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                      @relation("MarketMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  attachments  MarketMessageAttachment[]
+  reports      MarketReport[]
 
+  @@unique([conversationId, senderId, clientMessageId])
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt])
+}
+
+model MarketMessageAttachment {
+  id        Int      @id @default(autoincrement())
+  messageId Int
+  url       String
+  mimeType  String   @default("image/jpeg")
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  message MarketMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, sort])
+}
+
+model MarketConversationBlock {
+  id             Int      @id @default(autoincrement())
+  conversationId Int
+  blockerId      Int
+  blockedUserId  Int
+  createdAt      DateTime @default(now())
+
+  conversation MarketConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  blocker      User               @relation("MarketConversationBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedUser  User               @relation("MarketConversationBlocked", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, blockerId])
+  @@index([blockedUserId, createdAt])
 }
 
 model MarketReview {
@@ -1414,6 +1481,8 @@ model MarketReport {
   itemId         Int?
   wantedPostId   Int?
   orderId        Int?
+  conversationId Int?
+  messageId      Int?
   reportedUserId Int?
   reporterId     Int
   type           String    @default("listing") // listing / wanted / user / trade
@@ -1425,29 +1494,21 @@ model MarketReport {
   handledAt      DateTime?
   createdAt      DateTime  @default(now())
 
-  item         MarketItem?  @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  wantedPost   WantedPost?  @relation(fields: [wantedPostId], references: [id], onDelete: Cascade)
-  order        MarketOrder? @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  reportedUser User?        @relation("MarketReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
-  reporter     User         @relation("MarketReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  item         MarketItem?         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  wantedPost   WantedPost?         @relation(fields: [wantedPostId], references: [id], onDelete: Cascade)
+  order        MarketOrder?        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  conversation MarketConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      MarketMessage?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reportedUser User?               @relation("MarketReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reporter     User                @relation("MarketReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
 
   @@unique([itemId, reporterId])
+  @@unique([messageId, reporterId])
   @@index([status, createdAt])
   @@index([wantedPostId, reporterId])
   @@index([orderId, reporterId])
+  @@index([conversationId, reporterId])
   @@index([reportedUserId, reporterId])
-}
-
-model MarketContactCard {
-  id             Int      @id @default(autoincrement())
-  userId         Int      @unique
-  method         String
-  valueEncrypted String
-  valueMasked    String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model MarketPreference {
@@ -1689,21 +1750,22 @@ model PromotionEvent {
 }
 
 model MarketViolation {
-  id           Int       @id @default(autoincrement())
-  userId       Int
-  itemId       Int?
-  wantedPostId Int?
-  orderId      Int?
-  type         String
-  level        String    @default("warning")
-  action       String    @default("warning") // warning / restrict_publish / restrict_trade
-  reason       String
-  status       String    @default("active") // active / revoked / expired
-  expiresAt    DateTime?
-  createdById  Int?
-  revokedAt    DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  itemId          Int?
+  wantedPostId    Int?
+  orderId         Int?
+  type            String
+  level           String    @default("warning")
+  action          String    @default("warning") // warning / restrict_publish / restrict_trade
+  reason          String
+  reputationDelta Int       @default(0)
+  status          String    @default("active") // active / revoked / expired
+  expiresAt       DateTime?
+  createdById     Int?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user       User           @relation("MarketViolationUser", fields: [userId], references: [id], onDelete: Cascade)
   item       MarketItem?    @relation(fields: [itemId], references: [id], onDelete: SetNull)
@@ -2347,6 +2409,7 @@ model LearningCreatorViolation {
   severity        String
   action          String
   reason          String
+  reputationDelta Int                            @default(0)
   evidence        String                         @default("")
   status          LearningCreatorViolationStatus @default(active)
   createdById     Int
@@ -2427,6 +2490,36 @@ model TransactionPointEntry {
   @@unique([userId, event, sourceType, sourceId])
   @@index([userId, createdAt])
   @@index([event, createdAt])
+}
+
+/// 使用统一积分为本人内容推流；不涉及现金，也不改变信誉值。
+model PointBoost {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  targetType String // topic / market_item / wanted_post
+  targetId   Int
+  points     Int
+  startsAt   DateTime @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([targetType, targetId, expiresAt])
+}
+
+/// 内容浏览按“内容 + 访问者 + 自然日”去重；viewerKey 为不可逆摘要，不保存原始 IP。
+model ContentViewDaily {
+  id         Int      @id @default(autoincrement())
+  targetType String // topic / market_item / wanted_post
+  targetId   Int
+  viewerKey  String
+  dayKey     String
+  createdAt  DateTime @default(now())
+
+  @@unique([targetType, targetId, viewerKey, dayKey])
+  @@index([dayKey, createdAt])
 }
 
 /// 隐私最小化的日级产品访问聚合；不保存 IP、搜索词或内容详情。

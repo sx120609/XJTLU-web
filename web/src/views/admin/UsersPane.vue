@@ -112,11 +112,11 @@
           <span class="content-count">{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
         </template>
       </el-table-column>
-      <el-table-column label="匿名" width="170">
+      <el-table-column label="信誉 / 积分" width="170">
         <template #default="{ row }">
           <div class="anon-info">
-            <span class="anon-main">{{ row.anonymousState?.availableCredits ?? 0 }} / {{ row.anonymousState?.weeklyQuota ?? 0 }}</span>
-            <span class="anon-sub">{{ row.anonymousState?.frozen ? "已冻结" : `信誉 ${row.reputation} · Lv.${row.reputationLevel?.level ?? 1}` }}</span>
+            <span class="anon-main">信誉 {{ row.reputation }}</span>
+            <span class="anon-sub">积分 {{ row.transactionPoints ?? 0 }}</span>
           </div>
         </template>
       </el-table-column>
@@ -152,7 +152,6 @@
                 <el-dropdown-item v-if="auth.isAdmin" command="whitelist" :disabled="isUserBusy(row)">
                   {{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="anonymity" :disabled="isUserBusy(row)">匿名额度</el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin && !row.studentSso" command="password" :disabled="isUserBusy(row)">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin && row.id !== auth.user?.id" command="delete" divided :disabled="isUserBusy(row)">删除用户</el-dropdown-item>
               </el-dropdown-menu>
@@ -194,9 +193,9 @@
           <span>登录：{{ row.lastLoginAt ? fmtDate(row.lastLoginAt) : "未登录" }}</span>
           <span>论坛：{{ row.forumEnabledAt ? fmtDate(row.forumEnabledAt) : row.forumEnabled ? "已开启" : "未确认须知" }}</span>
           <span>注册：{{ fmtDate(row.createdAt) }}</span>
-          <span>信誉：{{ row.reputation }} · {{ row.reputationLevel?.name || "Lv.1" }}</span>
+          <span>信誉：{{ row.reputation }}</span>
+          <span>积分：{{ row.transactionPoints ?? 0 }}</span>
           <span>{{ row.postCount }} 帖 / {{ row.replyCount }} 回</span>
-          <span>匿名 {{ row.anonymousState?.availableCredits ?? 0 }} / {{ row.anonymousState?.weeklyQuota ?? 0 }}{{ row.anonymousState?.frozen ? "（冻结）" : "" }}</span>
         </div>
         <div class="mobile-actions">
           <el-dropdown trigger="click" @command="handleUserCommand($event, row)">
@@ -216,7 +215,6 @@
                 <el-dropdown-item v-if="auth.isAdmin" command="whitelist" :disabled="isUserBusy(row)">
                   {{ row.aiReviewWhitelisted ? "取消 AI 白名单" : "设为 AI 白名单" }}
                 </el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" command="anonymity" :disabled="isUserBusy(row)">匿名额度</el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin && !row.studentSso" command="password" :disabled="isUserBusy(row)">重置密码</el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin && row.id !== auth.user?.id" command="delete" divided :disabled="isUserBusy(row)">删除用户</el-dropdown-item>
               </el-dropdown-menu>
@@ -314,30 +312,6 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="anonymityDialogOpen" title="匿名额度管理" width="440" append-to-body>
-      <el-form label-position="top">
-        <el-form-item label="用户">
-          <div class="dlg-tip">{{ anonymityTarget?.nickname }}（{{ anonymityTarget?.username }}）</div>
-        </el-form-item>
-        <el-form-item label="当前信誉值">
-          <div class="dlg-tip">
-            {{ anonymityTarget?.reputation ?? 0 }}
-            <span v-if="anonymityTarget?.reputationLevel"> · Lv.{{ anonymityTarget.reputationLevel.level }} {{ anonymityTarget.reputationLevel.name }}</span>
-          </div>
-        </el-form-item>
-        <el-form-item label="本周剩余匿名积分">
-          <el-input-number v-model="anonymityCredits" :min="0" :max="999" style="width:100%" />
-        </el-form-item>
-        <el-form-item label="冻结匿名积分">
-          <el-switch v-model="anonymityFrozen" />
-        </el-form-item>
-        <div class="dlg-tip">周额度会按信誉值自动刷新；这里调整的是当前周可用积分与冻结状态。</div>
-      </el-form>
-      <template #footer>
-        <el-button :disabled="anonymitySaving" @click="anonymityDialogOpen = false">取消</el-button>
-        <el-button type="primary" :loading="anonymitySaving" :disabled="anonymitySaving" @click="submitAnonymityChange">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -550,7 +524,6 @@ function handleUserCommand(command: string, row: AdminUser) {
   if (command === "unmute") return unmute(row);
   if (command === "role") return changeRole(row);
   if (command === "whitelist") return toggleAiWhitelist(row);
-  if (command === "anonymity") return changeAnonymity(row);
   if (command === "password") return resetPw(row);
   if (command === "delete") return deleteUser(row);
 }

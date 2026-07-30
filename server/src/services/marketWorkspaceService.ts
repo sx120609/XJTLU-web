@@ -15,22 +15,16 @@ import { serializeMarketOrder } from "./marketOrderService";
 import { STUDENT_MARKET_PAYMENT_ENABLED } from "./marketPolicy";
 import { MARKET_PUBLIC_USER_SELECT } from "./marketPublicUser";
 import { sealMarketSensitive } from "./marketSensitiveService";
-import { serializeTradeIntent } from "./marketTradeService";
 import {
   serializeWantedPost,
   serializeWantedResponse,
 } from "./marketWantedService";
-import {
-  refreshExpiredPromotions,
-  serializeMerchantPromotion,
-} from "./promotion";
 
 const PRIVATE_FAVORITE_STATUSES = ["draft", "reviewing", "hidden"];
 const PUBLIC_PROFILE_ITEM_STATUSES = ["active", "reserved", "sold"];
 
 export const marketPreferenceSchema = z.object({
   matchNotificationsEnabled: z.boolean(),
-  meetupRemindersEnabled: z.boolean(),
 }).strict();
 
 export const marketPayoutProfileSchema = z.object({
@@ -52,6 +46,10 @@ export async function getMarketPreference(userId: number) {
     where: { userId },
     create: { userId },
     update: {},
+    select: {
+      matchNotificationsEnabled: true,
+      updatedAt: true,
+    },
   });
 }
 
@@ -63,6 +61,10 @@ export async function updateMarketPreference(
     where: { userId },
     create: { userId, ...input },
     update: input,
+    select: {
+      matchNotificationsEnabled: true,
+      updatedAt: true,
+    },
   });
 }
 
@@ -135,71 +137,27 @@ export async function getMarketWorkspace(actor: MarketWorkspaceActor) {
   const userId = actor.userId;
   const [
     selling,
-    favoriteRows,
-    offers,
-    sellerOffers,
     orders,
     conversationCount,
     payoutProfile,
     wantedPosts,
     wantedResponses,
-    tradeIntents,
-    sellerTradeIntents,
   ] = await Promise.all([
     prisma.marketItem.findMany({
-      where: { sellerId: userId },
+      where: {
+        sellerId: userId,
+        deliveryType: "physical",
+        category: { not: "digital_goods" },
+      },
       include: itemInclude,
       orderBy: { updatedAt: "desc" },
       take: 100,
     }),
-    prisma.marketFavorite.findMany({
-      where: {
-        userId,
-        item: {
-          status: { notIn: PRIVATE_FAVORITE_STATUSES },
-          OR: [
-            { visibility: "public" },
-            {
-              visibility: "targeted",
-              sourceWantedPost: { authorId: userId },
-            },
-          ],
-        },
-      },
-      include: { item: { include: itemInclude } },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
-    prisma.marketOffer.findMany({
-      where: { buyerId: userId },
-      include: {
-        item: {
-          include: {
-            images: { orderBy: { sort: "asc" }, take: 1 },
-            seller: { select: MARKET_PUBLIC_USER_SELECT },
-          },
-        },
-        order: true,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
-    prisma.marketOffer.findMany({
-      where: { item: { sellerId: userId }, status: "pending" },
-      include: {
-        item: {
-          include: {
-            images: { orderBy: { sort: "asc" }, take: 1 },
-          },
-        },
-        buyer: { select: MARKET_PUBLIC_USER_SELECT },
-        order: true,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
     prisma.marketOrder.findMany({
-      where: { OR: [{ buyerId: userId }, { sellerId: userId }] },
+      where: {
+        deliveryType: "physical",
+        OR: [{ buyerId: userId }, { sellerId: userId }],
+      },
       include: {
         item: {
           include: {
@@ -217,7 +175,10 @@ export async function getMarketWorkspace(actor: MarketWorkspaceActor) {
       take: 100,
     }),
     prisma.marketConversation.count({
-      where: marketConversationVisibilityWhere(userId),
+      where: {
+        ...marketConversationVisibilityWhere(userId),
+        messages: { some: { senderId: { not: userId }, readAt: null } },
+      },
     }),
     prisma.marketPayoutProfile.findUnique({
       where: { userId },
@@ -249,33 +210,9 @@ export async function getMarketWorkspace(actor: MarketWorkspaceActor) {
       orderBy: { updatedAt: "desc" },
       take: 100,
     }),
-    prisma.tradeIntent.findMany({
-      where: { buyerId: userId },
-      include: {
-        item: { include: itemInclude },
-        reservation: true,
-      },
-      orderBy: { updatedAt: "desc" },
-      take: 100,
-    }),
-    prisma.tradeIntent.findMany({
-      where: { item: { sellerId: userId }, status: "pending" },
-      include: {
-        buyer: { select: MARKET_PUBLIC_USER_SELECT },
-        item: { include: itemInclude },
-        reservation: true,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
   ]);
 
-  const visibleItemIds = Array.from(new Set([
-    ...sellerOffers.map((offer) => offer.itemId),
-    ...orders.map((order) => order.itemId),
-    ...tradeIntents.map((intent) => intent.itemId),
-    ...sellerTradeIntents.map((intent) => intent.itemId),
-  ]));
+  const visibleItemIds = Array.from(new Set(orders.map((order) => order.itemId)));
   const participantConversations = visibleItemIds.length
     ? await prisma.marketConversation.findMany({
       where: {
@@ -298,22 +235,6 @@ export async function getMarketWorkspace(actor: MarketWorkspaceActor) {
 
   return {
     selling: selling.map((item) => serializeItem(item, userId)),
-    favorites: favoriteRows.map((row) => serializeItem(row.item, userId)),
-    offers: offers.map((offer) => ({
-      ...offer,
-      item: serializeItem(offer.item, userId),
-      price: amountCentsToMoney(offer.priceCents),
-      order: offer.order ? serializeOrder(offer.order, actor) : null,
-    })),
-    sellerOffers: sellerOffers.map((offer) => ({
-      ...offer,
-      item: serializeItem(offer.item, userId),
-      price: amountCentsToMoney(offer.priceCents),
-      order: offer.order ? serializeOrder(offer.order, actor) : null,
-      conversationId: conversationByItemAndBuyer.get(
-        `${offer.itemId}:${offer.buyerId}`,
-      ) || null,
-    })),
     orders: orders.map((order) => ({
       ...serializeOrder(order, actor),
       conversationId: conversationByItemAndBuyer.get(
@@ -326,23 +247,6 @@ export async function getMarketWorkspace(actor: MarketWorkspaceActor) {
     wantedResponses: wantedResponses.map((response) => (
       serializeWantedResponse(response, userId)
     )),
-    tradeIntents: tradeIntents.map((intent) => ({
-      ...serializeTradeIntent(intent),
-      item: serializeItem(intent.item, userId),
-      reservation: intent.reservation
-        ? serializeOrder(intent.reservation, actor)
-        : null,
-      conversationId: conversationByItemAndBuyer.get(
-        `${intent.itemId}:${intent.buyerId}`,
-      ) || null,
-    })),
-    sellerTradeIntents: sellerTradeIntents.map((intent) => ({
-      ...serializeTradeIntent(intent),
-      item: serializeItem(intent.item, userId),
-      conversationId: conversationByItemAndBuyer.get(
-        `${intent.itemId}:${intent.buyerId}`,
-      ) || null,
-    })),
   };
 }
 
@@ -351,13 +255,17 @@ export async function getMarketSellerDashboard(actor: MarketWorkspaceActor) {
   const sellerId = actor.userId;
   const [items, orders, settlements, payoutProfile, config] = await Promise.all([
     prisma.marketItem.findMany({
-      where: { sellerId },
+      where: {
+        sellerId,
+        deliveryType: "physical",
+        category: { not: "digital_goods" },
+      },
       include: itemInclude,
       orderBy: { updatedAt: "desc" },
       take: 200,
     }),
     prisma.marketOrder.findMany({
-      where: { sellerId },
+      where: { sellerId, deliveryType: "physical" },
       include: {
         item: {
           include: {
@@ -374,7 +282,7 @@ export async function getMarketSellerDashboard(actor: MarketWorkspaceActor) {
       take: 200,
     }),
     prisma.marketSettlement.findMany({
-      where: { sellerId },
+      where: { sellerId, order: { deliveryType: "physical" } },
       include: {
         order: {
           include: {
@@ -500,25 +408,27 @@ export async function getPublicMarketUserProfile(
   userId: number,
   viewerId?: number,
 ) {
-  await refreshExpiredPromotions();
-  const promotionNow = new Date();
-  const user = await prisma.user.findUnique({
+  const userRecord = await prisma.user.findUnique({
     where: { id: userId },
-    select: MARKET_PUBLIC_USER_SELECT,
+    select: {
+      ...MARKET_PUBLIC_USER_SELECT,
+      marketPositiveRate: true,
+    },
   });
-  if (!user) throw Errors.notFound("用户不存在");
+  if (!userRecord) throw Errors.notFound("用户不存在");
+  const { marketPositiveRate, ...user } = userRecord;
   const [
     listingCount,
     completedTrades,
     reviews,
-    positiveReviews,
     noShowCount,
     recentItems,
-    merchant,
   ] = await Promise.all([
     prisma.marketItem.count({
       where: {
         sellerId: userId,
+        deliveryType: "physical",
+        category: { not: "digital_goods" },
         visibility: "public",
         status: { in: PUBLIC_PROFILE_ITEM_STATUSES },
       },
@@ -526,6 +436,7 @@ export async function getPublicMarketUserProfile(
     prisma.marketOrder.count({
       where: {
         status: "completed",
+        deliveryType: "physical",
         OR: [{ buyerId: userId }, { sellerId: userId }],
       },
     }),
@@ -534,12 +445,10 @@ export async function getPublicMarketUserProfile(
       _avg: { rating: true },
       _count: true,
     }),
-    prisma.marketReview.count({
-      where: { targetUserId: userId, rating: { gte: 4 } },
-    }),
     prisma.marketOrder.count({
       where: {
         status: "no_show",
+        deliveryType: "physical",
         OR: [
           { buyerId: userId, noShowParty: "buyer" },
           { sellerId: userId, noShowParty: "seller" },
@@ -549,43 +458,14 @@ export async function getPublicMarketUserProfile(
     prisma.marketItem.findMany({
       where: {
         sellerId: userId,
+        deliveryType: "physical",
+        category: { not: "digital_goods" },
         visibility: "public",
         status: { in: PUBLIC_PROFILE_ITEM_STATUSES },
       },
       include: itemInclude,
       orderBy: { updatedAt: "desc" },
       take: 6,
-    }),
-    prisma.merchantProfile.findFirst({
-      where: {
-        userId,
-        status: "approved",
-        activeUntil: { gt: promotionNow },
-        activePromotionOrderId: { not: null },
-        activePromotionOrder: {
-          is: {
-            status: "confirmed",
-            startsAt: { lte: promotionNow },
-            expiresAt: { gt: promotionNow },
-          },
-        },
-      },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        category: true,
-        activeUntil: true,
-        activePromotionOrder: {
-          select: {
-            id: true,
-            status: true,
-            type: true,
-            startsAt: true,
-            expiresAt: true,
-          },
-        },
-      },
     }),
   ]);
 
@@ -596,22 +476,10 @@ export async function getPublicMarketUserProfile(
       completedTrades,
       rating: reviews._avg.rating || 0,
       reviewCount: reviews._count,
-      positiveRate: reviews._count
-        ? Math.round((positiveReviews / reviews._count) * 100)
-        : 0,
+      positiveRate: marketPositiveRate,
       noShowCount,
     },
     recentItems: recentItems.map((item) => serializeItem(item, viewerId)),
-    merchant: merchant
-      ? {
-        id: merchant.id,
-        slug: merchant.slug,
-        name: merchant.name,
-        category: merchant.category,
-        activeUntil: merchant.activeUntil,
-        promotion: serializeMerchantPromotion(merchant),
-      }
-      : null,
   };
 }
 

@@ -1,7 +1,7 @@
 <template>
   <div class="support-page">
     <header class="support-head">
-      <div><span>CONTENT SUPPORT</span><h1>资料问题反馈</h1><p>反馈与领取记录和资料版本绑定，便于创作者或平台定位问题。</p></div>
+      <div><span>CONTENT SUPPORT</span><h1>资料问题反馈</h1><p>反馈与领取记录和资料版本绑定，便于资料发布者或平台定位问题。</p></div>
       <div><el-button @click="router.push({ name: 'market-learning-material-library' })">我的资料库</el-button><el-button @click="load">刷新</el-button></div>
     </header>
 
@@ -33,7 +33,7 @@
             <div><span>{{ categoryLabel(selected.category) }}</span><h2>{{ selected.order?.item?.title || `领取记录 #${selected.orderId}` }}</h2><p>领取编号 {{ selected.order?.outTradeNo }} · {{ participantLabel }}</p></div>
             <el-tag effect="plain" :type="statusType(selected.status)">{{ statusLabel(selected.status) }}</el-tag>
           </header>
-          <div class="ticket-facts"><span>反馈单 #{{ selected.id }}</span><span>创建于 {{ formatTime(selected.createdAt) }}</span><span v-if="selected.responseDueAt">创作者应于 {{ formatTime(selected.responseDueAt) }} 前回复</span></div>
+          <div class="ticket-facts"><span>反馈单 #{{ selected.id }}</span><span>创建于 {{ formatTime(selected.createdAt) }}</span><span v-if="selected.responseDueAt">资料发布者应于 {{ formatTime(selected.responseDueAt) }} 前回复</span></div>
           <div class="message-list">
             <article v-for="message in selected.messages || []" :key="message.id" :class="{ mine: message.senderId === auth.user?.id, system: message.kind === 'system' }">
               <template v-if="message.kind === 'system'"><span>{{ message.content }}</span></template>
@@ -78,7 +78,7 @@ const sellerEntry = computed(() => route.query.side === "seller");
 const showCreate = computed(() => Boolean(orderId.value) && !sellerEntry.value && !tickets.value.some((ticket) => ticket.orderId === orderId.value));
 const isBuyer = computed(() => selected.value?.buyerId === auth.user?.id);
 const isStaff = computed(() => ["admin", "mod"].includes(auth.user?.role || ""));
-const participantLabel = computed(() => isBuyer.value ? `创作者：${selected.value?.seller?.nickname || selected.value?.seller?.username || "—"}` : `领取同学：${selected.value?.buyer?.nickname || selected.value?.buyer?.username || "—"}`);
+const participantLabel = computed(() => isBuyer.value ? `资料发布者：${selected.value?.seller?.nickname || selected.value?.seller?.username || "—"}` : `领取同学：${selected.value?.buyer?.nickname || selected.value?.buyer?.username || "—"}`);
 const meta = reactive<LearningMaterialMeta>({ category: { id: 0, slug: "digital_goods", name: "电子资料", icon: "📚", description: "", fulfillmentType: "digital", imageRequired: false, enabled: true, sort: 0, itemCount: 0 }, semesters: [], formats: [], languages: [], originalityOptions: [], supportCategories: [], types: [], legacyIncompleteCount: 0 });
 const createForm = reactive({ category: "", message: "" });
 
@@ -111,7 +111,7 @@ async function createTicket() {
   try {
     const ticket = await learningMaterialsApi.createSupport(orderId.value, { category: createForm.category, message: createForm.message.trim() });
     createForm.message = "";
-    ElMessage.success("资料反馈已创建，平台已通知创作者");
+    ElMessage.success("资料反馈已创建，平台已通知资料发布者");
     await router.replace({ name: "market-learning-material-support", query: { ticket: String(ticket.id) } });
     await load();
   } finally { submitting.value = false; }
@@ -137,7 +137,7 @@ async function updateTicket(action: "resolve" | "reopen" | "escalate") {
 }
 
 function categoryLabel(value: string) { return meta.supportCategories.find((option) => option.value === value)?.label || value; }
-function statusLabel(value: string) { return ({ waiting_seller: "等待创作者", waiting_buyer: "等待领取者", escalated: "平台介入", resolved: "已解决", closed: "已关闭" } as Record<string, string>)[value] || value; }
+function statusLabel(value: string) { return ({ waiting_seller: "等待资料发布者", waiting_buyer: "等待领取者", escalated: "平台介入", resolved: "已解决", closed: "已关闭" } as Record<string, string>)[value] || value; }
 function statusType(value: string) { if (value === "resolved") return "success"; if (value === "escalated") return "danger"; if (value === "waiting_seller") return "warning"; return "info"; }
 function formatTime(value?: string | null) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
 </script>

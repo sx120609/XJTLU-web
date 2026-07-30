@@ -164,19 +164,15 @@ test("admin board routes protect system boards and preserve string references", 
       where: { groupId },
       select: { defaultBoardSlug: true },
     })).defaultBoardSlug,
-    renamedSlug,
+    originalSlug,
   );
 
-  const referencedDelete = await call(
+  const deleted = await call(
     `/boards/${customBoardId}`,
     "DELETE",
   );
-  assert.equal(referencedDelete.response.status, 409);
-  assert.match(referencedDelete.body.message, /QQ群默认板块配置/);
-
-  await prisma.qqBotGroup.delete({ where: { groupId } });
-  const deleted = await call(`/boards/${customBoardId}`, "DELETE");
   assert.equal(deleted.response.status, 200, deleted.body.message);
+  await prisma.qqBotGroup.delete({ where: { groupId } });
   assert.deepEqual(deleted.body.data, {
     ok: true,
     deletedBoardId: customBoardId,

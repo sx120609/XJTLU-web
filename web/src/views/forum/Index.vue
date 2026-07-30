@@ -51,11 +51,6 @@
           </section>
         </div>
       </template>
-
-      <div class="footer-tip">
-        <el-icon><InfoFilled /></el-icon>
-        <span>查看学校官方公告？<router-link to="/announcements">→ 校园公告</router-link></span>
-      </div>
     </template>
 
     <template v-else>
@@ -69,22 +64,19 @@
         </p>
         <div class="gate-points">
           <div>💬 综合讨论：校园广场、求购需求、新生专区与问答互助</div>
-          <div>📚 学习交流：课程学习、科研实习、雅思留学与课程点评</div>
+          <div>📚 学习交流：课程学习、2+2专区、雅思留学与课程点评</div>
           <div>🎈 生活社交：校园生活、社团活动、树洞与交友扩列</div>
           <div>🧾 求购需求使用完整需求表单发布，并可由同学提交商品响应</div>
         </div>
         <div class="gate-actions">
           <el-button type="primary" size="large" @click="goLogin">学校账号登录</el-button>
-          <el-button plain size="large" @click="$router.push('/announcements')">
-            先看校园公告
-          </el-button>
         </div>
         <PrivacyPolicyNotice v-if="!auth.isLoggedIn" align="left" />
       </section>
 
       <div class="footer-tip">
         <el-icon><InfoFilled /></el-icon>
-        <span>暂不登录也可浏览 <router-link to="/announcements">校园公告</router-link> 与 <router-link to="/services">校园服务</router-link></span>
+        <span>暂不登录也可浏览 <router-link to="/services">校园服务</router-link></span>
       </div>
     </template>
   </div>

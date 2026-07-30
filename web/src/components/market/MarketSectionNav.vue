@@ -4,7 +4,6 @@
     <router-link to="/market?sort=new">闲置</router-link>
     <router-link to="/market/wanted">求购</router-link>
     <router-link to="/market?category=books">学习好物</router-link>
-    <router-link v-if="site.features.promotion" to="/market/merchants">合作商户</router-link>
     <router-link v-if="site.features.promotion" to="/market/promotions">推广服务</router-link>
     <router-link to="/services">校园服务</router-link>
   </nav>

@@ -21,12 +21,13 @@ test("phase 9 promotion receipts hide raw references from public responses", () 
   assert.equal(privateOrder.verificationReference, order.verificationReference);
 });
 
-test("phase 9 exposes five real operational funnels and manual revenue verification UI", () => {
+test("V1 exposes four current operational funnels and manual revenue verification UI", () => {
   const service = readFileSync(new URL("../src/services/marketOperations.ts", import.meta.url), "utf8");
   const routes = readFileSync(new URL("../src/routes/marketPromotions.ts", import.meta.url), "utf8");
   const operations = readFileSync(new URL("../../web/src/views/admin/OperationsPane.vue", import.meta.url), "utf8");
   const promotion = readFileSync(new URL("../../web/src/views/admin/PromotionPane.vue", import.meta.url), "utf8");
-  for (const key of ["trade", "wanted", "learning", "merchant", "promotion"]) assert.match(service, new RegExp(`key: "${key}"`));
+  for (const key of ["trade", "wanted", "learning", "promotion"]) assert.match(service, new RegExp(`key: "${key}"`));
+  assert.doesNotMatch(service, /key: "merchant"/);
   assert.match(routes, /\/admin\/operations/);
   assert.match(routes, /PROMOTION_VERIFIED_AMOUNT_MISMATCH/);
   assert.match(operations, /盈利订单始终由管理员逐单人工核验/);

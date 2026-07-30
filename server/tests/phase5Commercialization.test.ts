@@ -39,13 +39,15 @@ test("stage 5 uses explicit labels for every commercial placement", () => {
   const market = readFileSync(new URL("../../web/src/views/market/Index.vue", import.meta.url), "utf8");
   const wanted = readFileSync(new URL("../../web/src/views/market/WantedList.vue", import.meta.url), "utf8");
   const promotionCenter = readFileSync(new URL("../../web/src/views/market/PromotionCenter.vue", import.meta.url), "utf8");
-  const merchantHub = readFileSync(new URL("../../web/src/views/market/MerchantApply.vue", import.meta.url), "utf8");
+  const routes = readFileSync(new URL("../../web/src/router/index.ts", import.meta.url), "utf8");
+  const promotionRoutes = readFileSync(new URL("../src/routes/marketPromotions.ts", import.meta.url), "utf8");
   const publish = readFileSync(new URL("../../web/src/views/market/Publish.vue", import.meta.url), "utf8");
   const label = readFileSync(new URL("../../web/src/components/market/PromotionLabel.vue", import.meta.url), "utf8");
   assert.doesNotMatch(home, /SPONSORED|推广推荐/);
   assert.match(home, /item\.promotions\?\.pinned/);
   assert.match(home, /item\.promotions\?\.home/);
-  assert.match(home, /size: 24/);
+  assert.equal((home.match(/size: 12/g) || []).length, 2);
+  assert.match(home, /learningMaterialsApi\.items/);
   assert.match(home, /slice\(0, 8\)/);
   assert.match(home, /grid-template-columns:repeat\(4/);
   assert.doesNotMatch(home, /item\.promotion\?\.urgent/);
@@ -54,9 +56,10 @@ test("stage 5 uses explicit labels for every commercial placement", () => {
   assert.match(promotionCenter, /明确标注的展示服务/);
   assert.match(promotionCenter, /scope: "content"/);
   assert.doesNotMatch(promotionCenter, /商户资料|合作商户主页|merchant-entry/);
-  assert.match(merchantHub, /<h1>成为商户<\/h1>/);
-  assert.match(merchantHub, /scope: "merchant"/);
-  assert.match(merchantHub, /商户主页服务/);
+  assert.match(routes, /path: "market\/merchant\/apply", redirect: "\/market"/);
+  assert.doesNotMatch(market, /成为商户<\/el-button>/);
+  assert.match(promotionRoutes, /V1_MERCHANT_ONBOARDING_ENABLED = false/);
+  assert.match(promotionRoutes, /V1 暂不开放商户申请/);
   assert.match(publish, /本次发布的推广方案（选填）/);
   assert.match(publish, /PromotionPaymentDialog/);
   assert.match(publish, /if \(!draft && !editingId && selectedPromotionPlan\.value\)/);
@@ -102,12 +105,11 @@ test("stage 5 migration is additive and includes analytics without raw visitor d
   assert.doesNotMatch(schema, /rawIp|ipAddress|userAgent/);
 });
 
-test("stage 5 unified search includes active merchants and preserves promotion labels", () => {
+test("V1 unified search excludes retired merchants and preserves content promotion labels", () => {
   const route = readFileSync(new URL("../src/routes/search.ts", import.meta.url), "utf8");
   const page = readFileSync(new URL("../../web/src/views/search/Result.vue", import.meta.url), "utf8");
-  assert.match(route, /merchantProfile\.findMany/);
-  assert.match(route, /serializeMerchantPromotion/);
-  assert.match(page, /合作商户（/);
+  assert.doesNotMatch(route, /merchantProfile\.findMany|serializeMerchantPromotion/);
+  assert.doesNotMatch(page, /合作商户（|result\.merchants/);
   assert.match(page, /PromotionLabel v-if="item\.promotions\.pinned"/);
   assert.match(page, /PromotionLabel v-if="post\.promotion\.urgent"/);
 });

@@ -48,7 +48,7 @@ function result(
     .map(([label]) => label);
   if (!reasons.length) reasons.push("近期发布");
   return {
-    score: Math.max(0, Math.round(raw * decay * 100)),
+    score: Math.max(0, Math.min(100, Math.round(raw * decay))),
     reasons,
     signals,
   };

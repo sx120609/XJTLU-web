@@ -9,6 +9,7 @@ import {
   createMarketSafetyRule,
   createMarketViolation,
   deleteMarketSafetyRule,
+  adjustMarketPositiveRate,
   getPrivateMarketTrustProfile,
   getPublicMarketTrustProfile,
   handleMarketAppeal,
@@ -16,6 +17,7 @@ import {
   listMarketAdminActionLogs,
   listMarketReviews,
   marketAdminReportActionSchema,
+  marketPositiveRateAdjustmentSchema,
   marketAppealActionSchema,
   marketAppealCreateSchema,
   marketReportSchema,
@@ -95,6 +97,25 @@ marketGovernanceRouter.get("/trust/me", authRequired, async (req, res, next) => 
     next(error);
   }
 });
+
+marketGovernanceRouter.patch(
+  "/admin/users/:id/positive-rate",
+  authRequired,
+  validate(marketPositiveRateAdjustmentSchema),
+  async (req, res, next) => {
+    try {
+      const userId = positiveRouteInteger(req.params.id);
+      if (!userId) throw Errors.badRequest("用户 ID 不合法");
+      ok(res, await adjustMarketPositiveRate(
+        actor(req),
+        userId,
+        req.body as z.infer<typeof marketPositiveRateAdjustmentSchema>,
+      ));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 marketGovernanceRouter.post(
   "/violations/:id/appeals",

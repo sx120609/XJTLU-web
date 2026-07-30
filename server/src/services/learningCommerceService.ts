@@ -452,44 +452,49 @@ export function learningCommercePublicStatus() {
     maxPrice: amountCentsToMoney(LEARNING_MATERIAL_MAX_PRICE_CENTS),
     platformFeeBps: 0,
     paymentMode: "seller_direct",
-    notice: "买家直接向创作者付款；靠浦不代收资金。卖家确认到账后，系统自动解锁完整资料。",
+    notice: "买家直接向资料发布者付款；靠浦不代收资金。卖家确认到账后，系统自动解锁完整资料。",
   };
 }
 
-export async function getLearningCreatorContext(actor: LearningCommerceActor) {
+export async function ensureLearningPublisherProfile(actor: LearningCommerceActor) {
   await requireVerifiedMarketUser(actor.userId, actor.role, "publish");
   await reconcileLearningCreatorGovernance(actor.userId);
-  const existingProfile = await prisma.learningCreatorProfile.findUnique({
+  return prisma.learningCreatorProfile.upsert({
     where: { userId: actor.userId },
-    select: { id: true },
+    update: {},
+    create: {
+      userId: actor.userId,
+      status: "active",
+      certifiedAt: new Date(),
+    },
   });
-  if (existingProfile) await refreshLearningCreatorMetrics(actor.userId);
-  const [profile, application] = await Promise.all([
-    prisma.learningCreatorProfile.findUnique({
-      where: { userId: actor.userId },
-      include: {
-        collectionMethods: {
-          orderBy: [{ createdAt: "desc" }],
-          select: {
-            id: true,
-            provider: true,
-            label: true,
-            versionNumber: true,
-            status: true,
-            assetId: true,
-            reviewedAt: true,
-            disabledAt: true,
-            createdAt: true,
-          },
+}
+
+export async function getLearningCreatorContext(actor: LearningCommerceActor) {
+  await ensureLearningPublisherProfile(actor);
+  await refreshLearningCreatorMetrics(actor.userId);
+  const profile = await prisma.learningCreatorProfile.findUnique({
+    where: { userId: actor.userId },
+    include: {
+      collectionMethods: {
+        orderBy: [{ createdAt: "desc" }],
+        select: {
+          id: true,
+          provider: true,
+          label: true,
+          versionNumber: true,
+          status: true,
+          assetId: true,
+          reviewedAt: true,
+          disabledAt: true,
+          createdAt: true,
         },
       },
-    }),
-    prisma.learningCreatorApplication.findFirst({
-      where: { userId: actor.userId },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+    },
+  });
   return {
+    publishingAllowed: profile?.status === "active",
+    publishingStatus: profile?.status || "active",
     profile: profile ? {
       ...profile,
       collectionMethods: profile.collectionMethods.map((method) => ({
@@ -497,123 +502,36 @@ export async function getLearningCreatorContext(actor: LearningCommerceActor) {
         qrImageUrl: `/api/market/materials/commerce/private-assets/${method.assetId}`,
       })),
     } : null,
-    application,
+    application: null,
   };
 }
 
 export async function submitLearningCreatorApplication(
   actor: LearningCommerceActor,
-  input: {
+  _input: {
     expertise: string;
     experience: string;
     sampleDescription: string;
     rightsCommitted: true;
   },
 ) {
-  await requireVerifiedMarketUser(actor.userId, actor.role, "publish");
-  await reconcileLearningCreatorGovernance(actor.userId);
-  return prisma.$transaction(async (tx) => {
-    const lockKey = BigInt(9_136) * 4_294_967_296n + BigInt(actor.userId);
-    await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(${lockKey})`;
-    const activeProfile = await tx.learningCreatorProfile.findUnique({
-      where: { userId: actor.userId },
-    });
-    if (activeProfile?.status === "active") throw Errors.conflict("你已经是认证创作者");
-    if (activeProfile) {
-      throw Errors.forbidden("当前创作者资格处于治理限制中，请先在创作者中心查看记录并发起申诉");
-    }
-    const pending = await tx.learningCreatorApplication.findFirst({
-      where: { userId: actor.userId, status: { in: ["submitted", "reviewing"] } },
-    });
-    if (pending) return pending;
-    return tx.learningCreatorApplication.create({
-      data: {
-        userId: actor.userId,
-        expertise: input.expertise,
-        experience: input.experience,
-        sampleDescription: input.sampleDescription,
-        rightsCommitmentAt: new Date(),
-        status: "submitted",
-      },
-    });
-  });
+  await ensureLearningPublisherProfile(actor);
+  throw Errors.conflict("V1 已取消资料发布者申请，校园用户可直接发布学习资料");
 }
 
 export async function listCreatorApplications(status?: string) {
   const allowed = ["draft", "submitted", "reviewing", "approved", "rejected", "withdrawn"];
-  if (status && !allowed.includes(status)) throw Errors.badRequest("创作者申请状态不合法");
-  return prisma.learningCreatorApplication.findMany({
-    where: status ? { status: status as any } : undefined,
-    orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
-    include: { user: { select: publicUserSelect }, reviewedBy: { select: publicUserSelect } },
-    take: 200,
-  });
+  if (status && !allowed.includes(status)) throw Errors.badRequest("资料发布申请状态不合法");
+  return [];
 }
 
 export async function reviewCreatorApplication(
   actor: LearningCommerceActor,
-  applicationId: number,
-  input: { action: "approve" | "reject"; reason: string },
+  _applicationId: number,
+  _input: { action: "approve" | "reject"; reason: string },
 ) {
   if (!["admin", "mod"].includes(actor.role)) throw Errors.forbidden("需要学习资料审核权限");
-  const result = await prisma.$transaction(async (tx) => {
-    const lockKey = BigInt(9_137) * 4_294_967_296n + BigInt(applicationId);
-    await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(${lockKey})`;
-    const current = await tx.learningCreatorApplication.findUnique({ where: { id: applicationId } });
-    if (!current) throw Errors.notFound("创作者申请不存在");
-    if (!["submitted", "reviewing"].includes(current.status)) throw Errors.conflict("该申请已经处理");
-    const now = new Date();
-    const status = input.action === "approve" ? "approved" : "rejected";
-    const application = await tx.learningCreatorApplication.update({
-      where: { id: applicationId },
-      data: {
-        status,
-        reviewedById: actor.userId,
-        reviewedAt: now,
-        reviewReason: input.reason,
-      },
-    });
-    if (input.action === "approve") {
-      await tx.learningCreatorProfile.upsert({
-        where: { userId: current.userId },
-        update: {
-          status: "active",
-          certifiedById: actor.userId,
-          certifiedAt: now,
-          lastReviewedAt: now,
-          statusReason: "",
-        },
-        create: {
-          userId: current.userId,
-          status: "active",
-          certifiedById: actor.userId,
-          certifiedAt: now,
-          lastReviewedAt: now,
-        },
-      });
-    }
-    await tx.adminActionLog.create({
-      data: {
-        actorId: actor.userId,
-        action: `learning_creator_${status}`,
-        targetType: "LearningCreatorApplication",
-        targetId: String(applicationId),
-        summary: input.action === "approve" ? "批准学习资料创作者申请" : "驳回学习资料创作者申请",
-        detail: JSON.stringify({ applicantId: current.userId, reason: input.reason }),
-      },
-    });
-    return application;
-  });
-  await notifyMarketUser(
-    result.userId,
-    result.status === "approved" ? "创作者认证已通过" : "创作者认证申请需要修改",
-    result.status === "approved"
-      ? "你现在可以配置收款码并提交付费学习资料审核。"
-      : result.reviewReason,
-    "/learning/creator",
-    { type: "learning-creator-review", applicationId, status: result.status },
-  );
-  return result;
+  throw Errors.conflict("V1 已取消资料发布者申请，无需审核发布资格");
 }
 
 export async function createCollectionMethod(
@@ -622,9 +540,8 @@ export async function createCollectionMethod(
   prepared: PreparedLearningPrivateAsset,
 ) {
   try {
-    await requireVerifiedMarketUser(actor.userId, actor.role, "publish");
-    const profile = await prisma.learningCreatorProfile.findUnique({ where: { userId: actor.userId } });
-    if (!profile || profile.status !== "active") throw Errors.forbidden("认证创作者才能配置收款码");
+    const profile = await ensureLearningPublisherProfile(actor);
+    if (profile.status !== "active") throw Errors.forbidden("当前资料发布权限受限，请先查看治理记录并申诉");
     return await prisma.$transaction(async (tx) => {
       const lockKey = BigInt(1_205_021) * 4_294_967_296n + BigInt(actor.userId);
       await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(${lockKey})`;
@@ -683,7 +600,7 @@ export async function submitMaterialVersionReview(
   versionId: number,
 ) {
   ensurePaidCommerceEnabled();
-  await requireVerifiedMarketUser(actor.userId, actor.role, "publish");
+  await ensureLearningPublisherProfile(actor);
   return prisma.$transaction(async (tx) => {
     await acquireMarketItemLock(tx, itemId);
     const item = await tx.marketItem.findUnique({
@@ -699,7 +616,7 @@ export async function submitMaterialVersionReview(
       throw Errors.forbidden("无权提交该资料");
     }
     const creator = await tx.learningCreatorProfile.findUnique({ where: { userId: item.sellerId } });
-    if (!creator || creator.status !== "active") throw Errors.forbidden("通过创作者认证后才能提交付费资料");
+    if (!creator || creator.status !== "active") throw Errors.forbidden("当前资料发布权限受限，请先查看治理记录并申诉");
     if (!isAllowedLearningMaterialPrice(item.priceCents)) {
       throw Errors.badRequest("请设置有效的付费价格");
     }
@@ -966,8 +883,12 @@ export async function createPaidLearningOrder(
       if (!isAllowedLearningMaterialPrice(item.priceCents)) throw Errors.badRequest("该资料价格无效");
       const version = item.learningMaterial.activeVersion;
       if (!version || !version.reviews.length) throw Errors.badRequest("该资料尚未通过人工审核");
-      const creator = await tx.learningCreatorProfile.findUnique({ where: { userId: item.sellerId } });
-      if (!creator || creator.status !== "active") throw Errors.badRequest("该创作者当前暂停销售");
+      const creator = await tx.learningCreatorProfile.upsert({
+        where: { userId: item.sellerId },
+        update: {},
+        create: { userId: item.sellerId, status: "active", certifiedAt: new Date() },
+      });
+      if (!creator || creator.status !== "active") throw Errors.badRequest("该资料发布者当前暂停销售");
       const collectionMethod = await tx.learningCollectionMethod.findFirst({
         where: {
           creatorId: item.sellerId,
@@ -1750,8 +1671,6 @@ export async function getLearningOperationsOverview(actor: LearningCommerceActor
   const reviewOverdueBefore = new Date(now.getTime() - LEARNING_REVIEW_SLA_MS);
   const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const [
-    creatorPending,
-    creatorOverdue,
     reviewPending,
     reviewOverdue,
     issuesActive,
@@ -1764,10 +1683,6 @@ export async function getLearningOperationsOverview(actor: LearningCommerceActor
     orderGroups,
     ratingCount,
   ] = await Promise.all([
-    prisma.learningCreatorApplication.count({ where: { status: { in: ["submitted", "reviewing"] } } }),
-    prisma.learningCreatorApplication.count({
-      where: { status: { in: ["submitted", "reviewing"] }, submittedAt: { lt: reviewOverdueBefore } },
-    }),
     prisma.learningMaterialReview.count({ where: { status: { in: ["submitted", "reviewing"] } } }),
     prisma.learningMaterialReview.count({
       where: { status: { in: ["submitted", "reviewing"] }, submittedAt: { lt: reviewOverdueBefore } },
@@ -1804,12 +1719,10 @@ export async function getLearningOperationsOverview(actor: LearningCommerceActor
   return {
     generatedAt: now,
     slaHours: {
-      creatorReview: LEARNING_REVIEW_SLA_MS / 3_600_000,
       materialReview: LEARNING_REVIEW_SLA_MS / 3_600_000,
       issueFirstResponse: LEARNING_ISSUE_SLA_MS / 3_600_000,
     },
     queues: {
-      creatorApplications: { pending: creatorPending, overdue: creatorOverdue },
       materialReviews: { pending: reviewPending, overdue: reviewOverdue },
       orderIssues: { pending: issuesActive, overdue: issuesOverdue },
       sellerConfirmations: { pending: sellerPending, overdue: sellerOverdue },
@@ -1916,7 +1829,7 @@ export async function decideLearningOrderIssue(
       });
       await tx.learningMaterialRating.updateMany({
         where: { commerceOrderId, status: { in: ["published", "hidden"] } },
-        data: { status: "excluded", moderationReason: "订单已退款，评价不再计入创作者质量分" },
+        data: { status: "excluded", moderationReason: "订单已退款，评价不再计入资料发布者质量分" },
       });
       await tx.learningCommerceOrder.update({
         where: { id: commerceOrderId },

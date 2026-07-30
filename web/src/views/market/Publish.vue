@@ -43,7 +43,7 @@
         <el-form-item label="配件情况"><el-input v-model="form.accessories" maxlength="500" placeholder="包装、充电器、票据等" /></el-form-item>
         <el-form-item label="瑕疵说明"><el-input v-model="form.flaws" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="请如实说明划痕、损坏、缺件和功能异常；无明显瑕疵也请注明" /></el-form-item>
         <el-checkbox v-model="form.testAllowed">支持见面时当面测试</el-checkbox>
-        <el-alert class="contact-rule" type="info" :closable="false" show-icon title="联系方式默认不公开；卖家接受购买意向后，双方再通过站内交易会话自行交换。" />
+        <el-alert class="contact-rule" type="info" :closable="false" show-icon title="联系方式默认不公开；买家可直接发起站内私聊，双方自行沟通价格、验货和交付。" />
       </section>
 
       <section>
@@ -152,7 +152,7 @@ const hasExistingDigitalDelivery = ref(false);
 const conditions = ref<Array<{ label: string; value: Exclude<MarketCondition, "wanted"> }>>(Object.entries(MARKET_CONDITION_LABELS).map(([value, label]) => ({ label, value: value as Exclude<MarketCondition, "wanted"> })));
 const tradeModes = ref<MarketTradeMode[]>(Object.keys(MARKET_TRADE_MODE_LABELS) as MarketTradeMode[]);
 const initialListingType: MarketListingType = "sell";
-const form = reactive<{ listingType: MarketListingType; title: string; description: string; category: MarketCategory; price: number; originalPrice: number | undefined; negotiable: boolean; condition: MarketCondition | ""; tradeMode: MarketTradeMode; campus: string; location: string; images: string[]; digitalDelivery: string; brand: string; model: string; usageDuration: string; flaws: string; accessories: string; testAllowed: boolean; availableTime: string; contactVisibility: "after_accept" }>({ listingType: initialListingType, title: "", description: "", category: "", price: 0, originalPrice: undefined, negotiable: false, condition: "", tradeMode: "meetup", campus: "", location: "", images: [], digitalDelivery: "", brand: "", model: "", usageDuration: "", flaws: "", accessories: "", testAllowed: true, availableTime: "", contactVisibility: "after_accept" });
+const form = reactive<{ listingType: MarketListingType; title: string; description: string; category: MarketCategory; price: number; originalPrice: number | undefined; negotiable: boolean; condition: MarketCondition | ""; tradeMode: MarketTradeMode; campus: string; location: string; images: string[]; digitalDelivery: string; brand: string; model: string; usageDuration: string; flaws: string; accessories: string; testAllowed: boolean; availableTime: string }>({ listingType: initialListingType, title: "", description: "", category: "", price: 0, originalPrice: undefined, negotiable: false, condition: "", tradeMode: "meetup", campus: "", location: "", images: [], digitalDelivery: "", brand: "", model: "", usageDuration: "", flaws: "", accessories: "", testAllowed: true, availableTime: "" });
 const selectedCategory = computed(() => categories.value.find((item) => item.slug === form.category));
 const isDigital = computed(() => form.category === "digital_goods" || selectedCategory.value?.fulfillmentType === "digital");
 const requiresImage = computed(() => form.listingType === "sell" && Boolean(selectedCategory.value?.imageRequired));

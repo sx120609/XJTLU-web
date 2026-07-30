@@ -10,6 +10,14 @@ import { FORUM_CONFIRM_TEXT, resolveForumAccess } from "../services/forumAccess"
 import { releaseExpiredMutes } from "../services/userModeration";
 import { buildPublicUser, buildSelfUser } from "../utils/publicUser";
 import { decodeTopicForViewer } from "../services/forumPresentation";
+import { getPrivateMarketTrustProfile } from "../services/marketGovernanceService";
+import { getTransactionPointSummary } from "../services/transactionPoints";
+import {
+  listProfileFavorites,
+  PROFILE_FAVORITE_TYPES,
+  type ProfileFavoriteType,
+} from "../services/profileFavorites";
+import { querySize } from "../utils/query";
 
 export const userRouter = Router();
 
@@ -19,6 +27,33 @@ userRouter.get("/me", authRequired, async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
     if (!user) throw Errors.notFound("用户不存在");
     ok(res, buildSelfUser(user));
+  } catch (e) { next(e); }
+});
+
+userRouter.get("/me/trust", authRequired, async (req, res, next) => {
+  try {
+    ok(res, await getPrivateMarketTrustProfile(req.user!.userId));
+  } catch (e) { next(e); }
+});
+
+userRouter.get("/me/points", authRequired, async (req, res, next) => {
+  try {
+    ok(res, await getTransactionPointSummary(prisma, req.user!.userId, true));
+  } catch (e) { next(e); }
+});
+
+userRouter.get("/me/favorites", authRequired, async (req, res, next) => {
+  try {
+    const requestedType = String(req.query.type || "all") as ProfileFavoriteType;
+    const type = (PROFILE_FAVORITE_TYPES as readonly string[]).includes(requestedType)
+      ? requestedType
+      : "all";
+    ok(res, await listProfileFavorites(
+      req.user!.userId,
+      type,
+      req.query.cursor,
+      querySize(req.query.size, 20, 1, 50),
+    ));
   } catch (e) { next(e); }
 });
 

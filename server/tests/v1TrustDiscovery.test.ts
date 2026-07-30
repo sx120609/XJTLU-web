@@ -14,17 +14,14 @@ import { transactionPointLevel, violationPointPenalty } from "../src/services/tr
 import { shanghaiDateKey } from "../src/services/v1ProductAnalytics";
 import { decodeTopicForViewer } from "../src/services/forumPresentation";
 
-test("V1 transaction points have stable levels and proportional governance penalties", () => {
-  assert.equal(transactionPointLevel(0).label, "校园新伙伴");
-  assert.equal(transactionPointLevel(49).nextLevelAt, 50);
-  assert.equal(transactionPointLevel(50).label, "交易参与者");
-  assert.equal(transactionPointLevel(150).label, "可信贡献者");
-  assert.equal(transactionPointLevel(350).label, "校园协作者");
-  assert.equal(transactionPointLevel(700).label, "靠浦先锋");
+test("V1 uses one spendable point balance and keeps penalties in reputation", () => {
+  assert.equal(transactionPointLevel(0).label, "积分");
+  assert.equal(transactionPointLevel(49).nextLevelAt, null);
+  assert.equal(transactionPointLevel(700).label, "积分");
   assert.equal(transactionPointLevel(-100).points, 0);
-  assert.equal(violationPointPenalty("low"), -10);
-  assert.equal(violationPointPenalty("medium"), -25);
-  assert.equal(violationPointPenalty("critical"), -50);
+  assert.equal(violationPointPenalty("low"), 0);
+  assert.equal(violationPointPenalty("medium"), 0);
+  assert.equal(violationPointPenalty("critical"), 0);
 });
 
 test("V1 hot ranking decays with time, caps raw traffic and lets trust signals outweigh views", () => {
@@ -209,6 +206,7 @@ test("V1 contracts keep forum reputation separate and wire full-stack release co
   const [
     schema,
     migration,
+    simplifiedMigration,
     pointService,
     discovery,
     lifecycle,
@@ -220,11 +218,13 @@ test("V1 contracts keep forum reputation separate and wire full-stack release co
     analyticsRoute,
     router,
     mine,
+    profile,
     operations,
     workflow,
   ] = await Promise.all([
     readFile(path.join(root, "server/prisma/schema.prisma"), "utf8"),
     readFile(path.join(root, "server/prisma/migrations/20260729030000_v1_trust_discovery/migration.sql"), "utf8"),
+    readFile(path.join(root, "server/prisma/migrations/20260730010000_simplified_trade_points_reputation/migration.sql"), "utf8"),
     readFile(path.join(root, "server/src/services/transactionPoints.ts"), "utf8"),
     readFile(path.join(root, "server/src/services/v1DiscoveryService.ts"), "utf8"),
     readFile(path.join(root, "server/src/services/marketLifecycle.ts"), "utf8"),
@@ -236,18 +236,23 @@ test("V1 contracts keep forum reputation separate and wire full-stack release co
     readFile(path.join(root, "server/src/routes/productAnalytics.ts"), "utf8"),
     readFile(path.join(root, "web/src/router/index.ts"), "utf8"),
     readFile(path.join(root, "web/src/views/market/Mine.vue"), "utf8"),
+    readFile(path.join(root, "web/src/views/profile/Index.vue"), "utf8"),
     readFile(path.join(root, "web/src/views/admin/OperationsPane.vue"), "utf8"),
     readFile(path.join(root, "docs/iteration-3-v1-release-workflow.md"), "utf8"),
   ]);
-  assert.match(schema, /reputation\s+Int\s+@default\(0\)/);
+  assert.match(schema, /reputation\s+Int\s+@default\(100\)/);
   assert.match(schema, /transactionPoints\s+Int\s+@default\(0\)/);
   assert.match(schema, /model TransactionPointEntry/);
   assert.match(schema, /model ProductActivityDaily/);
+  assert.match(schema, /model PointBoost/);
+  assert.match(schema, /model ContentViewDaily/);
   assert.match(migration, /论坛 reputation 不迁移、不复用/);
   assert.match(migration, /TransactionPointEntry_userId_event_sourceType_sourceId_key/);
   assert.match(migration, /historical_penalties/);
   assert.match(migration, /LEAST\(current_points/);
   assert.match(migration, /mo\."deliveryType" = 'physical'/);
+  assert.match(simplifiedMigration, /UPDATE "User" SET "reputation" = 100/);
+  assert.match(simplifiedMigration, /UPDATE "Topic" SET "hotScore" = 0/);
   assert.match(pointService, /pg_advisory_xact_lock/);
   assert.match(pointService, /Math\.min\(user\.transactionPoints/);
   assert.match(discovery, /timeDecay/);
@@ -257,7 +262,8 @@ test("V1 contracts keep forum reputation separate and wire full-stack release co
   assert.match(lifecycle, /learning_trade_buyer_completed/);
   assert.match(lifecycle, /learning_trade_creator_completed/);
   assert.match(fulfillment, /if \(order\.deliveryType === "physical"\)/);
-  assert.match(fulfillment, /accepted_order_cancelled/);
+  assert.match(fulfillment, /physical_trade_buyer_completed/);
+  assert.match(fulfillment, /physical_trade_seller_completed/);
   assert.match(governance, /order\.deliveryType !== "physical"/);
   assert.match(trust, /learningCommerceOrder: \{ is: null \}/);
   assert.match(home, /topic\.hotScoreUpdatedAt/);
@@ -267,7 +273,8 @@ test("V1 contracts keep forum reputation separate and wire full-stack release co
   assert.match(analyticsRoute, /z\.enum\(V1_PRODUCT_SURFACES\)/);
   assert.match(router, /productAnalyticsApi\.record/);
   assert.match(router, /name === "services"/);
-  assert.match(mine, /交易积分/);
+  assert.match(profile, /推流货币/);
+  assert.doesNotMatch(mine, /10 积分推流|推流 10 积分/);
   assert.match(operations, /V1 产品健康度/);
   assert.match(workflow, /上线准备度/);
 });

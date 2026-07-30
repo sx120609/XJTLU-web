@@ -8,8 +8,6 @@ export type QuestionnaireBranchAction = "end" | "jump";
 export type GradeCheckStatus = "draft" | "open" | "closed";
 export type FileCollectStatus = "draft" | "open" | "closed";
 export type FileCollectVisibility = "public" | "login";
-export type ToolQqReminderTargetType = "questionnaire" | "file_collect" | "grade_check";
-export type ToolQqReminderTiming = "instant" | "after" | "deadline";
 
 export interface ToolMeta {
   code: ServiceToolCode;
@@ -245,53 +243,6 @@ export interface ToolManager {
   };
 }
 
-export interface ToolQqReminderConfig {
-  events: string[];
-  timing: ToolQqReminderTiming;
-  afterAt?: string | null;
-  deadlineAt?: string | null;
-  beforeDeadlineHours: number;
-}
-
-export interface ToolQqReminderItem {
-  targetType: ToolQqReminderTargetType;
-  targetId: number;
-  toolCode: ServiceToolCode;
-  toolName: string;
-  title: string;
-  status: string;
-  enabled: boolean;
-  config: ToolQqReminderConfig;
-  eventOptions: Array<{ value: string; label: string }>;
-  eventLabel: string;
-  metricLabel: string;
-  link: string;
-  manageLink: string;
-  deadlineAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ToolQqReminderPage {
-  binding: {
-    id: number;
-    qqId: string;
-    nickname?: string | null;
-    enabled: boolean;
-    updatedAt: string;
-  } | null;
-  items: ToolQqReminderItem[];
-}
-
-export type ToolQqReminderPatch = Partial<{
-  enabled: boolean;
-  events: string[];
-  timing: ToolQqReminderTiming;
-  afterAt: string | null;
-  deadlineAt: string | null;
-  beforeDeadlineHours: number | null;
-}>;
-
 export const toolsApi = {
   tools: (options?: RequestOptions) => request.get<ToolMeta[]>("/tools", undefined, options),
   myPermissions: (options?: RequestOptions) =>
@@ -303,11 +254,6 @@ export const toolsApi = {
     request.delete<{ ok: true }>(`/tools/${toolCode}/managers/${userId}`),
   updateToolSetting: (toolCode: ServiceToolCode, payload: { isVisible?: boolean; requireLogin?: boolean; allowPublicManage?: boolean }) =>
     request.patch<{ toolCode: ServiceToolCode; isVisible: boolean; requireLogin: boolean; allowPublicManage: boolean; updatedAt: string }>(`/tools/${toolCode}/settings`, payload),
-  qqBotReminders: (options?: RequestOptions) =>
-    request.get<ToolQqReminderPage>("/tools/qqbot-reminders", undefined, options),
-  updateQqBotReminder: (targetType: ToolQqReminderTargetType, id: number, payload: ToolQqReminderPatch) =>
-    request.patch<ToolQqReminderItem>(`/tools/qqbot-reminders/${targetType}/${id}`, payload),
-
   questionnaires: (params?: { toolCode?: ServiceToolCode; manage?: "1" }) =>
     request.get<Questionnaire[]>("/tools/questionnaires", params),
   questionnaire: (slug: string, options?: RequestOptions) => request.get<Questionnaire>(`/tools/questionnaires/${slug}`, undefined, options),

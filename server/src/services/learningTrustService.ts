@@ -11,9 +11,11 @@ import {
   TRANSACTION_POINT_RULES,
   awardTransactionPointsBatchInTransaction,
   awardTransactionPointsInTransaction,
-  restoreViolationPointsInTransaction,
-  violationPointPenalty,
 } from "./transactionPoints";
+import {
+  applyReputationPenalty,
+  restoreReputationPenalty,
+} from "./reputation";
 
 type TransactionClient = Prisma.TransactionClient;
 type DatabaseClient = TransactionClient | typeof prisma;
@@ -273,7 +275,7 @@ export async function listLearningCreatorViolations(
   creatorId?: number,
 ) {
   const staff = ["admin", "mod"].includes(actor.role);
-  if (!staff && creatorId && creatorId !== actor.userId) throw Errors.forbidden("无权查看其他创作者的治理记录");
+  if (!staff && creatorId && creatorId !== actor.userId) throw Errors.forbidden("无权查看其他资料发布者的治理记录");
   return prisma.learningCreatorViolation.findMany({
     where: { creatorId: staff ? creatorId : actor.userId },
     include: {
@@ -305,13 +307,13 @@ export async function createLearningCreatorViolation(
     evidence: string;
   },
 ) {
-  if (!["admin", "mod"].includes(actor.role)) throw Errors.forbidden("仅运营人员可以登记创作者违规");
+  if (!["admin", "mod"].includes(actor.role)) throw Errors.forbidden("仅运营人员可以登记资料发布者违规");
   const result = await prisma.$transaction(async (tx) => {
     const profile = await tx.learningCreatorProfile.findUnique({ where: { userId: input.creatorId } });
-    if (!profile) throw Errors.notFound("创作者档案不存在");
+    if (!profile) throw Errors.notFound("资料发布者档案不存在");
     if (input.itemId) {
       const item = await tx.marketItem.findFirst({ where: { id: input.itemId, sellerId: input.creatorId } });
-      if (!item) throw Errors.badRequest("关联资料不属于该创作者");
+      if (!item) throw Errors.badRequest("关联资料不属于该资料发布者");
       if (input.action === "hide_material" && item.status !== "active") {
         throw Errors.conflict("只能对当前公开上架的资料执行隐藏动作");
       }
@@ -320,7 +322,7 @@ export async function createLearningCreatorViolation(
       const order = await tx.learningCommerceOrder.findFirst({
         where: { id: input.commerceOrderId, order: { sellerId: input.creatorId } },
       });
-      if (!order) throw Errors.badRequest("关联订单不属于该创作者");
+      if (!order) throw Errors.badRequest("关联订单不属于该资料发布者");
     }
     const now = new Date();
     const expiresAt = input.action === "suspend_7d"
@@ -328,6 +330,7 @@ export async function createLearningCreatorViolation(
       : input.action === "suspend_30d"
         ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
         : null;
+    const reputationDelta = await applyReputationPenalty(tx, input.creatorId, input.severity);
     const violation = await tx.learningCreatorViolation.create({
       data: {
         ...input,
@@ -335,15 +338,8 @@ export async function createLearningCreatorViolation(
         commerceOrderId: input.commerceOrderId || null,
         createdById: actor.userId,
         expiresAt,
+        reputationDelta,
       },
-    });
-    await awardTransactionPointsInTransaction(tx, {
-      userId: input.creatorId,
-      delta: violationPointPenalty(input.severity),
-      event: "learning_violation",
-      sourceType: "learning_violation",
-      sourceId: violation.id,
-      reason: `学习资料违规：${input.reason}`,
     });
     if (input.action === "hide_material" && input.itemId) {
       await tx.marketItem.update({
@@ -433,14 +429,11 @@ export async function decideLearningCreatorAppeal(
         where: { id: appeal.violationId },
         data: { status: "revoked", revokedAt: now },
       });
-      await restoreViolationPointsInTransaction(tx, {
-        userId: appeal.violation.creatorId,
-        originalEvent: "learning_violation",
-        restoreEvent: "learning_violation_restored",
-        sourceType: "learning_violation",
-        sourceId: appeal.violationId,
-        reason: "学习资料治理申诉通过，返还原扣积分",
-      });
+      await restoreReputationPenalty(
+        tx,
+        appeal.violation.creatorId,
+        appeal.violation.reputationDelta,
+      );
       const remainingBlocking = await tx.learningCreatorViolation.findMany({
         where: {
           creatorId: appeal.violation.creatorId,

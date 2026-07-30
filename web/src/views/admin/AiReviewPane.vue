@@ -131,94 +131,6 @@
     <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
-          <h3 class="section-title">QQ群广告过滤</h3>
-          <p class="section-desc">用于 QQ 用户群的实时广告过滤。命中后会尝试自动撤回消息，适合处理引流、招代理、兼职刷单和营销灌水。</p>
-        </div>
-      </div>
-
-      <div class="ai-form">
-        <div class="ai-row ai-row--switch">
-          <span class="ai-label">启用广告过滤</span>
-          <el-switch v-model="form.qqGroupAdReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">服务商</span>
-          <el-select
-            v-model="form.qqGroupAdReviewProvider"
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择或输入服务商"
-          >
-            <el-option v-for="option in aiReviewProviderOptions" :key="`qq-group-ad-${option.value}`" :label="option.label" :value="option.value" />
-          </el-select>
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">模型</span>
-          <el-input v-model="form.qqGroupAdReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">模型备选</span>
-          <el-input v-model="form.qqGroupAdReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">广告过滤 API 地址</span>
-          <el-input v-model="form.qqGroupAdReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">API Key</span>
-          <el-input
-            v-model="form.qqGroupAdReviewApiKey"
-            maxlength="240"
-            show-password
-            :placeholder="form.hasQqGroupAdReviewApiKey ? `已配置 ${form.qqGroupAdReviewApiKeyMasked}，留空保持不变` : 'sk-...'"
-          />
-          <el-button
-            v-if="form.hasQqGroupAdReviewApiKey"
-            text
-            type="danger"
-            :disabled="saving"
-            @click="clearApiKey('qq-group-ad')"
-          >清空并关闭广告过滤</el-button>
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">拦截阈值</span>
-          <el-input-number v-model="form.qqGroupAdReviewThreshold" :min="0" :max="100" />
-        </div>
-      </div>
-
-      <div class="prompt-card">
-        <button type="button" class="sub-toggle" :class="{ expanded: qqGroupAdPromptsExpanded }" @click="qqGroupAdPromptsExpanded = !qqGroupAdPromptsExpanded">
-          <div>
-            <div class="card-title">QQ群广告过滤 Prompt</div>
-            <div class="desc">可单独配置实时广告过滤的系统提示词和用户提示词。</div>
-          </div>
-          <span class="toggle-arrow" aria-hidden="true">▾</span>
-        </button>
-        <div class="prompt-actions">
-          <el-button text :disabled="loadingPromptDefaults || Boolean(configLoadError)" @click="resetQqGroupAdPrompts">重置广告过滤 Prompt</el-button>
-        </div>
-        <div v-if="qqGroupAdPromptsExpanded" class="prompt-grid">
-          <div class="ai-row ai-row--stretch">
-            <span class="ai-label">广告过滤 System Prompt</span>
-            <el-input v-model="form.qqGroupAdReviewSystemPrompt" type="textarea" :rows="4" />
-          </div>
-          <div class="ai-row ai-row--stretch">
-            <span class="ai-label">广告过滤 User Prompt</span>
-            <el-input v-model="form.qqGroupAdReviewUserPrompt" type="textarea" :rows="6" />
-          </div>
-        </div>
-      </div>
-
-      <div class="actions-row">
-        <el-button type="primary" :loading="saving" :disabled="saving || Boolean(configLoadError)" @click="saveConfig">保存审核配置</el-button>
-        <el-button plain :disabled="loadingPromptDefaults || Boolean(configLoadError)" @click="resetAllPrompts">重置全部 Prompt</el-button>
-      </div>
-    </section>
-
-    <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
-      <div class="section-head">
-        <div>
           <h3 class="section-title">图片审核</h3>
           <p class="section-desc">图片走异步审核，发布后先占位；低于阈值自动通过，达到阈值就隐藏等待人工处理。</p>
         </div>
@@ -460,7 +372,6 @@
           <el-option label="帖子" value="topic" />
           <el-option label="回复" value="reply" />
           <el-option label="编辑相似度" value="topic-edit" />
-          <el-option label="QQ群广告" value="qqbot-group-ad" />
           <el-option label="图片" value="image" />
           <el-option label="视频" value="video" />
         </el-select>
@@ -529,7 +440,6 @@ const promptDefaultsLoadError = ref("");
 const logsLoadError = ref("");
 const videosLoadError = ref("");
 const textPromptsExpanded = ref(false);
-const qqGroupAdPromptsExpanded = ref(false);
 const imagePromptsExpanded = ref(false);
 const videoPromptsExpanded = ref(false);
 const logs = ref<AiReviewLogRow[]>([]);
@@ -567,16 +477,6 @@ const form = reactive<SiteConfig>({
   aiReviewApiKey: "",
   hasAiReviewApiKey: false,
   aiReviewApiKeyMasked: "",
-  qqGroupAdReviewEnabled: false,
-  qqGroupAdReviewProvider: "deepseek",
-  qqGroupAdReviewApiUrl: "https://api.deepseek.com/chat/completions",
-  qqGroupAdReviewModel: "deepseek-v4-flash",
-  qqGroupAdReviewFallbackModels: "",
-  qqGroupAdReviewApiKey: "",
-  hasQqGroupAdReviewApiKey: false,
-  qqGroupAdReviewApiKeyMasked: "",
-  qqGroupAdReviewSystemPrompt: "",
-  qqGroupAdReviewUserPrompt: "",
   imageReviewEnabled: false,
   imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   imageReviewModel: "gpt-4o-mini",
@@ -599,7 +499,6 @@ const form = reactive<SiteConfig>({
   videoReviewUserPrompt: "",
   videoReviewConcurrency: 1,
   aiReviewThreshold: 24,
-  qqGroupAdReviewThreshold: 70,
   imageReviewThreshold: 36,
   videoReviewThreshold: 36,
   aiEditSimilarityThreshold: 0,
@@ -619,7 +518,6 @@ const form = reactive<SiteConfig>({
   replyPointsCap: 48,
   forumEnabledBonus: 6,
   anonymousTiers: [],
-  reputationLevels: [],
 });
 
 const aiEditSimilarityPercent = computed({
@@ -679,16 +577,6 @@ async function saveConfig() {
       ...(form.aiReviewApiKey.trim()
         ? { aiReviewApiKey: form.aiReviewApiKey.trim() }
         : {}),
-      qqGroupAdReviewEnabled: form.qqGroupAdReviewEnabled,
-      qqGroupAdReviewProvider: form.qqGroupAdReviewProvider,
-      qqGroupAdReviewApiUrl: form.qqGroupAdReviewApiUrl,
-      qqGroupAdReviewModel: form.qqGroupAdReviewModel,
-      qqGroupAdReviewFallbackModels: form.qqGroupAdReviewFallbackModels,
-      ...(form.qqGroupAdReviewApiKey.trim()
-        ? { qqGroupAdReviewApiKey: form.qqGroupAdReviewApiKey.trim() }
-        : {}),
-      qqGroupAdReviewSystemPrompt: form.qqGroupAdReviewSystemPrompt,
-      qqGroupAdReviewUserPrompt: form.qqGroupAdReviewUserPrompt,
       imageReviewEnabled: form.imageReviewEnabled,
       imageReviewApiUrl: form.imageReviewApiUrl,
       imageReviewModel: form.imageReviewModel,
@@ -711,7 +599,6 @@ async function saveConfig() {
       videoReviewUserPrompt: form.videoReviewUserPrompt,
       videoReviewConcurrency: form.videoReviewConcurrency,
       aiReviewThreshold: form.aiReviewThreshold,
-      qqGroupAdReviewThreshold: form.qqGroupAdReviewThreshold,
       imageReviewThreshold: form.imageReviewThreshold,
       videoReviewThreshold: form.videoReviewThreshold,
       aiEditSimilarityThreshold: form.aiEditSimilarityThreshold,
@@ -729,15 +616,13 @@ async function saveConfig() {
   }
 }
 
-type AiSecretKind = "text" | "qq-group-ad" | "image" | "video";
+type AiSecretKind = "text" | "image" | "video";
 
 async function clearApiKey(kind: AiSecretKind) {
   if (saving.value) return;
   const label = kind === "text"
     ? "文字审核"
-    : kind === "qq-group-ad"
-      ? "QQ群广告过滤"
-      : kind === "image"
+    : kind === "image"
         ? "图片审核"
         : "视频审核";
   try {
@@ -760,12 +645,7 @@ async function clearApiKey(kind: AiSecretKind) {
         aiReviewEnabled: false,
         clearAiReviewApiKey: true,
       })
-      : kind === "qq-group-ad"
-        ? await adminApi.updateSiteConfig({
-          qqGroupAdReviewEnabled: false,
-          clearQqGroupAdReviewApiKey: true,
-        })
-        : kind === "image"
+      : kind === "image"
           ? await adminApi.updateSiteConfig({
             imageReviewEnabled: false,
             clearImageReviewApiKey: true,
@@ -781,7 +661,7 @@ async function clearApiKey(kind: AiSecretKind) {
   }
 }
 
-function applyPromptDefaults(scope: "text" | "qq-group-ad" | "image" | "video" | "all") {
+function applyPromptDefaults(scope: "text" | "image" | "video" | "all") {
   if (!promptDefaults.value) {
     ElMessage.warning(promptDefaultsLoadError.value || "默认 Prompt 暂不可用");
     return;
@@ -795,10 +675,6 @@ function applyPromptDefaults(scope: "text" | "qq-group-ad" | "image" | "video" |
     form.aiEditSimilaritySystemPrompt = defaults.aiEditSimilaritySystemPrompt;
     form.aiEditSimilarityUserPrompt = defaults.aiEditSimilarityUserPrompt;
   }
-  if (scope === "qq-group-ad" || scope === "all") {
-    form.qqGroupAdReviewSystemPrompt = defaults.qqGroupAdReviewSystemPrompt;
-    form.qqGroupAdReviewUserPrompt = defaults.qqGroupAdReviewUserPrompt;
-  }
   if (scope === "image" || scope === "all") {
     form.imageReviewSystemPrompt = defaults.imageReviewSystemPrompt;
     form.imageReviewUserPrompt = defaults.imageReviewUserPrompt;
@@ -809,9 +685,7 @@ function applyPromptDefaults(scope: "text" | "qq-group-ad" | "image" | "video" |
   }
   const scopeLabel = scope === "text"
     ? "文字"
-    : scope === "qq-group-ad"
-      ? "QQ群广告过滤"
-      : scope === "image"
+    : scope === "image"
         ? "图片"
         : scope === "video"
           ? "视频"
@@ -827,11 +701,6 @@ async function resetTextPrompts() {
 async function resetImagePrompts() {
   if (!promptDefaults.value) await loadPromptDefaults();
   applyPromptDefaults("image");
-}
-
-async function resetQqGroupAdPrompts() {
-  if (!promptDefaults.value) await loadPromptDefaults();
-  applyPromptDefaults("qq-group-ad");
 }
 
 async function resetVideoPrompts() {

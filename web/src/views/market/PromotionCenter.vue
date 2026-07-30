@@ -7,6 +7,31 @@
 
     <el-alert :type="site.features.promotion ? 'info' : 'warning'" show-icon :closable="false" :title="site.features.promotion ? '推广费用通过收款码支付并由管理员逐单人工核验；系统不会自动扣款，也不会从商品成交金额中抽佣。' : '商业展示当前已暂停；历史订单与售后记录仍可查看，学生交易、求购和付费学习资料不受影响。'" />
 
+    <section v-if="pointMode" class="point-promotion cpu-card" v-loading="pointLoading">
+      <div class="point-title">
+        <div><span>POINT PROMOTION</span><h2>积分推流</h2></div>
+        <el-tag type="warning" effect="plain">机制设计中</el-tag>
+      </div>
+      <template v-if="pointContext">
+        <div class="point-target">
+          <div><small>本次推广对象</small><b>{{ pointContext.target.title }}</b><span>{{ pointTargetLabel(pointContext.target.type) }} · {{ pointContext.target.status }}</span></div>
+          <el-button plain @click="$router.push(pointContext.target.href)">查看内容</el-button>
+        </div>
+        <div class="point-balance"><span>当前积分</span><strong>{{ pointContext.pointBalance }}</strong><small>不会在当前页面自动扣除</small></div>
+      </template>
+      <template v-else>
+        <p class="point-empty">请从本人帖子、在售商品或有效求购上的“积分推流”入口进入，系统会自动带入推广对象。</p>
+        <div class="point-links"><el-button @click="$router.push('/profile')">我的帖子</el-button><el-button @click="$router.push('/market/mine?tab=selling')">我的发布</el-button><el-button @click="$router.push('/market/mine?tab=wanted')">求购需求</el-button></div>
+      </template>
+      <el-steps :active="0" finish-status="success" simple>
+        <el-step title="选择推广对象" />
+        <el-step title="配置积分与时长" />
+        <el-step title="确认并生效" />
+      </el-steps>
+      <el-alert type="info" :closable="false" show-icon :title="pointConfig?.message || '积分推流机制正在设计中，当前只建设统一入口和接口，不会扣除积分。'" />
+      <div class="point-actions"><el-button type="primary" disabled>机制开放后可配置</el-button></div>
+    </section>
+
     <section v-if="site.features.promotion" class="plan-section">
       <div class="section-head"><div><span>AVAILABLE PLANS</span><h2>可用方案</h2></div><small>价格和时长由后台配置，以当前页面显示为准</small></div>
       <div class="plan-grid" v-loading="loading">
@@ -60,18 +85,22 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
+import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, type MarketItem, type PromotionOrder, type PromotionPlan, type WantedPost } from "@/api/market";
+import { marketApi, type MarketItem, type PointPromotionConfig, type PointPromotionContext, type PointPromotionTargetType, type PromotionOrder, type PromotionPlan, type WantedPost } from "@/api/market";
 import PromotionLabel from "@/components/market/PromotionLabel.vue";
 import PromotionPaymentDialog from "@/components/market/PromotionPaymentDialog.vue";
 import { useSiteStore } from "@/stores/site";
 
 const site = useSiteStore();
+const route = useRoute();
 const plans = ref<PromotionPlan[]>([]), orders = ref<PromotionOrder[]>([]), items = ref<MarketItem[]>([]), wanted = ref<WantedPost[]>([]);
 const loading = ref(false), submitting = ref(false), orderOpen = ref(false), selectedPlan = ref<PromotionPlan | null>(null);
 const paymentOpen = ref(false), paymentOrder = ref<PromotionOrder | null>(null);
 const orderForm = reactive({ targetId: 0, note: "" });
+const pointConfig = ref<PointPromotionConfig | null>(null), pointContext = ref<PointPromotionContext | null>(null), pointLoading = ref(false);
+const pointMode = computed(() => String(route.query.mode || "") === "points");
 onMounted(load);
 
 async function load() {
@@ -81,7 +110,21 @@ async function load() {
       marketApi.promotionPlans({ scope: "content" }, { suppressErrorMessage: true }), marketApi.promotionOrders({ page: 1, size: 50, scope: "content" }, { suppressErrorMessage: true }), marketApi.mine({ suppressErrorMessage: true }),
     ]);
     plans.value = nextPlans; orders.value = nextOrders.list; items.value = mine.selling.filter((row) => row.status === "active" && row.deliveryType === "physical" && row.visibility === "public"); wanted.value = mine.wantedPosts.filter((row) => ["active", "responded"].includes(row.status));
+    if (pointMode.value) await loadPointPromotion();
   } finally { loading.value = false; }
+}
+async function loadPointPromotion() {
+  pointLoading.value = true;
+  try {
+    pointConfig.value = await marketApi.pointPromotionConfig({ suppressErrorMessage: true });
+    const targetType = String(route.query.targetType || "") as PointPromotionTargetType;
+    const targetId = Number(route.query.targetId);
+    if (["topic", "market_item", "wanted_post"].includes(targetType) && Number.isInteger(targetId) && targetId > 0) {
+      pointContext.value = await marketApi.pointPromotionContext(targetType, targetId, { suppressErrorMessage: true });
+    } else {
+      pointContext.value = null;
+    }
+  } finally { pointLoading.value = false; }
 }
 function targetOptions(plan: PromotionPlan) { if (plan.targetType === "market_item") return items.value.map((row) => ({ id: row.id, title: row.title })); if (plan.targetType === "wanted_post") return wanted.value.map((row) => ({ id: row.id, title: row.title })); return []; }
 function emptyTargetText(plan: PromotionPlan) { return plan.targetType === "wanted_post" ? "暂无有效求购" : "暂无在售商品"; }
@@ -107,8 +150,10 @@ function orderStatusType(status: PromotionOrder["status"]) { return status === "
 function verificationMethodLabel(value: string) { return ({ alipay: "支付宝", wechat: "微信支付", bank: "银行转账", cash: "现金", other: "其他", manual_admin: "管理员人工确认" } as Record<string, string>)[value] || "人工核验"; }
 function adjustmentTypeLabel(value: string) { return ({ service_extension: "服务延期", refund_record: "退款留痕（不自动退款）", compensation_record: "补偿留痕", invoice_record: "票据留痕（不自动开票）", complaint_record: "投诉留痕" } as Record<string, string>)[value] || "人工记录"; }
 function formatTime(value: string) { return new Date(value).toLocaleString("zh-CN"); }
+function pointTargetLabel(value: PointPromotionTargetType) { return ({ topic: "帖子", market_item: "商品", wanted_post: "求购" } as const)[value]; }
 </script>
 
 <style scoped>
+.point-promotion{display:grid;gap:16px}.point-title,.point-target{display:flex;align-items:center;justify-content:space-between;gap:16px}.point-title span{color:var(--cpu-primary);font-size:9px;font-weight:800;letter-spacing:.16em}.point-title h2{margin:4px 0}.point-target{padding:14px;border-radius:12px;background:var(--cpu-surface-soft)}.point-target>div{display:flex;min-width:0;flex-direction:column;gap:4px}.point-target small,.point-target span,.point-empty{color:var(--cpu-text-secondary);font-size:11px}.point-target b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.point-balance{display:flex;align-items:baseline;gap:10px}.point-balance strong{color:var(--cpu-primary);font-size:32px}.point-balance small{color:var(--cpu-text-secondary)}.point-links,.point-actions{display:flex;gap:8px}.point-actions{justify-content:flex-end}
 .promotion-center{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}.page-head,.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.page-head>div:last-child{display:flex;gap:8px}.page-head span,.section-head span{color:var(--cpu-primary);font-size:9px;font-weight:800;letter-spacing:.16em}.page-head h1{margin:6px 0;font-size:30px}.page-head p,.section-head small{margin:0;color:var(--cpu-text-secondary);font-size:11px}.section-head h2{margin:4px 0 0}.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);align-items:stretch;gap:13px;margin-top:12px}.plan-grid>article{display:flex;align-items:flex-start;align-self:stretch;box-sizing:border-box;flex-direction:column;margin:0;padding:18px}.plan-grid h3{margin:12px 0 6px}.plan-grid p{min-height:48px;margin:0;color:var(--cpu-text-secondary);font-size:10px;line-height:1.6}.plan-grid article>div{margin:16px 0}.plan-grid strong{font-size:25px}.plan-grid article>div span,.plan-grid article>div small{color:var(--cpu-text-secondary);font-size:10px}.plan-grid .el-button{width:100%;margin-top:auto}.order-list{display:grid;grid-template-columns:repeat(2,1fr);align-items:stretch;gap:12px;margin-top:12px}.order-list>article{box-sizing:border-box;align-self:stretch;margin:0;padding:16px}.order-list header,.order-list header>div,.order-list footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.order-list header>div{justify-content:flex-start}.order-list h3{margin:13px 0}.order-list dl{display:grid;grid-template-columns:1fr 1fr;gap:7px}.order-list dl>div{padding:8px;border-radius:7px;background:var(--cpu-surface-soft)}.order-list dt{color:var(--cpu-text-secondary);font-size:8px}.order-list dd{margin:3px 0 0;font-size:10px;font-weight:700}.order-list p{color:var(--cpu-text-secondary);font-size:10px}.adjustment-list{display:grid;gap:6px;margin-top:10px;padding:10px;border:1px dashed var(--cpu-border-soft);border-radius:9px}.adjustment-list>b{font-size:10px}.adjustment-list article{display:grid;grid-template-columns:1fr auto;gap:3px 8px;padding:7px;background:var(--cpu-surface-soft);border-radius:7px}.adjustment-list span{font-size:9px;font-weight:700}.adjustment-list small{grid-column:1/-1;color:var(--cpu-text-secondary);font-size:8px}.adjustment-list time{font-size:8px}.order-list footer{margin-top:10px;padding-top:9px;border-top:1px dashed var(--cpu-border-soft)}.order-list time{color:var(--cpu-text-muted);font-size:8px}.selected-plan{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px;border-radius:9px;background:var(--cpu-surface-soft)}.selected-plan div{display:flex;flex-direction:column}.selected-plan span{color:var(--cpu-text-secondary);font-size:10px}@media(max-width:900px){.plan-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.page-head,.section-head{align-items:flex-start;flex-direction:column}.page-head>div:last-child{width:100%}.page-head .el-button{flex:1}.plan-grid,.order-list{grid-template-columns:1fr}}
 </style>

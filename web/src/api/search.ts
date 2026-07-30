@@ -30,17 +30,6 @@ export interface SearchResult {
   topics: any[];
   courses: any[];
   services: any[];
-  merchants: Array<{
-    id: number;
-    slug: string;
-    name: string;
-    category: string;
-    description: string;
-    priceRange: string;
-    serviceArea: string;
-    cover: string;
-    promotion: { homepage: PromotionBadge | null; promoted: boolean };
-  }>;
 }
 
 export const searchApi = {

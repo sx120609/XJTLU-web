@@ -143,9 +143,9 @@ test("admin user routes preserve forum counters and protected business records",
   assert.equal(created.response.status, 200, created.body.message);
   const createdData = created.body.data as { id: number };
   createdUserId = createdData.id;
-  assert.ok(await prisma.messageSetting.findUnique({
+  assert.equal(await prisma.messageSetting.findUnique({
     where: { userId: createdUserId },
-  }));
+  }), null);
 
   const topic = await prisma.topic.create({
     data: {

@@ -32,6 +32,8 @@ import { getMarketOperationsDashboard } from "../services/marketOperations";
 import { isFeatureOn } from "../services/siteSettings";
 
 export const marketPromotionsRouter = Router();
+// V1 实物交易不设置商户准入；普通校园用户直接发布商品。
+export const V1_MERCHANT_ONBOARDING_ENABLED = false;
 
 const CONTACT_METHODS = ["wechat", "qq", "phone", "email", "website", "other"] as const;
 const imageUrlSchema = z.string().trim().min(1).max(2048).refine(
@@ -206,8 +208,11 @@ marketPromotionsRouter.get("/promotions/plans", async (req, res, next) => {
   try {
     if (!isFeatureOn("promotion")) return ok(res, []);
     const scope = promotionScope(req.query.scope);
-    const where: any = { enabled: true };
-    if (scope) where.targetType = scope === "merchant" ? "merchant_profile" : { not: "merchant_profile" };
+    if (scope === "merchant" && !V1_MERCHANT_ONBOARDING_ENABLED) return ok(res, []);
+    const where: any = {
+      enabled: true,
+      targetType: { not: "merchant_profile" },
+    };
     const list = await prisma.promotionPlan.findMany({ where, orderBy: [{ sort: "asc" }, { id: "asc" }] });
     ok(res, list.map(serializePromotionPlan));
   } catch (error) { next(error); }
@@ -220,9 +225,9 @@ marketPromotionsRouter.get("/promotions/orders", authRequired, async (req, res, 
     const size = querySize(req.query.size, 20, 5, 50);
     const status = String(req.query.status || "").trim();
     const scope = promotionScope(req.query.scope);
-    const where: any = { userId: req.user!.userId };
+    const where: any = { userId: req.user!.userId, targetType: { not: "merchant_profile" } };
     if (status) where.status = status;
-    if (scope) where.targetType = scope === "merchant" ? "merchant_profile" : { not: "merchant_profile" };
+    if (scope === "merchant") return ok(res, { page, size, total: 0, list: [] });
     const [list, total] = await Promise.all([
       prisma.promotionOrder.findMany({ where, include: promotionOrderInclude, orderBy: { createdAt: "desc" }, skip: (page - 1) * size, take: size }),
       prisma.promotionOrder.count({ where }),
@@ -238,6 +243,9 @@ marketPromotionsRouter.post("/promotions/orders", authRequired, validate(promoti
     await refreshExpiredPromotions();
     const plan = await prisma.promotionPlan.findUnique({ where: { code: req.body.planCode } });
     if (!plan || !plan.enabled || !PROMOTION_TYPES.includes(plan.type as any)) throw Errors.badRequest("推广方案不可用");
+    if (plan.targetType === "merchant_profile" && !V1_MERCHANT_ONBOARDING_ENABLED) {
+      throw Errors.forbidden("V1 暂不开放商户主页服务，校园用户可直接发布实物商品");
+    }
 
     const data: any = {
       userId: user.id,
@@ -306,6 +314,7 @@ marketPromotionsRouter.post("/promotions/orders/:id/events", validate(promotionE
 
 marketPromotionsRouter.get("/merchant/me", authRequired, async (req, res, next) => {
   try {
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) return ok(res, null);
     await refreshExpiredPromotions();
     const profile = await prisma.merchantProfile.findUnique({ where: { userId: req.user!.userId }, include: merchantInclude(req.user!.userId) });
     ok(res, profile ? serializeMerchant(profile, req.user!.userId, true) : null);
@@ -314,6 +323,9 @@ marketPromotionsRouter.get("/merchant/me", authRequired, async (req, res, next) 
 
 marketPromotionsRouter.put("/merchant/me", authRequired, validate(merchantInputSchema), async (req, res, next) => {
   try {
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) {
+      throw Errors.forbidden("V1 暂不开放商户申请，校园用户可直接发布实物商品");
+    }
     const user = await ensureVerifiedUser(req);
     const risk = await evaluateMarketContent(prisma, [req.body.name, req.body.description, req.body.priceRange, req.body.serviceArea, req.body.studentDiscount], "market");
     if (risk.action === "block") throw Errors.badRequest(`商户资料包含不允许发布的内容：${risk.matches[0]?.keyword || "高风险信息"}`);
@@ -352,6 +364,9 @@ marketPromotionsRouter.put("/merchant/me", authRequired, validate(merchantInputS
 
 marketPromotionsRouter.get("/merchants", async (req, res, next) => {
   try {
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) {
+      return ok(res, { page: queryPage(req.query.page), size: querySize(req.query.size, 20, 8, 40), total: 0, list: [] });
+    }
     if (!isFeatureOn("promotion")) return ok(res, { page: queryPage(req.query.page), size: querySize(req.query.size, 20, 8, 40), total: 0, list: [] });
     await refreshExpiredPromotions();
     const now = new Date();
@@ -377,6 +392,7 @@ marketPromotionsRouter.get("/merchants", async (req, res, next) => {
 
 marketPromotionsRouter.get("/merchants/:slug", async (req, res, next) => {
   try {
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) throw Errors.notFound("V1 暂不提供商户主页");
     await refreshExpiredPromotions();
     const profile = await prisma.merchantProfile.findUnique({ where: { slug: String(req.params.slug).toLowerCase() }, include: merchantInclude(req.user?.userId) });
     if (!profile) throw Errors.notFound("商户主页不存在");
@@ -390,6 +406,7 @@ marketPromotionsRouter.get("/merchants/:slug", async (req, res, next) => {
 
 marketPromotionsRouter.post("/merchants/:slug/favorite", authRequired, async (req, res, next) => {
   try {
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) throw Errors.notFound("V1 暂不提供商户收藏");
     if (!isFeatureOn("promotion")) throw Errors.notFound("商户展示当前已暂停");
     await ensureVerifiedUser(req);
     const profile = await prisma.merchantProfile.findUnique({ where: { slug: String(req.params.slug).toLowerCase() }, include: { activePromotionOrder: true } });
@@ -401,6 +418,7 @@ marketPromotionsRouter.post("/merchants/:slug/favorite", authRequired, async (re
 
 marketPromotionsRouter.post("/merchants/:slug/inquiry", authRequired, async (req, res, next) => {
   try {
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) throw Errors.notFound("V1 暂不提供商户咨询");
     if (!isFeatureOn("promotion")) throw Errors.notFound("商户展示当前已暂停");
     await ensureVerifiedUser(req);
     const profile = await prisma.merchantProfile.findUnique({ where: { slug: String(req.params.slug).toLowerCase() }, include: { activePromotionOrder: true } });
@@ -425,17 +443,17 @@ marketPromotionsRouter.get("/admin/promotions/overview", authRequired, async (re
   try {
     ensureAdmin(req);
     await refreshExpiredPromotions();
-    const [plans, pendingOrders, waitlistedOrders, confirmedOrders, merchantReviewing, revenue, manualCosts, adjustmentTotals, impressions, clicks] = await Promise.all([
-      prisma.promotionPlan.findMany({ orderBy: [{ sort: "asc" }, { id: "asc" }] }),
-      prisma.promotionOrder.count({ where: { status: "pending" } }),
-      prisma.promotionOrder.count({ where: { status: "waitlisted" } }),
-      prisma.promotionOrder.count({ where: { status: "confirmed" } }),
-      prisma.merchantProfile.count({ where: { status: "reviewing" } }),
-      prisma.promotionOrder.aggregate({ where: { status: { in: ["confirmed", "expired"] } }, _sum: { amountCents: true } }),
-      prisma.promotionOrder.aggregate({ where: { status: { in: ["confirmed", "expired"] } }, _sum: { manualCostCents: true } }),
-      prisma.promotionAdjustment.groupBy({ by: ["type"], _sum: { amountCents: true }, _count: true }),
-      prisma.promotionOrder.aggregate({ _sum: { impressionCount: true } }),
-      prisma.promotionOrder.aggregate({ _sum: { clickCount: true } }),
+    const contentOrderWhere = { targetType: { not: "merchant_profile" } } as const;
+    const [plans, pendingOrders, waitlistedOrders, confirmedOrders, revenue, manualCosts, adjustmentTotals, impressions, clicks] = await Promise.all([
+      prisma.promotionPlan.findMany({ where: { targetType: { not: "merchant_profile" } }, orderBy: [{ sort: "asc" }, { id: "asc" }] }),
+      prisma.promotionOrder.count({ where: { ...contentOrderWhere, status: "pending" } }),
+      prisma.promotionOrder.count({ where: { ...contentOrderWhere, status: "waitlisted" } }),
+      prisma.promotionOrder.count({ where: { ...contentOrderWhere, status: "confirmed" } }),
+      prisma.promotionOrder.aggregate({ where: { ...contentOrderWhere, status: { in: ["confirmed", "expired"] } }, _sum: { amountCents: true } }),
+      prisma.promotionOrder.aggregate({ where: { ...contentOrderWhere, status: { in: ["confirmed", "expired"] } }, _sum: { manualCostCents: true } }),
+      prisma.promotionAdjustment.groupBy({ by: ["type"], where: { order: contentOrderWhere }, _sum: { amountCents: true }, _count: true }),
+      prisma.promotionOrder.aggregate({ where: contentOrderWhere, _sum: { impressionCount: true } }),
+      prisma.promotionOrder.aggregate({ where: contentOrderWhere, _sum: { clickCount: true } }),
     ]);
     const adjustmentByType = new Map(adjustmentTotals.map((row) => [row.type, row]));
     const refundCents = adjustmentByType.get("refund_record")?._sum.amountCents || 0;
@@ -444,7 +462,7 @@ marketPromotionsRouter.get("/admin/promotions/overview", authRequired, async (re
     const revenueCents = revenue._sum.amountCents || 0;
     ok(res, {
       plans: plans.map(serializePromotionPlan),
-      counts: { pendingOrders, waitlistedOrders, confirmedOrders, merchantReviewing },
+      counts: { pendingOrders, waitlistedOrders, confirmedOrders },
       revenueCents,
       revenue: (revenueCents / 100).toFixed(2),
       refundCents,
@@ -463,6 +481,8 @@ marketPromotionsRouter.post("/admin/promotions/orders/:id/adjustments", authRequ
   try {
     ensureAdmin(req);
     const id = Number(req.params.id);
+    const current = await prisma.promotionOrder.findUnique({ where: { id }, select: { targetType: true } });
+    if (!current || current.targetType === "merchant_profile") throw Errors.notFound("推广订单不存在");
     const adjustment = await createPromotionAdjustment(prisma, {
       orderId: id,
       actorId: req.user!.userId,
@@ -504,8 +524,9 @@ marketPromotionsRouter.get("/admin/promotions/orders", authRequired, async (req,
     const status = String(req.query.status || "").trim();
     const type = String(req.query.type || "").trim();
     const q = String(req.query.q || "").trim();
-    const where: any = {};
+    const where: any = { targetType: { not: "merchant_profile" } };
     if (status) where.status = status;
+    if (type === "merchant_homepage") return ok(res, { page, size, total: 0, list: [] });
     if (type) where.type = type;
     if (q) where.OR = [{ outTradeNo: { contains: q, mode: "insensitive" } }, { planName: { contains: q, mode: "insensitive" } }, { user: { nickname: { contains: q, mode: "insensitive" } } }];
     const [list, total] = await Promise.all([
@@ -520,6 +541,8 @@ marketPromotionsRouter.patch("/admin/promotions/orders/:id", authRequired, valid
   try {
     ensureAdmin(req);
     const id = Number(req.params.id);
+    const current = await prisma.promotionOrder.findUnique({ where: { id }, select: { targetType: true } });
+    if (!current || current.targetType === "merchant_profile") throw Errors.notFound("推广订单不存在");
     const row = req.body.action === "confirm"
       ? await confirmPromotionOrder(prisma, id, req.user!.userId, {
         adminNote: req.body.note,
@@ -551,6 +574,7 @@ marketPromotionsRouter.patch("/admin/promotions/plans/:id", authRequired, valida
     ensureAdmin(req);
     const current = await prisma.promotionPlan.findUnique({ where: { id: Number(req.params.id) } });
     if (!current) throw Errors.notFound("推广方案不存在");
+    if (current.targetType === "merchant_profile") throw Errors.notFound("推广方案不存在");
     if (["home_featured", "wanted_urgent"].includes(current.type) && req.body.maxActive !== undefined && req.body.maxActive !== 8) {
       throw Errors.badRequest("首页商品推广和热议求购推广容量固定为 8 个");
     }
@@ -568,6 +592,7 @@ marketPromotionsRouter.patch("/admin/promotions/plans/:id", authRequired, valida
 marketPromotionsRouter.get("/admin/merchants", authRequired, async (req, res, next) => {
   try {
     ensureAdmin(req);
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) return ok(res, []);
     await refreshExpiredPromotions();
     const status = String(req.query.status || "").trim();
     const where = status ? { status } : {};
@@ -579,6 +604,7 @@ marketPromotionsRouter.get("/admin/merchants", authRequired, async (req, res, ne
 marketPromotionsRouter.patch("/admin/merchants/:id", authRequired, validate(merchantReviewSchema), async (req, res, next) => {
   try {
     ensureAdmin(req);
+    if (!V1_MERCHANT_ONBOARDING_ENABLED) throw Errors.notFound("V1 暂不提供商户审核");
     const id = Number(req.params.id);
     const current = await prisma.merchantProfile.findUnique({ where: { id } });
     if (!current) throw Errors.notFound("商户资料不存在");
@@ -611,7 +637,7 @@ marketPromotionsRouter.patch("/admin/merchants/:id", authRequired, validate(merc
       include: merchantInclude(),
     });
     await logMarketAdminAction(prisma, { actorId: req.user!.userId, action: "merchant_review", targetType: "merchant_profile", targetId: id, summary: `商户资料更新为 ${req.body.status}`, detail: { note: req.body.note } });
-    await notifyPromotion(current.userId, req.body.status === "approved" ? "商户资料审核通过" : "商户资料状态已更新", req.body.status === "approved" ? "你现在可以在“成为商户”页面申请合作商户主页方案。" : (req.body.note || "请查看商户资料状态。"), "/market/merchant/apply", { merchantProfileId: id, status: req.body.status });
+    await notifyPromotion(current.userId, "历史商户资料状态已更新", req.body.note || "V1 已停止商户主页功能。", "/market", { merchantProfileId: id, status: req.body.status });
     ok(res, serializeMerchant(row, undefined, true));
   } catch (error) { next(error); }
 });

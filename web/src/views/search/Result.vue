@@ -3,7 +3,7 @@
     <div class="head">
       <h2>搜索 "{{ q }}"</h2>
       <div class="counts" v-if="result">
-        共找到 {{ result.marketItems.length + result.wantedPosts.length + result.topics.length + result.services.length + result.merchants.length }} 条结果
+        共找到 {{ result.marketItems.length + result.wantedPosts.length + result.topics.length + result.services.length }} 条结果
       </div>
     </div>
 
@@ -66,17 +66,6 @@
         </div>
       </section>
 
-      <section v-if="result.merchants.length" class="cpu-card">
-        <h3 class="title">🏪 合作商户（{{ result.merchants.length }}）</h3>
-        <div class="market-results">
-          <router-link v-for="merchant in result.merchants" :key="merchant.id" :to="`/market/merchant/${merchant.slug}`" class="market-result" @click="recordClick(merchant.promotion.homepage?.orderId)">
-            <span class="market-cover"><img v-if="merchant.cover" :src="merchant.cover" :alt="merchant.name" /><b v-else>商</b></span>
-            <span class="market-result-copy"><span><PromotionLabel label="合作商户" kind="merchant" /><b>{{ merchant.name }}</b></span><small>{{ merchant.category }} · {{ merchant.serviceArea }}</small></span>
-            <strong>{{ merchant.priceRange }}</strong>
-          </router-link>
-        </div>
-      </section>
-
       <div v-if="!hasResult" class="cpu-card empty">
         <el-empty description="什么也没找到。换个关键词试试？" />
       </div>
@@ -103,7 +92,7 @@ const error = ref("");
 let searchSeq = 0;
 
 const hasResult = computed(() =>
-  result.value && (result.value.marketItems.length + result.value.wantedPosts.length + result.value.topics.length + result.value.services.length + result.value.merchants.length) > 0
+  result.value && (result.value.marketItems.length + result.value.wantedPosts.length + result.value.topics.length + result.value.services.length) > 0
 );
 
 watch(() => route.query.q, async (v) => {
@@ -130,7 +119,6 @@ async function reload() {
       const orderIds = new Set<number>();
       for (const item of next.marketItems) if (item.promotions.pinned) orderIds.add(item.promotions.pinned.orderId);
       for (const post of next.wantedPosts) if (post.promotion.urgent) orderIds.add(post.promotion.urgent.orderId);
-      for (const merchant of next.merchants) if (merchant.promotion.homepage) orderIds.add(merchant.promotion.homepage.orderId);
       for (const orderId of orderIds) void marketApi.recordPromotionEvent(orderId, "impression", { suppressErrorMessage: true });
     }
   } catch (searchError) {

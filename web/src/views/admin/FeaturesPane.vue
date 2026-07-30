@@ -124,93 +124,17 @@
         </div>
       </div>
 
-      <button type="button" class="section-toggle" :class="{ expanded: trustConfigExpanded }" @click="trustConfigExpanded = !trustConfigExpanded">
-        <div class="section-toggle-copy">
-          <div class="section-toggle-top">
-            <h3 class="section-title">匿名与信誉规则</h3>
-            <span class="toggle-pill on">5 级规则</span>
-          </div>
-          <p class="section-desc">默认收起。需要时再展开调整匿名门槛、周额度、信誉积分公式和等级门槛，避免基础配置区太长。</p>
-          <div class="summary-row">
-            <span class="summary-pill">匿名门槛 {{ anonymousMinReputation }}</span>
-            <span class="summary-pill">论坛加成 {{ forumEnabledBonus }}</span>
-            <span class="summary-pill">Lv.5 {{ reputationLevels[4]?.minReputation ?? 0 }}</span>
-          </div>
-        </div>
-        <span class="toggle-arrow" aria-hidden="true">▾</span>
-      </button>
-
-      <div v-if="trustConfigExpanded" class="site-config trust-config">
+      <div class="site-config trust-config">
         <div class="config-copy">
-          <div class="card-title">匿名与信誉规则</div>
-          <div class="desc">匿名最低信誉、周额度档位、信誉积分公式和 5 级信誉等级都可以在这里调整。匿名楼主在自己的匿名帖下匿名回复时会自动免扣点。</div>
+          <div class="card-title">信誉与积分规则</div>
+          <div class="desc">V1 使用固定、清晰的一套规则，避免出现多种积分和匿名额度：匿名发帖与回复免费；信誉值默认 100，仅在人工审核认定违规后扣减；积分只作为内容推流货币。</div>
         </div>
         <div class="trust-config-form">
-          <div class="trust-grid">
-            <div class="trust-field">
-              <span class="field-label">匿名最低信誉</span>
-              <el-input-number v-model="anonymousMinReputation" :min="0" :max="9999" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">论坛资历加成</span>
-              <el-input-number v-model="forumEnabledBonus" :min="0" :max="9999" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">注册步长（天）</span>
-              <el-input-number v-model="accountAgeDaysPerStep" :min="1" :max="3650" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">注册每档积分</span>
-              <el-input-number v-model="accountAgePointsPerStep" :min="0" :max="999" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">注册积分上限</span>
-              <el-input-number v-model="accountAgePointsCap" :min="0" :max="9999" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">每帖积分</span>
-              <el-input-number v-model="postPointsPerTopic" :min="0" :max="999" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">发帖积分上限</span>
-              <el-input-number v-model="postPointsCap" :min="0" :max="9999" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">每回复积分</span>
-              <el-input-number v-model="replyPointsPerReply" :min="0" :max="999" />
-            </div>
-            <div class="trust-field">
-              <span class="field-label">回复积分上限</span>
-              <el-input-number v-model="replyPointsCap" :min="0" :max="9999" />
-            </div>
-          </div>
-
-          <div class="trust-subcard">
-            <div class="subcard-title">匿名周额度档位</div>
-            <div class="tier-grid">
-              <div v-for="(tier, index) in anonymousTiers" :key="`tier-${index}`" class="tier-row">
-                <span class="field-label">档位 {{ index + 1 }}</span>
-                <el-input-number v-model="tier.reputation" :min="0" :max="9999" />
-                <span class="field-inline-label">周额度</span>
-                <el-input-number v-model="tier.quota" :min="0" :max="999" />
-              </div>
-            </div>
-          </div>
-
-          <div class="trust-subcard">
-            <div class="subcard-title">信誉等级（5 级）</div>
-            <div class="level-grid">
-              <div v-for="(level, index) in reputationLevels" :key="`level-${index}`" class="level-row">
-                <span class="field-label">Lv.{{ index + 1 }}</span>
-                <el-input v-model="level.name" maxlength="20" placeholder="等级名称" />
-                <span class="field-inline-label">门槛</span>
-                <el-input-number v-model="level.minReputation" :min="0" :max="9999" />
-              </div>
-            </div>
-          </div>
-
-          <div class="actions-row">
-            <el-button type="primary" :loading="savingConfig" :disabled="savingConfig || configLoading || Boolean(loadError)" @click="saveTrustConfig">保存匿名与信誉规则</el-button>
+          <div class="summary-row">
+            <span class="summary-pill">默认信誉 100</span>
+            <span class="summary-pill">匿名发布免费</span>
+            <span class="summary-pill">积分推流机制待配置</span>
+            <span class="summary-pill">实体成交双方各 +10 积分</span>
           </div>
         </div>
       </div>
@@ -290,13 +214,6 @@ const anonymousTiers = ref([
   { reputation: 90, quota: 3 },
   { reputation: 120, quota: 4 },
 ]);
-const reputationLevels = ref([
-  { level: 1, name: "初来乍到", minReputation: 0 },
-  { level: 2, name: "渐入佳境", minReputation: 30 },
-  { level: 3, name: "活跃同学", minReputation: 60 },
-  { level: 4, name: "资深成员", minReputation: 90 },
-  { level: 5, name: "校园传说", minReputation: 120 },
-]);
 const features = reactive<Record<FKey, boolean>>({
   forum: true, market: true, coursereview: true, electric: true, sponsor: true, promotion: true,
 });
@@ -320,9 +237,9 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
     paths: ["/market", "boards type=market"],
   },
   {
-    key: "promotion", icon: "📣", title: "推广与合作商户展示",
-    desc: "独立关闭商业展示、新推广申请和商户公开主页，不影响学生实体交易、求购与付费学习资料；历史订单和人工核验记录会保留。",
-    paths: ["/market/promotions", "/market/merchants", "首页推广位"],
+    key: "promotion", icon: "📣", title: "积分推流与推广展示",
+    desc: "独立关闭积分推流入口和推广展示，不影响学生实体交易、求购与付费学习资料；历史订单和人工核验记录会保留。",
+    paths: ["/market/promotions", "首页推广位"],
   },
   {
     key: "electric", icon: "💡", title: "宿舍电费查询",
@@ -366,7 +283,6 @@ async function reload() {
     replyPointsCap.value = config.replyPointsCap;
     forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
-    reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
   } catch (error) {
     if (seq === featureLoadSeq) {
       loadError.value = requestMessage(error) || "功能开关配置加载失败，请稍后重试";
@@ -441,11 +357,6 @@ async function saveTrustConfig() {
         reputation: Number(item.reputation || 0),
         quota: Number(item.quota || 0),
       })),
-      reputationLevels: reputationLevels.value.map((item, index) => ({
-        level: index + 1,
-        name: item.name,
-        minReputation: Number(item.minReputation || 0),
-      })),
     });
     anonymousMinReputation.value = config.anonymousMinReputation;
     accountAgeDaysPerStep.value = config.accountAgeDaysPerStep;
@@ -457,7 +368,6 @@ async function saveTrustConfig() {
     replyPointsCap.value = config.replyPointsCap;
     forumEnabledBonus.value = config.forumEnabledBonus;
     anonymousTiers.value = (config.anonymousTiers ?? []).map((item) => ({ ...item }));
-    reputationLevels.value = (config.reputationLevels ?? []).map((item) => ({ ...item }));
     ElMessage.success("匿名与信誉规则已保存");
   } finally {
     savingConfig.value = false;
@@ -610,13 +520,11 @@ function requestMessage(error: unknown) {
   font-weight: 700;
   color: var(--cpu-text);
 }
-.tier-grid,
-.level-grid {
+.tier-grid {
   display: grid;
   gap: 10px;
 }
-.tier-row,
-.level-row {
+.tier-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -799,8 +707,7 @@ function requestMessage(error: unknown) {
   .trust-grid {
     grid-template-columns: 1fr;
   }
-  .tier-row,
-  .level-row {
+  .tier-row {
     align-items: stretch;
     flex-direction: column;
   }

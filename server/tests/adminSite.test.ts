@@ -50,19 +50,25 @@ test("site settings schemas reject empty, mixed, unsafe, or inconsistent writes"
   );
   assert.equal(
     adminSiteConfigPatchSchema.safeParse({
-      reputationLevels: [
-        { level: 1, name: "一", minReputation: 0 },
-        { level: 2, name: "二", minReputation: 30 },
-        { level: 3, name: "三", minReputation: 60 },
-        { level: 4, name: "四", minReputation: 60 },
-        { level: 5, name: "五", minReputation: 120 },
-      ],
+      reputationLevels: [{ level: 1, name: "旧等级", minReputation: 0 }],
     }).success,
     false,
   );
   assert.equal(
     adminAiReviewLogQuerySchema.safeParse({
       kind: "unknown",
+    }).success,
+    false,
+  );
+  assert.equal(
+    adminSiteConfigPatchSchema.safeParse({
+      qqGroupAdReviewEnabled: true,
+    }).success,
+    false,
+  );
+  assert.equal(
+    adminAiReviewLogQuerySchema.safeParse({
+      kind: "qqbot-group-ad",
     }).success,
     false,
   );
@@ -86,7 +92,7 @@ test("site identity URLs reject embedded credentials", () => {
 test("admin site serialization never exposes AI API keys", () => {
   const config = serializeAdminSiteConfig();
   assert.equal(config.aiReviewApiKey, "");
-  assert.equal(config.qqGroupAdReviewApiKey, "");
+  assert.equal("qqGroupAdReviewApiKey" in config, false);
   assert.equal(config.imageReviewApiKey, "");
   assert.equal(config.videoReviewApiKey, "");
   assert.equal(typeof config.hasAiReviewApiKey, "boolean");

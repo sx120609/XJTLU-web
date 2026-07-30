@@ -1,9 +1,10 @@
 import { prisma } from "../prisma";
-import { getSiteConfig, type AnonymousTierConfig, type ReputationLevelConfig } from "./siteSettings";
+import { getSiteConfig, type AnonymousTierConfig } from "./siteSettings";
 import { Errors } from "../utils/response";
 
 type TrustUserSnapshot = {
   id?: number;
+  reputation?: number | null;
   createdAt: Date | string;
   postCount: number;
   replyCount: number;
@@ -27,7 +28,6 @@ type TrustConfig = {
   replyPointsCap: number;
   forumEnabledBonus: number;
   anonymousTiers: AnonymousTierConfig[];
-  reputationLevels: ReputationLevelConfig[];
 };
 
 function readTrustConfig(): TrustConfig {
@@ -43,7 +43,6 @@ function readTrustConfig(): TrustConfig {
     replyPointsCap: config.replyPointsCap,
     forumEnabledBonus: config.forumEnabledBonus,
     anonymousTiers: config.anonymousTiers,
-    reputationLevels: config.reputationLevels,
   };
 }
 
@@ -120,57 +119,30 @@ export function computeAnonymousWeeklyQuota(reputation: number, config = readTru
   return 0;
 }
 
-function resolveReputationLevel(reputation: number, config = readTrustConfig()) {
-  const levels = [...config.reputationLevels].sort((a, b) => a.level - b.level);
-  const current = [...levels].reverse().find((item) => reputation >= item.minReputation) ?? levels[0];
-  const next = levels.find((item) => item.minReputation > reputation) ?? null;
-  return {
-    level: current.level,
-    name: current.name,
-    minReputation: current.minReputation,
-    nextLevel: next ? {
-      level: next.level,
-      name: next.name,
-      minReputation: next.minReputation,
-      need: Math.max(0, next.minReputation - reputation),
-    } : null,
-  };
-}
-
 export function buildUserTrustSnapshot(user: TrustUserSnapshot) {
   const config = readTrustConfig();
   const reputationBreakdown = computeUserReputationBreakdown(user, config);
-  const reputation = reputationBreakdown.total;
-  const weeklyQuota = computeAnonymousWeeklyQuota(reputation, config);
-  const reputationLevel = resolveReputationLevel(reputation, config);
+  const reputation = Math.max(0, Math.min(100, Number(user.reputation ?? 100)));
+  const weeklyQuota = 0;
   const currentWeekKey = currentAnonymousWeekKey();
-  const staleWeek = (user.anonymousWeekKey || "") !== currentWeekKey;
-  const frozen = Boolean(user.anonymousCreditsFrozen);
-  const storedCredits = Math.max(0, Number(user.anonymousCredits ?? 0));
-  const availableCredits = frozen ? 0 : staleWeek ? weeklyQuota : storedCredits;
-  const nextTier = [...config.anonymousTiers]
-    .sort((a, b) => a.reputation - b.reputation)
-    .find((tier) => tier.reputation > reputation) ?? null;
 
   return {
     reputation,
-    reputationBreakdown,
-    reputationLevel,
+    reputationBreakdown: {
+      ...reputationBreakdown,
+      total: reputation,
+    },
     anonymousState: {
-      eligible: reputation >= config.anonymousMinReputation,
-      minReputation: config.anonymousMinReputation,
+      eligible: true,
+      minReputation: 0,
       weeklyQuota,
-      availableCredits,
-      storedCredits,
-      frozen,
+      availableCredits: 0,
+      storedCredits: 0,
+      frozen: false,
       weekKey: currentWeekKey,
-      staleWeek,
+      staleWeek: false,
       nextResetAt: nextAnonymousResetAt().toISOString(),
-      nextTier: nextTier ? {
-        reputation: nextTier.reputation,
-        weeklyQuota: nextTier.quota,
-        need: Math.max(0, nextTier.reputation - reputation),
-      } : null,
+      nextTier: null,
     },
   };
 }
@@ -180,6 +152,7 @@ export async function refreshAnonymousCreditsIfNeeded(userId: number, client: Tr
     where: { id: userId },
     select: {
       id: true,
+      reputation: true,
       createdAt: true,
       postCount: true,
       replyCount: true,
@@ -203,6 +176,7 @@ export async function refreshAnonymousCreditsIfNeeded(userId: number, client: Tr
     },
     select: {
       id: true,
+      reputation: true,
       createdAt: true,
       postCount: true,
       replyCount: true,
@@ -220,35 +194,7 @@ export async function refreshAnonymousCreditsIfNeeded(userId: number, client: Tr
 }
 
 export async function consumeAnonymousCredit(userId: number, client: TrustClient = prisma) {
-  const { trust } = await refreshAnonymousCreditsIfNeeded(userId, client);
-  if (!trust.anonymousState.eligible) {
-    throw Errors.forbidden(`当前信誉值未达到匿名门槛（需至少 ${trust.anonymousState.minReputation}）`);
-  }
-  if (trust.anonymousState.frozen) {
-    throw Errors.forbidden("你的匿名积分当前已被冻结，请联系管理员");
-  }
-  if (trust.anonymousState.availableCredits <= 0) {
-    throw Errors.forbidden("本周匿名积分已用完");
-  }
-  const updated = await client.user.update({
-    where: { id: userId },
-    data: { anonymousCredits: { decrement: 1 } },
-    select: {
-      id: true,
-      createdAt: true,
-      postCount: true,
-      replyCount: true,
-      forumEnabled: true,
-      forumEnabledAt: true,
-      anonymousCredits: true,
-      anonymousWeekKey: true,
-      anonymousCreditsFrozen: true,
-    },
-  });
-  return {
-    user: updated,
-    trust: buildUserTrustSnapshot(updated),
-  };
+  return refreshAnonymousCreditsIfNeeded(userId, client);
 }
 
 export async function freezeAnonymousCredits(userId: number, client: TrustClient = prisma, zeroOut = true) {
@@ -260,6 +206,7 @@ export async function freezeAnonymousCredits(userId: number, client: TrustClient
     },
     select: {
       id: true,
+      reputation: true,
       createdAt: true,
       postCount: true,
       replyCount: true,

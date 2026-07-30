@@ -31,7 +31,6 @@ import {
   createGradeCheckSchema,
   patchGradeCheckSchema,
 } from "../../services/toolSchemas";
-import { notifyGradeCheckLookupForQqBot } from "../../services/toolQqReminders";
 import { Errors, ok } from "../../utils/response";
 
 export const toolGradesRouter = Router();
@@ -123,15 +122,6 @@ toolGradesRouter.get("/grade-checks/:slug", authRequired, async (req, res, next)
     const feedbackQuestionnaireSlug = row
       ? await ensureGradeCheckFeedbackQuestionnaire(table)
       : table.feedbackQuestionnaireSlug;
-    if (row) {
-      await notifyGradeCheckLookupForQqBot({
-        table,
-        studentId,
-        actorUserId: req.user!.userId,
-      }).catch((error) => {
-        console.warn("[tools] grade check qqbot reminder failed", error);
-      });
-    }
     ok(res, {
       table: normalizeGradeCheckTable(table),
       studentId,

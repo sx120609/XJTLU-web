@@ -3,29 +3,22 @@ import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { closeExpiredMarketOrders } from "./marketCatalogService";
 import { acquireMarketItemLock } from "./marketItemLockService";
-import { nextReservationExpiry } from "./marketLifecycle";
 import { notifyMarketUser } from "./marketNotificationService";
 import { acquireMarketOrderLock } from "./marketOrderLockService";
 import { serializeMarketOrder } from "./marketOrderService";
 import {
   TRANSACTION_POINT_RULES,
   awardTransactionPointsBatchInTransaction,
-  awardTransactionPointsInTransaction,
 } from "./transactionPoints";
 
 export const marketOrderActionSchema = z.object({
   action: z.enum([
-    "set_meetup",
     "buyer_confirm",
     "seller_confirm",
     "cancel",
-    "report_no_show",
     "request_refund",
     "dispute",
   ]),
-  meetupTime: z.string().datetime().optional(),
-  meetupLocation: z.string().trim().max(120).optional(),
-  note: z.string().trim().max(500).optional(),
   reason: z.string().trim().max(500).optional(),
 });
 
@@ -53,12 +46,11 @@ type MarketOrderTransitionResult = {
   };
 };
 
-const ACTIVE_CONFIRMATION_STATUSES = ["paid", "delivering", "reserved"];
+const ACTIVE_CONFIRMATION_STATUSES = ["negotiating", "paid", "delivering", "reserved"];
 const ITEM_MUTATING_ACTIONS = new Set<MarketOrderActionInput["action"]>([
   "buyer_confirm",
   "seller_confirm",
   "cancel",
-  "report_no_show",
 ]);
 
 function restoredItemStatus(item: any, now: Date) {
@@ -94,7 +86,7 @@ export async function transitionMarketOrder(
       where: { id: orderId },
       select: { itemId: true },
     });
-    if (!reference) throw Errors.notFound("交易预约不存在");
+    if (!reference) throw Errors.notFound("交易记录不存在");
 
     if (ITEM_MUTATING_ACTIONS.has(input.action)) {
       await acquireMarketItemLock(tx, reference.itemId);
@@ -105,62 +97,37 @@ export async function transitionMarketOrder(
       include: { item: true, refunds: true, wantedPost: true },
     });
     if (!order || !canAccessOrder(order, actor)) {
-      throw Errors.notFound("交易预约不存在");
+      throw Errors.notFound("交易记录不存在");
     }
 
     const now = new Date();
     const isBuyer = order.buyerId === actor.userId;
     const isSeller = order.sellerId === actor.userId;
 
-    if (input.action === "set_meetup") {
-      if (order.deliveryType === "digital") {
-        throw Errors.badRequest("电子资料历史订单无需设置面交安排");
-      }
-      if (!ACTIVE_CONFIRMATION_STATUSES.includes(order.status)) {
-        throw Errors.badRequest("当前预约不能修改面交安排");
-      }
-      const meetupTime = input.meetupTime ? new Date(input.meetupTime) : order.meetupTime;
-      const meetupLocation = input.meetupLocation ?? order.meetupLocation;
-      if (!meetupTime || !meetupLocation.trim()) {
-        throw Errors.badRequest("请同时填写面交时间和校内地点");
-      }
-      if (input.meetupTime) {
-        const earliest = now.getTime() + 15 * 60_000;
-        const latest = now.getTime() + 30 * 24 * 60 * 60_000;
-        if (meetupTime.getTime() < earliest || meetupTime.getTime() > latest) {
-          throw Errors.badRequest("面交时间须在 15 分钟后至 30 天内");
-        }
-      }
-      const updated = await tx.marketOrder.update({
-        where: { id: orderId },
-        data: {
-          status: order.status === "reserved" ? "reserved" : "delivering",
-          meetupTime,
-          meetupLocation,
-          meetupReminderSentAt: null,
-          note: input.note ?? order.note,
-          expiresAt: order.status === "reserved"
-            ? nextReservationExpiry(now, meetupTime)
-            : order.expiresAt,
-        },
-      });
-      return {
-        response: serializeForActor(updated, actor),
-        notifications: [{
-          userId: counterpartId(order, actor),
-          title: "校内面交安排已更新",
-          content: `「${order.item.title}」的见面时间或地点已更新`,
-          link: "/market/mine?tab=reservations",
-          payload: { type: "market-meetup", orderId },
-        }],
-      };
-    }
-
     if (input.action === "buyer_confirm" || input.action === "seller_confirm") {
       if (input.action === "buyer_confirm" && !isBuyer) throw Errors.forbidden();
       if (input.action === "seller_confirm" && !isSeller) throw Errors.forbidden();
+      if (
+        order.status === "completed"
+        && order.buyerConfirmedAt
+        && order.sellerConfirmedAt
+      ) {
+        return {
+          response: serializeForActor(order, actor),
+          notifications: [],
+        };
+      }
       if (!ACTIVE_CONFIRMATION_STATUSES.includes(order.status)) {
-        throw Errors.badRequest("当前预约不能确认完成");
+        throw Errors.badRequest("当前交易不能确认成交");
+      }
+      const alreadyConfirmed = input.action === "buyer_confirm"
+        ? Boolean(order.buyerConfirmedAt)
+        : Boolean(order.sellerConfirmedAt);
+      if (alreadyConfirmed) {
+        return {
+          response: serializeForActor(order, actor),
+          notifications: [],
+        };
       }
       const confirmationData = input.action === "buyer_confirm"
         ? { buyerConfirmedAt: now }
@@ -171,6 +138,17 @@ export async function transitionMarketOrder(
       });
       const notifications: MarketOrderNotification[] = [];
       if (updated.buyerConfirmedAt && updated.sellerConfirmedAt) {
+        const alreadyCompleted = await tx.marketOrder.findFirst({
+          where: {
+            itemId: order.itemId,
+            id: { not: orderId },
+            status: "completed",
+          },
+          select: { id: true },
+        });
+        if (alreadyCompleted) {
+          throw Errors.conflict("该商品已由其他交易成交");
+        }
         updated = await tx.marketOrder.update({
           where: { id: orderId },
           data: { status: "completed", completedAt: now, expiresAt: null },
@@ -184,10 +162,86 @@ export async function transitionMarketOrder(
             },
           });
         }
+        const competingOrders = order.deliveryType === "physical"
+          ? await tx.marketOrder.findMany({
+            where: {
+              itemId: order.itemId,
+              id: { not: orderId },
+              status: "negotiating",
+            },
+            select: { id: true, buyerId: true },
+          })
+          : [];
+        if (competingOrders.length) {
+          await tx.marketOrder.updateMany({
+            where: { id: { in: competingOrders.map((entry) => entry.id) } },
+            data: {
+              status: "cancelled",
+              closedAt: now,
+              cancelReason: "商品已由其他买家成交",
+            },
+          });
+          notifications.push(...competingOrders.map((entry) => ({
+            userId: entry.buyerId,
+            title: "商品已成交",
+            content: `「${order.item.title}」已由卖家与其他买家确认成交`,
+            link: "/market/messages",
+            payload: { type: "market-item-sold", orderId: entry.id, itemId: order.itemId },
+          })));
+        }
         if (order.wantedPostId) {
+          const alternativeWantedOrders = await tx.marketOrder.findMany({
+            where: {
+              wantedPostId: order.wantedPostId,
+              id: { not: orderId },
+              status: "negotiating",
+            },
+            select: { id: true, sellerId: true },
+          });
+          if (alternativeWantedOrders.length) {
+            await tx.marketOrder.updateMany({
+              where: { id: { in: alternativeWantedOrders.map((entry) => entry.id) } },
+              data: {
+                status: "cancelled",
+                closedAt: now,
+                cancelReason: "求购已通过其他响应成交",
+              },
+            });
+            notifications.push(...alternativeWantedOrders.map((entry) => ({
+              userId: entry.sellerId,
+              title: "求购已成交",
+              content: `「${order.wantedPost?.title || order.item.title}」已通过其他响应确认成交`,
+              link: "/market/messages",
+              payload: {
+                type: "market-wanted-completed",
+                orderId: entry.id,
+                wantedPostId: order.wantedPostId,
+              },
+            })));
+          }
           await tx.wantedPost.updateMany({
-            where: { id: order.wantedPostId, status: "matched" },
+            where: {
+              id: order.wantedPostId,
+              status: { in: ["active", "responded", "matched"] },
+            },
             data: { status: "completed" },
+          });
+          await tx.wantedResponse.updateMany({
+            where: {
+              wantedPostId: order.wantedPostId,
+              id: { not: order.wantedResponseId ?? -1 },
+              status: { in: ["pending", "accepted"] },
+            },
+            data: { status: "rejected" },
+          });
+          await tx.marketItem.updateMany({
+            where: {
+              sourceWantedPostId: order.wantedPostId,
+              id: { not: order.itemId },
+              visibility: "targeted",
+              status: "targeted",
+            },
+            data: { status: "withdrawn" },
           });
         }
         if (order.deliveryType === "physical") {
@@ -225,15 +279,15 @@ export async function transitionMarketOrder(
           {
             userId: order.buyerId,
             title: "交易已完成",
-            content: `「${order.item.title}」已由双方确认，可评价卖家`,
-            link: "/market/mine?tab=history",
+            content: `「${order.item.title}」已由双方确认，成交积分已发放`,
+            link: "/market/messages",
             payload: { type: "market-completed", orderId },
           },
           {
             userId: order.sellerId,
             title: "交易已完成",
-            content: `「${order.item.title}」已由双方确认，可评价买家`,
-            link: "/market/mine?tab=history",
+            content: `「${order.item.title}」已由双方确认，成交积分已发放`,
+            link: "/market/messages",
             payload: { type: "market-completed-seller", orderId },
           },
         );
@@ -245,7 +299,7 @@ export async function transitionMarketOrder(
     }
 
     if (input.action === "cancel") {
-      if (["reserved", "delivering"].includes(order.status) && !order.paidAt) {
+      if (["negotiating", "reserved", "delivering"].includes(order.status) && !order.paidAt) {
         const reason = String(input.reason || "").trim();
         if (!reason) throw Errors.badRequest("请选择或填写取消原因");
         const cancelled = await tx.marketOrder.update({
@@ -284,26 +338,20 @@ export async function transitionMarketOrder(
         }
         await tx.marketItem.update({
           where: { id: order.itemId },
-          data: { status: restoredItemStatus(order.item, now) },
+          data: {
+            status: order.wantedResponseId && order.item.visibility === "targeted"
+              ? "withdrawn"
+              : restoredItemStatus(order.item, now),
+          },
         });
-        if (order.deliveryType === "physical") {
-          await awardTransactionPointsInTransaction(tx, {
-            userId: actor.userId,
-            delta: TRANSACTION_POINT_RULES.acceptedOrderCancelled,
-            event: "accepted_order_cancelled",
-            sourceType: "market_order",
-            sourceId: orderId,
-            reason: "接受交易后主动取消",
-          });
-        }
         return {
           response: serializeForActor(cancelled, actor),
           notifications: [{
             userId: counterpartId(order, actor),
-            title: "交易预约已取消",
-            content: `「${order.item.title}」的预约已取消：${reason}`,
-            link: "/market/mine?tab=reservations",
-            payload: { type: "market-reservation-cancelled", orderId },
+            title: "交易洽谈已结束",
+            content: `「${order.item.title}」的洽谈已结束：${reason}`,
+            link: "/market/mine?tab=trading",
+            payload: { type: "market-negotiation-cancelled", orderId },
           }],
         };
       }
@@ -354,65 +402,6 @@ export async function transitionMarketOrder(
         };
       }
       throw Errors.badRequest("当前交易不能取消");
-    }
-
-    if (input.action === "report_no_show") {
-      if (!isBuyer && !isSeller) throw Errors.forbidden();
-      if (order.status !== "reserved" || order.paidAt) {
-        throw Errors.badRequest("当前预约不能登记爽约");
-      }
-      const reason = String(input.reason || "").trim();
-      if (!reason) throw Errors.badRequest("请说明爽约情况");
-      const noShowParty = isBuyer ? "seller" : "buyer";
-      const updated = await tx.marketOrder.update({
-        where: { id: orderId },
-        data: {
-          status: "no_show",
-          closedAt: now,
-          noShowParty,
-          cancelReason: reason,
-          cancelledById: actor.userId,
-          expiresAt: null,
-        },
-      });
-      if (order.offerId) {
-        await tx.marketOffer.updateMany({
-          where: { id: order.offerId },
-          data: { status: "expired" },
-        });
-      }
-      if (order.tradeIntentId) {
-        await tx.tradeIntent.updateMany({
-          where: { id: order.tradeIntentId },
-          data: { status: "expired" },
-        });
-      }
-      if (order.wantedResponseId) {
-        await tx.wantedResponse.updateMany({
-          where: { id: order.wantedResponseId },
-          data: { status: "expired" },
-        });
-      }
-      if (order.wantedPostId) {
-        await tx.wantedPost.updateMany({
-          where: { id: order.wantedPostId, status: "matched" },
-          data: { status: "responded" },
-        });
-      }
-      await tx.marketItem.updateMany({
-        where: { id: order.itemId, status: "reserved" },
-        data: { status: restoredItemStatus(order.item, now) },
-      });
-      return {
-        response: serializeForActor(updated, actor),
-        notifications: [{
-          userId: counterpartId(order, actor),
-          title: "交易预约被登记爽约",
-          content: `「${order.item.title}」的另一方提交了爽约记录；如有异议请发起申诉。`,
-          link: "/market/mine?tab=reservations",
-          payload: { type: "market-no-show", orderId },
-        }],
-      };
     }
 
     if (input.action === "request_refund") {

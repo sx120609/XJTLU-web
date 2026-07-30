@@ -30,7 +30,6 @@ import {
   patchQuestionnaireSchema,
   questionnaireResponseSchema,
 } from "../../services/toolSchemas";
-import { notifyQuestionnaireResponseForQqBot } from "../../services/toolQqReminders";
 import { Errors, ok } from "../../utils/response";
 
 export const toolQuestionnairesRouter = Router();
@@ -345,18 +344,11 @@ toolQuestionnairesRouter.post(
             answers: JSON.stringify(answers),
           },
         });
-        return { response, questionnaire: current };
-      });
-      await notifyQuestionnaireResponseForQqBot({
-        questionnaire: result.questionnaire,
-        responseId: result.response.id,
-        respondentId: req.user?.userId ?? null,
-      }).catch((error) => {
-        console.warn("[tools] questionnaire qqbot reminder failed", error);
+        return response;
       });
       ok(res, {
-        id: result.response.id,
-        createdAt: result.response.createdAt,
+        id: result.id,
+        createdAt: result.createdAt,
       });
     } catch (error) {
       next(error);

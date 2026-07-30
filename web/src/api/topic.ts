@@ -24,6 +24,9 @@ export interface Topic {
   hotScore: number;
   hotReasons: string[];
   hotScoreUpdatedAt?: string | null;
+  boostedUntil?: string | null;
+  boostPointsSpent?: number;
+  favorited?: boolean;
   editCount?: number;
   lastReplyAt?: string;
   aiReviewStatus?: string;
@@ -35,7 +38,7 @@ export interface Topic {
   createdAt: string;
   updatedAt: string;
   author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
-  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
+  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; reputation?: number };
   board?: { id?: number; slug: string; name: string; color?: string; icon?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
   imageReview?: {
     enabled: boolean;
@@ -66,7 +69,7 @@ export interface Reply {
   likeCount: number;
   createdAt: string;
   author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
-  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
+  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; reputation?: number };
   imageReview?: {
     enabled: boolean;
     totalCount: number;
@@ -121,6 +124,7 @@ export const topicApi = {
     request.post<TopicAutoFormatResult>("/topics/format", payload, { timeout: 60000 }),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
+  toggleFavorite: (id: number) => request.post<{ favorited: boolean }>(`/topics/${id}/favorite`),
 };
 
 export const replyApi = {

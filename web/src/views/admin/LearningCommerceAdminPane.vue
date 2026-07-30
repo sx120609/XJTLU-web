@@ -4,13 +4,12 @@
       <div>
         <span>PAID LEARNING OPERATIONS</span>
         <h3>付费学习资料审核</h3>
-        <p>创作者资质与每个资料版本分别人工审核；付款争议可进入订单查看完整凭证链。</p>
+        <p>校园用户默认可以发布；运营只审核资料内容与版本，并处理付款争议、违规和申诉。</p>
       </div>
       <el-button @click="load">刷新审核队列</el-button>
     </header>
 
     <div class="queue-counts">
-      <article><b>{{ operations?.queues.creatorApplications.pending ?? applications.length }}</b><span>待审核创作者 · 超时 {{ operations?.queues.creatorApplications.overdue || 0 }}</span></article>
       <article><b>{{ operations?.queues.materialReviews.pending ?? reviews.length }}</b><span>待审核资料 · 超时 {{ operations?.queues.materialReviews.overdue || 0 }}</span></article>
       <article><b>{{ operations?.queues.sellerConfirmations.pending ?? disputes.length }}</b><span>待卖家核对 · 超时 {{ operations?.queues.sellerConfirmations.overdue || 0 }}</span></article>
       <article><b>{{ operations?.queues.orderIssues.pending ?? issues.length }}</b><span>待处理售后 · 超时 {{ operations?.queues.orderIssues.overdue || 0 }}</span></article>
@@ -19,24 +18,6 @@
     <div v-if="operations" class="funnel"><span>近30天</span><b>试读 {{ operations.funnel30d.samplePreviews }}</b><b>订单 {{ operations.funnel30d.orders }}</b><b>交付 {{ operations.funnel30d.delivered }}</b><b>完成 {{ operations.funnel30d.completed }}</b><b>退款 {{ operations.funnel30d.refunded }}</b><b>评价 {{ operations.funnel30d.ratings }}</b><small>完成率 {{ operations.funnel30d.completionRate }}% · 退款率 {{ operations.funnel30d.refundRate }}%</small></div>
 
     <el-tabs v-model="tab">
-      <el-tab-pane label="创作者认证" name="creators">
-        <el-table :data="applications" stripe>
-          <el-table-column label="申请人" min-width="150">
-            <template #default="{ row }"><b>{{ row.user?.nickname || `用户 #${row.userId}` }}</b><small>{{ formatDate(row.submittedAt) }}</small></template>
-          </el-table-column>
-          <el-table-column prop="expertise" label="擅长领域" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="experience" label="经验说明" min-width="220" show-overflow-tooltip />
-          <el-table-column prop="sampleDescription" label="样例说明" min-width="240" show-overflow-tooltip />
-          <el-table-column label="操作" width="160">
-            <template #default="{ row }">
-              <el-button link type="success" @click="reviewCreator(row.id, 'approve')">通过</el-button>
-              <el-button link type="danger" @click="reviewCreator(row.id, 'reject')">驳回</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-empty v-if="!applications.length" description="暂无待审核创作者申请" />
-      </el-tab-pane>
-
       <el-tab-pane label="资料版本审核" name="materials">
         <el-table :data="reviews" stripe>
           <el-table-column label="资料" min-width="230">
@@ -96,15 +77,15 @@
                 <el-button link @click="openIssueDecision(row, 'close')">关闭</el-button>
               </template>
               <el-button v-if="['awaiting_seller_confirmation', 'disputed', 'delivered', 'completed'].includes(row.order.status)" link type="danger" @click="openIssueDecision(row, 'record_refund')">登记退款</el-button>
-              <el-button link type="danger" @click="openViolation(row)">创作者治理</el-button>
+              <el-button link type="danger" @click="openViolation(row)">发布者治理</el-button>
             </template>
           </el-table-column>
         </el-table>
         <el-empty v-if="!issues.length" description="暂无待处理售后" />
       </el-tab-pane>
-      <el-tab-pane label="创作者治理" name="governance">
-        <el-table :data="violations" stripe><el-table-column label="创作者 / 动作" min-width="190"><template #default="{row}"><b>{{ row.creator?.nickname || `#${row.creatorId}` }}</b><small>{{ row.action }} · {{ row.severity }} · {{ row.status }}</small></template></el-table-column><el-table-column prop="reason" label="事实与理由" min-width="260" show-overflow-tooltip /><el-table-column label="申诉" min-width="280"><template #default="{row}"><template v-if="row.appeals?.[0]"><p>{{ row.appeals[0].content }}</p><el-button v-if="row.appeals[0].status==='pending'" link type="success" @click="decideAppeal(row.appeals[0].id,'approve')">通过申诉</el-button><el-button v-if="row.appeals[0].status==='pending'" link type="danger" @click="decideAppeal(row.appeals[0].id,'reject')">驳回申诉</el-button><el-tag v-else>{{ row.appeals[0].status }}</el-tag></template><span v-else>暂无申诉</span></template></el-table-column></el-table>
-        <el-empty v-if="!violations.length" description="暂无创作者治理记录" />
+      <el-tab-pane label="资料发布者治理" name="governance">
+        <el-table :data="violations" stripe><el-table-column label="发布者 / 动作" min-width="190"><template #default="{row}"><b>{{ row.creator?.nickname || `#${row.creatorId}` }}</b><small>{{ row.action }} · {{ row.severity }} · {{ row.status }}</small></template></el-table-column><el-table-column prop="reason" label="事实与理由" min-width="260" show-overflow-tooltip /><el-table-column label="申诉" min-width="280"><template #default="{row}"><template v-if="row.appeals?.[0]"><p>{{ row.appeals[0].content }}</p><el-button v-if="row.appeals[0].status==='pending'" link type="success" @click="decideAppeal(row.appeals[0].id,'approve')">通过申诉</el-button><el-button v-if="row.appeals[0].status==='pending'" link type="danger" @click="decideAppeal(row.appeals[0].id,'reject')">驳回申诉</el-button><el-tag v-else>{{ row.appeals[0].status }}</el-tag></template><span v-else>暂无申诉</span></template></el-table-column></el-table>
+        <el-empty v-if="!violations.length" description="暂无资料发布者治理记录" />
       </el-tab-pane>
     </el-tabs>
 
@@ -133,7 +114,7 @@
           <el-input-number v-model="refundAmount" :min="0.01" :max="Number(activeIssue?.order.amount || 0.01)" :precision="2" :step="1" controls-position="right" />
         </el-form-item>
         <el-form-item label="责任认定">
-          <el-select v-model="responsibility" style="width:100%"><el-option label="创作者责任" value="creator" /><el-option label="买家责任" value="buyer" /><el-option label="双方责任" value="shared" /><el-option label="平台责任" value="platform" /><el-option label="无责协商处理" value="no_fault" /></el-select>
+          <el-select v-model="responsibility" style="width:100%"><el-option label="资料发布者责任" value="creator" /><el-option label="买家责任" value="buyer" /><el-option label="双方责任" value="shared" /><el-option label="平台责任" value="platform" /><el-option label="无责协商处理" value="no_fault" /></el-select>
         </el-form-item>
         <template v-if="issueAction === 'record_refund'">
           <el-form-item label="退款凭证图片"><input type="file" accept="image/png,image/jpeg,image/webp" @change="pickRefundEvidence" /></el-form-item>
@@ -150,7 +131,7 @@
         </el-button>
       </template>
     </el-dialog>
-    <el-dialog v-model="violationDialog" title="登记创作者治理记录" width="560px"><el-alert type="warning" :closable="false" show-icon title="治理动作会留痕；暂停或撤销只阻止新销售，不会删除已购用户的合法访问权。" /><el-form label-position="top"><div class="violation-fields"><el-form-item label="问题类型"><el-select v-model="violation.type"><el-option label="描述不实" value="misleading" /><el-option label="版权侵权" value="copyright" /><el-option label="文件安全" value="file_safety" /><el-option label="交付问题" value="delivery" /><el-option label="服务问题" value="service" /><el-option label="欺诈" value="fraud" /><el-option label="其他" value="other" /></el-select></el-form-item><el-form-item label="严重程度"><el-select v-model="violation.severity"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select></el-form-item></div><el-form-item label="治理动作"><el-select v-model="violation.action" style="width:100%"><el-option label="警告" value="warn" /><el-option label="隐藏当前资料" value="hide_material" /><el-option label="暂停 7 天" value="suspend_7d" /><el-option label="暂停 30 天" value="suspend_30d" /><el-option label="撤销创作者资格" value="revoke" /></el-select></el-form-item><el-form-item label="事实与理由"><el-input v-model="violation.reason" type="textarea" :rows="4" maxlength="1000" show-word-limit /></el-form-item><el-form-item label="证据摘要"><el-input v-model="violation.evidence" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="violationDialog=false">取消</el-button><el-button type="danger" @click="submitViolation">确认登记</el-button></template></el-dialog>
+    <el-dialog v-model="violationDialog" title="登记资料发布者治理记录" width="560px"><el-alert type="warning" :closable="false" show-icon title="治理动作会留痕；暂停或撤销只阻止新销售，不会删除已购用户的合法访问权。" /><el-form label-position="top"><div class="violation-fields"><el-form-item label="问题类型"><el-select v-model="violation.type"><el-option label="描述不实" value="misleading" /><el-option label="版权侵权" value="copyright" /><el-option label="文件安全" value="file_safety" /><el-option label="交付问题" value="delivery" /><el-option label="服务问题" value="service" /><el-option label="欺诈" value="fraud" /><el-option label="其他" value="other" /></el-select></el-form-item><el-form-item label="严重程度"><el-select v-model="violation.severity"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select></el-form-item></div><el-form-item label="治理动作"><el-select v-model="violation.action" style="width:100%"><el-option label="警告" value="warn" /><el-option label="隐藏当前资料" value="hide_material" /><el-option label="暂停 7 天" value="suspend_7d" /><el-option label="暂停 30 天" value="suspend_30d" /><el-option label="撤销发布权限" value="revoke" /></el-select></el-form-item><el-form-item label="事实与理由"><el-input v-model="violation.reason" type="textarea" :rows="4" maxlength="1000" show-word-limit /></el-form-item><el-form-item label="证据摘要"><el-input v-model="violation.evidence" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="violationDialog=false">取消</el-button><el-button type="danger" @click="submitViolation">确认登记</el-button></template></el-dialog>
   </section>
 </template>
 
@@ -162,7 +143,6 @@ import {
   learningMaterialsApi,
   type LearningAdminOrderIssue,
   type LearningCommerceOrder,
-  type LearningCreatorApplication,
   type LearningMaterialReview,
   type LearningOperationsOverview,
   type LearningCreatorViolation,
@@ -171,8 +151,7 @@ import {
 const router = useRouter();
 const loading = ref(false);
 const saving = ref(false);
-const tab = ref("creators");
-const applications = ref<LearningCreatorApplication[]>([]);
+const tab = ref("materials");
 const reviews = ref<LearningMaterialReview[]>([]);
 const disputes = ref<LearningCommerceOrder[]>([]);
 const issues = ref<LearningAdminOrderIssue[]>([]);
@@ -208,15 +187,13 @@ onMounted(load);
 async function load() {
   loading.value = true;
   try {
-    const [creatorRows, materialRows, orderRows, issueRows, operationRows, violationRows] = await Promise.all([
-      learningMaterialsApi.adminCreatorApplications("submitted", { suppressErrorMessage: true }),
+    const [materialRows, orderRows, issueRows, operationRows, violationRows] = await Promise.all([
       learningMaterialsApi.adminMaterialReviews("submitted", { suppressErrorMessage: true }),
       learningMaterialsApi.orders("all", { suppressErrorMessage: true }),
       learningMaterialsApi.adminOrderIssues("active", { suppressErrorMessage: true }),
       learningMaterialsApi.adminOperations({ suppressErrorMessage: true }),
       learningMaterialsApi.adminCreatorViolations(undefined, { suppressErrorMessage: true }),
     ]);
-    applications.value = creatorRows;
     reviews.value = materialRows;
     disputes.value = orderRows.filter((row) => row.status === "disputed");
     issues.value = issueRows;
@@ -225,22 +202,6 @@ async function load() {
   } finally {
     loading.value = false;
   }
-}
-
-async function reviewCreator(id: number, action: "approve" | "reject") {
-  let reason = "";
-  if (action === "reject") {
-    const result = await ElMessageBox.prompt("请填写具体驳回原因，申请人将看到该说明。", "驳回创作者申请", {
-      inputPattern: /\S{2,}/,
-      inputErrorMessage: "请填写至少 2 个字符",
-    });
-    reason = result.value.trim();
-  } else {
-    await ElMessageBox.confirm("确认已核验申请人的领域、经验、样例说明和版权承诺？", "通过创作者认证");
-  }
-  await learningMaterialsApi.adminReviewCreator(id, { action, reason });
-  ElMessage.success(action === "approve" ? "创作者认证已通过" : "创作者申请已驳回");
-  await load();
 }
 
 function openMaterialReview(row: LearningMaterialReview, action: "approve" | "reject") {
@@ -360,13 +321,13 @@ async function submitViolation() {
     reason: violation.reason.trim(),
     evidence: violation.evidence.trim(),
   });
-  ElMessage.success("创作者治理记录已登记");
+  ElMessage.success("资料发布者治理记录已登记");
   violationDialog.value = false;
   await load();
 }
 
 async function decideAppeal(id: number, action: "approve" | "reject") {
-  const { value } = await ElMessageBox.prompt("填写申诉复核结论，创作者将看到该说明。", action === "approve" ? "通过申诉" : "驳回申诉", {
+  const { value } = await ElMessageBox.prompt("填写申诉复核结论，资料发布者将看到该说明。", action === "approve" ? "通过申诉" : "驳回申诉", {
     inputPattern: /\S{2,}/,
     inputErrorMessage: "请填写至少 2 个字符",
   });
@@ -390,6 +351,6 @@ function formatDate(value?: string | null) {
 </script>
 
 <style scoped>
-.learning-admin{margin:16px 0;padding:18px}.learning-admin>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.learning-admin header span{color:#a21caf;font-size:9px;font-weight:800;letter-spacing:.15em}.learning-admin h3{margin:5px 0}.learning-admin header p{margin:0;color:var(--cpu-text-secondary);font-size:12px}.queue-counts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.queue-counts article{display:flex;flex-direction:column;padding:13px;border-radius:10px;background:var(--cpu-surface-soft)}.queue-counts b{color:#a21caf;font-size:23px}.queue-counts span,.el-table small{color:var(--cpu-text-secondary);font-size:10px}.el-table b,.el-table small{display:block}.el-table a{color:var(--cpu-primary);text-decoration:none}.file-list{display:flex;flex-direction:column;gap:3px;font-size:10px}.el-dialog .el-checkbox{display:flex;margin:14px 0}.el-dialog .el-textarea{margin-top:10px}@media(max-width:900px){.queue-counts{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.learning-admin>header{flex-direction:column}.queue-counts{grid-template-columns:1fr}}
+.learning-admin{margin:16px 0;padding:18px}.learning-admin>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.learning-admin header span{color:#a21caf;font-size:9px;font-weight:800;letter-spacing:.15em}.learning-admin h3{margin:5px 0}.learning-admin header p{margin:0;color:var(--cpu-text-secondary);font-size:12px}.queue-counts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}.queue-counts article{display:flex;flex-direction:column;padding:13px;border-radius:10px;background:var(--cpu-surface-soft)}.queue-counts b{color:#a21caf;font-size:23px}.queue-counts span,.el-table small{color:var(--cpu-text-secondary);font-size:10px}.el-table b,.el-table small{display:block}.el-table a{color:var(--cpu-primary);text-decoration:none}.file-list{display:flex;flex-direction:column;gap:3px;font-size:10px}.el-dialog .el-checkbox{display:flex;margin:14px 0}.el-dialog .el-textarea{margin-top:10px}@media(max-width:900px){.queue-counts{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.learning-admin>header{flex-direction:column}.queue-counts{grid-template-columns:1fr}}
 .funnel{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;padding:12px;border-radius:10px;background:var(--cpu-surface-soft)}.funnel span{color:#a21caf;font-weight:800}.funnel b{font-size:11px}.funnel small{margin-left:auto;color:var(--cpu-text-secondary)}.file-list a{margin-left:8px;font-weight:700}
 </style>

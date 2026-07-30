@@ -26,20 +26,19 @@
           </dl>
 
           <div v-if="!item.mine" class="buy-actions">
-            <el-button :disabled="!auth.isLoggedIn || item.status !== 'active'" @click="openIntent">{{ item.negotiable ? '提交出价' : '提交购买意向' }}</el-button>
-            <el-button type="primary" :disabled="!auth.isLoggedIn || item.status !== 'active'" @click="openIntent">我想要</el-button>
+            <el-button type="primary" :disabled="!auth.isLoggedIn || item.status !== 'active'" :loading="submitting" @click="startChat">发起私聊</el-button>
             <el-button circle :icon="item.favorited ? StarFilled : Star" @click="favorite" />
           </div>
           <div v-else class="owner-actions">
             <el-button v-if="['active', 'draft', 'expired', 'withdrawn', 'sold'].includes(item.status)" type="primary" @click="$router.push({ name: 'market-edit', params: { id: item.id } })">编辑商品</el-button>
-            <el-button v-if="item.status === 'active'" @click="$router.push('/market/promotions')">申请置顶 / 首页推广</el-button>
-            <el-button @click="$router.push({ name: 'market-mine', query: { tab: 'intents' } })">管理意向</el-button>
+            <el-button v-if="item.status === 'active'" @click="boostItem">积分推流</el-button>
+            <el-button @click="$router.push({ name: 'market-messages' })">查看私聊</el-button>
             <el-button v-if="['expired', 'withdrawn', 'sold'].includes(item.status)" @click="relist">重新上架</el-button>
             <el-button v-if="['active', 'expired', 'withdrawn'].includes(item.status)" type="success" plain @click="markSold">标记已售</el-button>
             <el-button v-if="['active', 'negotiating', 'expired'].includes(item.status)" type="danger" plain @click="withdraw">下架</el-button>
           </div>
-          <p v-if="!auth.isLoggedIn" class="login-tip">登录 XJTLU 账号后即可收藏和提交购买意向。</p>
-          <div class="trade-note"><b>线下交易安全</b><span>卖家接受意向后，双方才进入站内交易会话并约定校内公共区域见面。当面验货后，买家直接向卖家付款；靠浦不代收商品款、不提供钱包或担保。</span></div>
+          <p v-if="!auth.isLoggedIn" class="login-tip">登录 XJTLU 账号后即可收藏和发起私聊。</p>
+          <div class="trade-note"><b>简单交易</b><span>有意向就直接私聊，双方自行沟通价格、时间和校内地点。实际成交后买卖双方分别确认，系统才计为成交并发放积分；靠浦不代收商品款。</span></div>
         </div>
       </section>
 
@@ -51,7 +50,7 @@
         </article>
         <aside class="seller-card cpu-card" role="button" tabindex="0" @click="$router.push(`/market/seller/${item.sellerId}`)" @keydown.enter="$router.push(`/market/seller/${item.sellerId}`)">
           <div class="seller-head"><UserAvatar :size="52" :src="item.seller.avatar" :name="item.seller.nickname" /><div><strong>{{ item.seller.nickname || '靠浦用户' }}</strong><span>{{ sellerTrust?.identity.label || (item.seller.studentSso ? '✓ XJTLU 校园认证' : '校园平台用户') }}</span></div></div>
-          <div class="seller-stats"><div><b>{{ sellerTrust?.score ?? '—' }}</b><span>信用分</span></div><div><b>{{ Number(sellerProfile?.stats.rating ?? item.sellerRating ?? 0).toFixed(1) }}</b><span>交易评分</span></div><div><b>{{ sellerProfile?.stats.completedTrades ?? 0 }}</b><span>完成交易</span></div><div><b>{{ sellerProfile?.stats.positiveRate ?? 0 }}%</b><span>好评率</span></div></div>
+          <div class="seller-stats"><div><b>{{ sellerTrust?.score ?? '—' }}</b><span>信誉值</span></div><div><b>{{ Number(sellerProfile?.stats.rating ?? item.sellerRating ?? 0).toFixed(1) }}</b><span>交易评分</span></div><div><b>{{ sellerTrust?.completedTradeCount ?? sellerProfile?.stats.completedTrades ?? 0 }}</b><span>成交笔数</span></div><div><b>{{ sellerTrust?.completionRate ?? 0 }}%</b><span>成交率</span></div></div>
           <p>查看卖家的在售物品和交易记录。建议在校园公共区域见面，当面验货；商品款由买家直接支付给卖家。</p>
         </aside>
       </section>
@@ -64,11 +63,6 @@
     </template>
     <el-empty v-else-if="!loading" description="商品不存在或已被下架"><el-button @click="$router.push('/market')">返回市集</el-button></el-empty>
 
-    <el-dialog v-model="intentOpen" :title="item?.negotiable ? '提交购买出价' : '确认购买意向'" width="460px">
-      <el-form label-position="top"><el-form-item label="购买价格"><el-input-number v-model="intent.price" :disabled="!item?.negotiable" :min="0.01" :max="999999" :precision="2" /></el-form-item><el-form-item label="方便交易的时间" required><el-input v-model="intent.availableTime" maxlength="300" placeholder="例如：工作日 18:00 后" /></el-form-item><el-form-item label="给卖家留言"><el-input v-model="intent.message" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="补充验货需求和希望的校内地点，请勿填写联系方式" /></el-form-item></el-form>
-      <el-alert type="info" :closable="false" title="卖家接受后商品将进入已预订。请通过站内消息约定时间地点，当面验货并直接向卖家付款。" />
-      <template #footer><el-button @click="intentOpen = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitIntent">提交意向</el-button></template>
-    </el-dialog>
     <el-dialog v-model="reportOpen" title="举报商品" width="460px"><el-select v-model="report.reason" placeholder="选择原因" style="width:100%"><el-option v-for="reason in reportReasons" :key="reason" :label="reason" :value="reason" /></el-select><el-input v-model="report.detail" type="textarea" :rows="4" maxlength="1000" show-word-limit placeholder="补充说明" style="margin-top:12px" /><template #footer><el-button @click="reportOpen = false">取消</el-button><el-button type="danger" :loading="submitting" @click="submitReport">提交举报</el-button></template></el-dialog>
     <MarketShareDialog v-model="shareOpen" :title="item?.title || '校园市集商品'" :summary="item ? `¥${item.price}，${item.campus || '校内'}面交` : ''" />
   </div>
@@ -79,7 +73,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { marketApi, marketTradeModeLabel, type MarketItem, type MarketTradeIntentInput, type MarketTrustProfile, type MarketWantedMatch } from "@/api/market";
+import { marketApi, marketTradeModeLabel, type MarketItem, type MarketTrustProfile, type MarketWantedMatch } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import MarketShareDialog from "@/components/market/MarketShareDialog.vue";
@@ -96,10 +90,8 @@ const sellerTrust = ref<MarketTrustProfile | null>(null);
 const loading = ref(false);
 const submitting = ref(false);
 const activeImage = ref("");
-const intentOpen = ref(false);
 const reportOpen = ref(false);
 const shareOpen = ref(route.query.published === "1");
-const intent = reactive<MarketTradeIntentInput & { price: number }>({ price: 0, message: "", availableTime: "" });
 const report = reactive({ reason: "", detail: "" });
 const reportReasons = ["疑似诈骗", "禁售或违规物品", "商品信息虚假", "盗用图片", "恶意引流", "其他"];
 const categories = ref<Record<string, string>>({});
@@ -120,7 +112,6 @@ async function load() {
     item.value = nextItem;
     for (const badge of [nextItem.promotions.pinned, nextItem.promotions.home]) if (badge?.orderId) void marketApi.recordPromotionEvent(badge.orderId, "impression", { suppressErrorMessage: true });
     activeImage.value = nextItem.cover;
-    intent.price = Number(nextItem.price);
     const [meta, result, profile, trust, matches] = await Promise.all([
       marketApi.meta({ suppressErrorMessage: true }),
       marketApi.items({ category: nextItem.category, listingType: "sell", size: 8 }, { suppressErrorMessage: true }),
@@ -150,26 +141,27 @@ async function favorite() {
   item.value.favoriteCount = result.favoriteCount;
 }
 
-function openIntent() {
-  if (!auth.isLoggedIn) return router.push({ name: "login", query: { redirect: route.fullPath } });
-  intentOpen.value = true;
-}
-
-async function submitIntent() {
+async function startChat() {
   if (!item.value) return;
-  if (!intent.availableTime.trim()) return void ElMessage.warning("请填写方便交易的时间");
+  if (!auth.isLoggedIn) return router.push({ name: "login", query: { redirect: route.fullPath } });
   submitting.value = true;
   try {
-    await marketApi.createTradeIntent(item.value.id, intent);
-    intentOpen.value = false;
-    ElMessage.success("购买意向已发送，等待卖家确认");
-    await router.push({ name: "market-mine", query: { tab: "intents" } });
+    const conversation = await marketApi.createConversation(item.value.id);
+    await router.push({ name: "market-messages", query: { conversation: conversation.id } });
   } finally { submitting.value = false; }
+}
+
+async function boostItem() {
+  if (!item.value) return;
+  await router.push({
+    name: "market-promotions",
+    query: { mode: "points", targetType: "market_item", targetId: String(item.value.id) },
+  });
 }
 
 async function withdraw() {
   if (!item.value) return;
-  await ElMessageBox.confirm("下架后商品将不再出现在市集列表，待处理意向会失效，确定继续？", "下架商品", { type: "warning" });
+  await ElMessageBox.confirm("下架后商品将不再出现在市集列表，未成交的私聊交易会保留但不能继续确认成交，确定继续？", "下架商品", { type: "warning" });
   item.value = await marketApi.updateItemLifecycle(item.value.id, "withdraw");
   ElMessage.success("商品已下架");
 }
@@ -182,7 +174,7 @@ async function relist() {
 
 async function markSold() {
   if (!item.value) return;
-  await ElMessageBox.confirm("确认商品已经通过其他方式售出？标记后待处理意向会失效。", "标记已售", { type: "warning" });
+  await ElMessageBox.confirm("确认商品已经通过其他方式售出？站内未完成的交易将不能再确认成交。", "标记已售", { type: "warning" });
   item.value = await marketApi.updateItemLifecycle(item.value.id, "mark_sold");
   ElMessage.success("商品已标记为售出");
 }
@@ -197,7 +189,7 @@ async function submitReport() {
 function categoryLabel(value: string) { return categories.value[value] || value; }
 function conditionLabel(value: string) { return ({ new: "全新", like_new: "近全新", good: "使用良好", fair: "有使用痕迹" } as Record<string, string>)[value] || value; }
 const tradeModeLabel = marketTradeModeLabel;
-function statusLabel(value: string) { return ({ draft: "草稿", reviewing: "审核中", active: "在售", negotiating: "洽谈中", reserved: "已预订", sold: "已售出", expired: "已过期", withdrawn: "已下架", hidden: "已隐藏" } as Record<string, string>)[value] || value; }
+function statusLabel(value: string) { return ({ draft: "草稿", reviewing: "审核中", active: "在售", negotiating: "洽谈中", reserved: "历史洽谈", sold: "已售出", expired: "已过期", withdrawn: "已下架", hidden: "已隐藏" } as Record<string, string>)[value] || value; }
 function formatDate(value: string) { return new Date(value).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }); }
 </script>
 

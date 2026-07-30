@@ -137,7 +137,7 @@
         </el-form-item>
         <el-form-item label="匿名机制">
           <el-switch v-model="form.anonymousEnabled" />
-          <span class="anonymous-switch-note">开启后，该板块可消耗用户每周匿名积分进行匿名发帖 / 回复。</span>
+          <span class="anonymous-switch-note">开启后，该板块支持免费匿名发帖与回复，不消耗积分。</span>
         </el-form-item>
       </el-form>
       <template #footer>

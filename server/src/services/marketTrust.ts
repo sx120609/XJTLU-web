@@ -135,11 +135,11 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
   const [
     user,
     physicalCompletedTradeCount,
+    physicalSellingItemCount,
+    physicalSoldItemCount,
     learningCompletedTradeCount,
     physicalReviewSummary,
-    physicalPositiveReviewCount,
     learningReviewSummary,
-    learningPositiveReviewCount,
     noShowCount,
     cancelledByUserCount,
     activeViolations,
@@ -155,7 +155,9 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
         avatar: true,
         role: true,
         studentSso: true,
+        reputation: true,
         transactionPoints: true,
+        marketPositiveRate: true,
         createdAt: true,
       },
     }),
@@ -165,6 +167,24 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
         deliveryType: "physical",
         learningCommerceOrder: { is: null },
         OR: [{ buyerId: userId }, { sellerId: userId }],
+      },
+    }),
+    prisma.marketItem.count({
+      where: {
+        sellerId: userId,
+        listingType: "sell",
+        deliveryType: "physical",
+        visibility: "public",
+        status: "active",
+      },
+    }),
+    prisma.marketItem.count({
+      where: {
+        sellerId: userId,
+        listingType: "sell",
+        deliveryType: "physical",
+        visibility: "public",
+        status: "sold",
       },
     }),
     prisma.learningCommerceOrder.count({
@@ -184,23 +204,10 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
       _avg: { rating: true },
       _count: true,
     }),
-    prisma.marketReview.count({
-      where: {
-        targetUserId: userId,
-        rating: { gte: 4 },
-        order: {
-          deliveryType: "physical",
-          learningCommerceOrder: { is: null },
-        },
-      },
-    }),
     prisma.learningMaterialRating.aggregate({
       where: { creatorId: userId, status: "published" },
       _avg: { overall: true },
       _count: true,
-    }),
-    prisma.learningMaterialRating.count({
-      where: { creatorId: userId, status: "published", overall: { gte: 4 } },
     }),
     prisma.marketOrder.count({
       where: { OR: [{ buyerId: userId, noShowParty: "buyer" }, { sellerId: userId, noShowParty: "seller" }] },
@@ -276,7 +283,6 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
   const physicalReviewCount = Number(physicalReviewSummary._count || 0);
   const learningReviewCount = Number(learningReviewSummary._count || 0);
   const reviewCount = physicalReviewCount + learningReviewCount;
-  const positiveReviewCount = physicalPositiveReviewCount + learningPositiveReviewCount;
   const averageRating = reviewCount
     ? (
       Number(physicalReviewSummary._avg.rating || 0) * physicalReviewCount
@@ -284,27 +290,16 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
     ) / reviewCount
     : 0;
   const completedTradeCount = physicalCompletedTradeCount + learningCompletedTradeCount;
-  const normalizedLearningViolations = activeLearningViolations.map((violation: any) => ({
-    level: violation.severity === "critical" || violation.severity === "high"
-      ? "serious"
-      : violation.severity === "medium"
-        ? "moderate"
-        : "warning",
-  }));
-  const trust = calculateMarketTrustScore({
-    identityVerified,
-    completedTradeCount,
-    averageRating,
-    positiveReviewCount,
-    reviewCount,
-    noShowCount,
-    cancelledByUserCount,
-    activeViolations: [...activeViolations, ...normalizedLearningViolations],
-    transactionPoints: user.transactionPoints,
-    creatorQualityScore: creatorProfile?.qualityScore,
-  });
+  const trust = {
+    score: Math.max(0, Math.min(100, user.reputation)),
+    ...trustLevel(Math.max(0, Math.min(100, user.reputation))),
+  };
   const pointLevel = transactionPointLevel(user.transactionPoints);
   const isNew = completedTradeCount === 0 && reviewCount === 0;
+  const physicalClosedTradeCount = physicalSellingItemCount + physicalSoldItemCount;
+  const completionRate = physicalClosedTradeCount
+    ? Math.round((physicalSoldItemCount / physicalClosedTradeCount) * 100)
+    : 0;
   return {
     user: {
       id: user.id,
@@ -320,16 +315,24 @@ export async function getMarketTrustProfile(prisma: any, userId: number, include
     historyLabel: isNew ? "新用户，暂无交易历史" : `已完成 ${completedTradeCount} 笔可信交易`,
     completedTradeCount,
     physicalCompletedTradeCount,
+    physicalClosedTradeCount,
+    physicalSellingItemCount,
+    physicalSoldItemCount,
+    completionRate,
     learningCompletedTradeCount,
     averageRating,
     reviewCount,
     physicalReviewCount,
     learningReviewCount,
-    positiveRate: reviewCount ? Math.round((positiveReviewCount / reviewCount) * 100) : 0,
+    positiveRate: user.marketPositiveRate,
     noShowCount,
     cancelledByUserCount,
     activeViolationCount: activeViolations.length + activeLearningViolations.length,
     transactionPoints: {
+      ...pointLevel,
+      recentEntries: includePrivate ? recentPointEntries : undefined,
+    },
+    points: {
       ...pointLevel,
       recentEntries: includePrivate ? recentPointEntries : undefined,
     },

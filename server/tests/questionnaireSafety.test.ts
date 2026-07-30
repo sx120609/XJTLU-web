@@ -158,7 +158,7 @@ test("tool core routes and validation contracts are isolated from the domain rou
   assert.doesNotMatch(route, /toolsRouter\.(?:get|post|patch|delete)\("\/grade-checks/);
   assert.doesNotMatch(route, /toolsRouter\.(?:get|post|patch|delete)\("\/questionnaires/);
   assert.match(core, /toolPermission\.upsert/);
-  assert.match(core, /qqbot-reminders/);
+  assert.doesNotMatch(core, /qqbot-reminders/);
   assert.match(grades, /acquireGradeCheckLock/);
   assert.match(grades, /gradeCheckSlugBase/);
   assert.match(questionnaires, /acquireQuestionnaireResponseLock/);

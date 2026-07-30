@@ -242,6 +242,8 @@ test("iteration one keeps schema, migration, API and three frontend roles aligne
   assert.match(router, /\/admin\/orders\/:orderId\/issues\/:issueId/);
   assert.match(service, /platformFeeCents: 0/);
   assert.match(service, /learningMaterialAccess\.upsert/);
+  assert.match(service, /publishingAllowed: profile\?\.status === "active"/);
+  assert.match(service, /publishingStatus: profile\?\.status \|\| "active"/);
   assert.match(service, /status: "delivered"/);
   assert.match(service, /type: "REFUND_RECORDED"/);
   assert.doesNotMatch(
@@ -251,7 +253,9 @@ test("iteration one keeps schema, migration, API and three frontend roles aligne
   );
   assert.match(webApi, /"Idempotency-Key"/);
   assert.match(webRouter, /learning\/materials/);
-  assert.match(creator, /创作者认证/);
+  assert.match(creator, /学习资料发布中心/);
+  assert.match(creator, /myItems/);
+  assert.doesNotMatch(creator, /申请成为创作者|提交认证申请/);
   assert.match(orders, /确认到账并交付/);
   assert.match(admin, /资料版本审核/);
 });

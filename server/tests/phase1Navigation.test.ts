@@ -33,17 +33,17 @@ test("phase 1 keeps direct publishing routes while retiring the unified publish 
   assert.match(wantedPublishForm, /marketApi\.createWantedPost/);
 });
 
-test("market hero exposes the four requested destinations in product order", () => {
+test("market hero removes merchant onboarding and keeps direct V1 publishing", () => {
   const market = source("../../web/src/views/market/Index.vue");
-  const markers = ["成为商户", "我的交易", "推广服务", "发布商品"];
+  const markers = ["我的交易", "推广服务", "发布商品"];
   let cursor = -1;
   for (const marker of markers) {
     const next = market.indexOf(marker);
     assert.ok(next > cursor, `${marker} should appear after the previous market action`);
     cursor = next;
   }
-  assert.match(market, /成为商户<\/el-button>/);
-  assert.doesNotMatch(market, />合作商户<\/el-button>/);
+  assert.doesNotMatch(market, /成为商户<\/el-button>/);
+  assert.doesNotMatch(market, /V1 所有校园用户均可直接发布实物商品，无需额外申请/);
 });
 
 test("homepage contains exactly the two focused content sections and no campus resources", () => {
@@ -58,7 +58,10 @@ test("homepage contains exactly the two focused content sections and no campus r
     assert.ok(next > cursor, `${marker} should appear in the planned homepage order`);
     cursor = next;
   }
-  assert.match(home, /marketApi\.items\(\{ page: 1, size: 24, listingType: "sell", sort: "popular"/);
+  assert.match(home, /marketApi\.items\(\{ page: 1, size: 12, listingType: "sell", sort: "popular"/);
+  assert.match(home, /learningMaterialsApi\.items\(\{ page: 1, size: 12, sort: "popular"/);
+  assert.match(home, /\/learning\/materials\/item\//);
+  assert.match(home, /学习资料/);
   assert.match(home, /slice\(0, 8\)/);
   assert.match(home, /<h2>推荐好物<\/h2>/);
   assert.match(home, /<h2>热议与求购<\/h2>/);
@@ -152,7 +155,7 @@ test("current market keeps product categories but removes the retired section st
   assert.match(market, /class="category-strip"/);
   assert.match(market, /class="materials-feature"/);
   assert.match(market, /靠浦特色学习资料商城/);
-  assert.match(market, /审核交付/);
+  assert.doesNotMatch(market, /学习资料与实体商品完全分开|审核交付/);
 
   assert.match(learning, /KAOPU FEATURED LEARNING/);
   assert.match(learning, /<h1>靠浦特色学习资料商城<\/h1>/);

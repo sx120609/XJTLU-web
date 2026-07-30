@@ -29,7 +29,6 @@ const AI_REVIEW_KINDS = [
   "topic",
   "reply",
   "topic-edit",
-  "qqbot-group-ad",
   "image",
   "video",
 ] as const;
@@ -63,12 +62,6 @@ const anonymousTierSchema = z.object({
   quota: z.number().int().min(0).max(999),
 }).strict();
 
-const reputationLevelSchema = z.object({
-  level: z.number().int().min(1).max(5),
-  name: z.string().trim().min(1).max(20),
-  minReputation: z.number().int().min(0).max(9999),
-}).strict();
-
 export const adminSiteConfigPatchSchema = z.object({
   siteName: z.string().trim().max(40).optional(),
   siteSubtitle: z.string().trim().max(80).optional(),
@@ -82,15 +75,6 @@ export const adminSiteConfigPatchSchema = z.object({
   aiReviewFallbackModels: z.string().trim().max(400).optional(),
   aiReviewApiKey: z.string().trim().min(1).max(240).optional(),
   clearAiReviewApiKey: z.boolean().optional(),
-  qqGroupAdReviewEnabled: z.boolean().optional(),
-  qqGroupAdReviewProvider: z.string().trim().min(1).max(40).optional(),
-  qqGroupAdReviewApiUrl: serviceUrlSchema.optional(),
-  qqGroupAdReviewModel: z.string().trim().min(1).max(80).optional(),
-  qqGroupAdReviewFallbackModels: z.string().trim().max(400).optional(),
-  qqGroupAdReviewApiKey: z.string().trim().min(1).max(240).optional(),
-  clearQqGroupAdReviewApiKey: z.boolean().optional(),
-  qqGroupAdReviewSystemPrompt: z.string().max(8000).optional(),
-  qqGroupAdReviewUserPrompt: z.string().max(12000).optional(),
   imageReviewEnabled: z.boolean().optional(),
   imageReviewApiUrl: serviceUrlSchema.optional(),
   imageReviewModel: z.string().trim().min(1).max(80).optional(),
@@ -111,7 +95,6 @@ export const adminSiteConfigPatchSchema = z.object({
   videoReviewUserPrompt: z.string().max(12000).optional(),
   videoReviewConcurrency: z.number().int().min(1).max(2).optional(),
   aiReviewThreshold: z.number().int().min(0).max(100).optional(),
-  qqGroupAdReviewThreshold: z.number().int().min(0).max(100).optional(),
   imageReviewThreshold: z.number().int().min(0).max(100).optional(),
   videoReviewThreshold: z.number().int().min(0).max(100).optional(),
   aiEditSimilarityThreshold: z.number().min(0).max(1).optional(),
@@ -131,14 +114,12 @@ export const adminSiteConfigPatchSchema = z.object({
   replyPointsCap: z.number().int().min(0).max(9999).optional(),
   forumEnabledBonus: z.number().int().min(0).max(9999).optional(),
   anonymousTiers: z.array(anonymousTierSchema).length(4).optional(),
-  reputationLevels: z.array(reputationLevelSchema).length(5).optional(),
 }).strict().refine(
   (value) => Object.keys(value).length > 0,
   "至少需要提供一个修改字段",
 ).superRefine((value, context) => {
   const secretPairs = [
     ["aiReviewApiKey", "clearAiReviewApiKey"],
-    ["qqGroupAdReviewApiKey", "clearQqGroupAdReviewApiKey"],
     ["imageReviewApiKey", "clearImageReviewApiKey"],
     ["videoReviewApiKey", "clearVideoReviewApiKey"],
   ] as const;
@@ -163,22 +144,6 @@ export const adminSiteConfigPatchSchema = z.object({
           code: "custom",
           path: ["anonymousTiers", index],
           message: "匿名档位的信誉门槛必须递增，额度不能下降",
-        });
-      }
-    }
-  }
-  if (value.reputationLevels) {
-    for (let index = 0; index < value.reputationLevels.length; index += 1) {
-      const current = value.reputationLevels[index];
-      const previous = value.reputationLevels[index - 1];
-      if (
-        current.level !== index + 1
-        || (previous && current.minReputation <= previous.minReputation)
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["reputationLevels", index],
-          message: "信誉等级必须为 1-5 且门槛严格递增",
         });
       }
     }
@@ -230,7 +195,6 @@ const trustKeys = new Set([
   "replyPointsCap",
   "forumEnabledBonus",
   "anonymousTiers",
-  "reputationLevels",
 ]);
 
 function siteConfigDomain(patch: AdminSiteConfigPatch) {
@@ -265,13 +229,10 @@ export function serializeAdminSiteConfig() {
   return {
     ...config,
     aiReviewApiKey: "",
-    qqGroupAdReviewApiKey: "",
     imageReviewApiKey: "",
     videoReviewApiKey: "",
     hasAiReviewApiKey: Boolean(config.aiReviewApiKey),
     aiReviewApiKeyMasked: maskSecret(config.aiReviewApiKey),
-    hasQqGroupAdReviewApiKey: Boolean(config.qqGroupAdReviewApiKey),
-    qqGroupAdReviewApiKeyMasked: maskSecret(config.qqGroupAdReviewApiKey),
     hasImageReviewApiKey: Boolean(config.imageReviewApiKey),
     imageReviewApiKeyMasked: maskSecret(config.imageReviewApiKey),
     hasVideoReviewApiKey: Boolean(config.videoReviewApiKey),
@@ -312,12 +273,6 @@ async function updateAiConfig(patch: AdminSiteConfigPatch) {
   const aiReviewApiKey = patch.clearAiReviewApiKey
     ? ""
     : (patch.aiReviewApiKey ?? current.aiReviewApiKey);
-  const qqGroupAdReviewApiKey = patch.clearQqGroupAdReviewApiKey
-    ? ""
-    : (
-      patch.qqGroupAdReviewApiKey
-      ?? current.qqGroupAdReviewApiKey
-    );
   const imageReviewApiKey = patch.clearImageReviewApiKey
     ? ""
     : (patch.imageReviewApiKey ?? current.imageReviewApiKey);
@@ -330,13 +285,6 @@ async function updateAiConfig(patch: AdminSiteConfigPatch) {
     patch.aiReviewApiUrl ?? current.aiReviewApiUrl,
     patch.aiReviewModel ?? current.aiReviewModel,
     aiReviewApiKey,
-  );
-  assertAiProviderReady(
-    "QQ群广告过滤",
-    patch.qqGroupAdReviewEnabled ?? current.qqGroupAdReviewEnabled,
-    patch.qqGroupAdReviewApiUrl ?? current.qqGroupAdReviewApiUrl,
-    patch.qqGroupAdReviewModel ?? current.qqGroupAdReviewModel,
-    qqGroupAdReviewApiKey,
   );
   assertAiProviderReady(
     "图片审核",
@@ -354,7 +302,6 @@ async function updateAiConfig(patch: AdminSiteConfigPatch) {
   );
   const {
     clearAiReviewApiKey: _clearAi,
-    clearQqGroupAdReviewApiKey: _clearQq,
     clearImageReviewApiKey: _clearImage,
     clearVideoReviewApiKey: _clearVideo,
     ...configPatch
@@ -362,7 +309,6 @@ async function updateAiConfig(patch: AdminSiteConfigPatch) {
   return setAiReviewConfig({
     ...configPatch,
     aiReviewApiKey,
-    qqGroupAdReviewApiKey,
     imageReviewApiKey,
     videoReviewApiKey,
   });

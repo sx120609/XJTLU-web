@@ -73,16 +73,6 @@ export type SiteConfig = {
   aiReviewApiKey: string;
   hasAiReviewApiKey: boolean;
   aiReviewApiKeyMasked: string;
-  qqGroupAdReviewEnabled: boolean;
-  qqGroupAdReviewProvider: string;
-  qqGroupAdReviewApiUrl: string;
-  qqGroupAdReviewModel: string;
-  qqGroupAdReviewFallbackModels: string;
-  qqGroupAdReviewApiKey: string;
-  hasQqGroupAdReviewApiKey: boolean;
-  qqGroupAdReviewApiKeyMasked: string;
-  qqGroupAdReviewSystemPrompt: string;
-  qqGroupAdReviewUserPrompt: string;
   imageReviewEnabled: boolean;
   imageReviewApiUrl: string;
   imageReviewModel: string;
@@ -105,7 +95,6 @@ export type SiteConfig = {
   videoReviewUserPrompt: string;
   videoReviewConcurrency: number;
   aiReviewThreshold: number;
-  qqGroupAdReviewThreshold: number;
   imageReviewThreshold: number;
   videoReviewThreshold: number;
   aiEditSimilarityThreshold: number;
@@ -125,7 +114,6 @@ export type SiteConfig = {
   replyPointsCap: number;
   forumEnabledBonus: number;
   anonymousTiers: Array<{ reputation: number; quota: number }>;
-  reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
 };
 
 export type MediaStorageConfig = {
@@ -254,8 +242,6 @@ export type MediaStorageCleanupResult = {
 
 export type SitePromptDefaults = Pick<
   SiteConfig,
-  | "qqGroupAdReviewSystemPrompt"
-  | "qqGroupAdReviewUserPrompt"
   | "imageReviewSystemPrompt"
   | "imageReviewUserPrompt"
   | "videoReviewSystemPrompt"
@@ -558,18 +544,6 @@ export type AdminUserRole = "user" | "mod" | "admin" | "bot";
 export type AdminUserStatus = "active" | "banned" | "muted";
 export type AdminLoginClient = "ios" | "android" | "harmony" | "web" | "unknown";
 
-export type AdminUserReputationLevel = {
-  level: number;
-  name: string;
-  minReputation: number;
-  nextLevel: null | {
-    level: number;
-    name: string;
-    minReputation: number;
-    need: number;
-  };
-};
-
 export type AdminUserAnonymousState = {
   eligible: boolean;
   minReputation: number;
@@ -602,7 +576,6 @@ export type AdminUser = {
   postCount: number;
   replyCount: number;
   reputation: number;
-  reputationLevel: AdminUserReputationLevel;
   reputationBreakdown: {
     total: number;
     accountAgeDays: number;
@@ -619,6 +592,7 @@ export type AdminUser = {
   forumEnabled: boolean;
   forumEnabledAt: string | null;
   anonymousCredits: number;
+  transactionPoints?: number;
   anonymousWeekKey: string | null;
   anonymousCreditsFrozen: boolean;
   anonymousState: AdminUserAnonymousState;
@@ -654,7 +628,6 @@ export type AdminUserPatchResult = Pick<
   | "anonymousCreditsFrozen"
   | "anonymousState"
   | "reputation"
-  | "reputationLevel"
 >;
 
 export type AdminUserCreateInput = {
@@ -937,49 +910,6 @@ export type SponsorOrderPatch = {
   adminNote?: string;
 };
 
-export type QqBotConfig = {
-  id: number;
-  enabled: boolean;
-  botQqId: string;
-  napcatBaseUrl: string;
-  hasAccessToken: boolean;
-  accessTokenMasked: string;
-  connectionStatus: "disabled" | "http" | "idle" | "connecting" | "connected" | "error";
-  connectionError: string;
-  webhookSecret: string;
-  defaultBoardSlug: string;
-  allowPrivatePost: boolean;
-  allowGroupPost: boolean;
-  notificationEnabled: boolean;
-  notifyCategories: string[];
-  superAdminQqIds: string[];
-  webhookPath: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type QqBotGroup = {
-  id: number;
-  groupId: string;
-  name?: string | null;
-  enabled: boolean;
-  allowPosting: boolean;
-  defaultBoardSlug?: string | null;
-  notificationEnabled: boolean;
-  notifyCategories: Array<"system" | "school-feed">;
-  notifyAudiences: Array<"public" | "staff">;
-  memberWelcomeEnabled: boolean;
-  memberWelcomeMessage: string;
-  adFilterEnabled: boolean;
-  joinReviewEnabled: boolean;
-  allowMute: boolean;
-  allowKick: boolean;
-  allowKickAndBlock: boolean;
-  commandUserQqIds: string[];
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type JwxtAgentConnection = {
   configured: boolean;
   online: boolean;
@@ -1162,15 +1092,6 @@ export const adminApi = {
     aiReviewFallbackModels?: string;
     aiReviewApiKey?: string;
     clearAiReviewApiKey?: boolean;
-    qqGroupAdReviewEnabled?: boolean;
-    qqGroupAdReviewProvider?: string;
-    qqGroupAdReviewApiUrl?: string;
-    qqGroupAdReviewModel?: string;
-    qqGroupAdReviewFallbackModels?: string;
-    qqGroupAdReviewApiKey?: string;
-    clearQqGroupAdReviewApiKey?: boolean;
-    qqGroupAdReviewSystemPrompt?: string;
-    qqGroupAdReviewUserPrompt?: string;
     imageReviewEnabled?: boolean;
     imageReviewApiUrl?: string;
     imageReviewModel?: string;
@@ -1191,7 +1112,6 @@ export const adminApi = {
     videoReviewUserPrompt?: string;
     videoReviewConcurrency?: number;
     aiReviewThreshold?: number;
-    qqGroupAdReviewThreshold?: number;
     imageReviewThreshold?: number;
     videoReviewThreshold?: number;
     aiEditSimilarityThreshold?: number;
@@ -1211,7 +1131,6 @@ export const adminApi = {
     replyPointsCap?: number;
     forumEnabledBonus?: number;
     anonymousTiers?: Array<{ reputation: number; quota: number }>;
-    reputationLevels?: Array<{ level: number; name: string; minReputation: number }>;
   }) =>
     request.patch<SiteConfig>("/admin/site-config", patch),
   aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
@@ -1255,51 +1174,6 @@ export const adminApi = {
     request.patch<AdminSponsorOrder>(`/admin/sponsor-orders/${id}`, payload),
   sponsorLogs: (params: { q?: string; signOk?: "0" | "1"; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: SponsorPaymentLog[] }>("/admin/sponsor-logs", params),
-  // QQBot / NapCat
-  qqBotConfig: (options?: RequestOptions) => request.get<QqBotConfig>("/admin/qqbot/config", undefined, options),
-  updateQqBotConfig: (payload: Partial<{
-    enabled: boolean;
-    botQqId: string;
-    napcatBaseUrl: string;
-    accessToken: string;
-    clearAccessToken: boolean;
-    webhookSecret: string;
-    defaultBoardSlug: string;
-    allowPrivatePost: boolean;
-    allowGroupPost: boolean;
-    notificationEnabled: boolean;
-    notifyCategories: string[];
-    superAdminQqIds: string[];
-  }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),
-  qqBotBindings: (params?: { q?: string }, options?: RequestOptions) => request.get<any[]>("/admin/qqbot/bindings", params, options),
-  updateQqBotBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/qqbot/bindings/${id}`, payload),
-  deleteQqBotBinding: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/bindings/${id}`),
-  qqBotGroups: (options?: RequestOptions) => request.get<QqBotGroup[]>("/admin/qqbot/groups", undefined, options),
-  upsertQqBotGroup: (payload: {
-    groupId: string;
-    name?: string;
-    enabled?: boolean;
-    allowPosting?: boolean;
-    defaultBoardSlug?: string | null;
-    notificationEnabled?: boolean;
-    notifyCategories?: Array<"system" | "school-feed">;
-    notifyAudiences?: Array<"public" | "staff">;
-    memberWelcomeEnabled?: boolean;
-    memberWelcomeMessage?: string;
-    adFilterEnabled?: boolean;
-    joinReviewEnabled?: boolean;
-    allowMute?: boolean;
-    allowKick?: boolean;
-    allowKickAndBlock?: boolean;
-    commandUserQqIds?: string[];
-  }) => request.post<QqBotGroup>("/admin/qqbot/groups", payload),
-  deleteQqBotGroup: (id: number) => request.delete<{ ok: true }>(`/admin/qqbot/groups/${id}`),
-  qqBotLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>
-    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/qqbot/logs", params, options),
-  sendQqBotTestMessage: (payload: { qqId?: string; groupId?: string; message: string }) =>
-    request.post<{ ok: true }>("/admin/qqbot/test-message", payload),
-  dispatchQqBotNotifications: () => request.post<{ sent: number }>("/admin/qqbot/dispatch-notifications"),
-  createQqBotBindToken: () => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token"),
   // 帖子
   topics: (
     params: {

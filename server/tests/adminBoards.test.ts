@@ -99,8 +99,8 @@ test("board routes and crawler use isolated services and transactional ingestion
   assert.match(route, /adminBoardRouter\.use\(adminOnly\)/);
   assert.match(route, /positiveRouteInteger\(value\)/);
   assert.match(service, /FOR UPDATE/);
-  assert.match(service, /tx\.qqBotConfig\.updateMany/);
-  assert.match(service, /tx\.qqBotGroup\.updateMany/);
+  assert.doesNotMatch(service, /tx\.qqBotConfig/);
+  assert.doesNotMatch(service, /tx\.qqBotGroup/);
   assert.match(service, /withSchoolFeedSourceLock/);
   assert.match(crawler, /school-crawler:source:/);
   assert.match(crawler, /inserted = await prisma\.\$transaction/);

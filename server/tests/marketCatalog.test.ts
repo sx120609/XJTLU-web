@@ -151,6 +151,9 @@ test("public market metadata keeps the server and web contract aligned", () => {
   );
 
   assert.deepEqual(meta.categories.map((entry) => entry.slug), ["books"]);
+  assert.deepEqual(meta.wantedCategories.map((entry) => entry.slug), ["books", "learning_materials"]);
+  assert.equal(meta.wantedCategories.at(-1)?.special, true);
+  assert.equal(meta.wantedCategories.at(-1)?.fulfillmentType, "digital");
   assert.deepEqual(meta.campuses, ["SIP", "TC"]);
   assert.deepEqual(meta.conditions, ITEM_CONDITIONS);
   assert.deepEqual(meta.tradeModes, TRADE_MODES);
@@ -162,6 +165,7 @@ test("public market metadata keeps the server and web contract aligned", () => {
 
   const webApi = readFileSync(new URL("../../web/src/api/market.ts", import.meta.url), "utf8");
   assert.match(webApi, /export interface MarketMeta/);
+  assert.match(webApi, /wantedCategories: MarketCategoryOption\[\]/);
   assert.match(webApi, /listingTypes: MarketListingType\[\]/);
   assert.match(webApi, /request\.get<MarketMeta>\("\/market\/meta"/);
 });
@@ -188,7 +192,7 @@ test("public item serialization preserves legacy aliases and hides encrypted del
     images: [{ id: 1, url: "/uploads/monitor.png", sort: 0 }],
     favorites: [{ userId: 9 }],
     seller: { id: 3, nickname: "卖家" },
-    _count: { favorites: 2, offers: 4, tradeIntents: 1 },
+    _count: { favorites: 2, offers: 4, tradeIntents: 1, conversations: 1 },
     createdAt: new Date("2026-07-28T00:00:00.000Z"),
     updatedAt: new Date("2026-07-28T00:00:00.000Z"),
   }, 9);
@@ -312,7 +316,8 @@ test("wanted write schemas keep create, patch, lifecycle and web contracts align
   });
   assert.equal(patch.title, "更新后的求购标题");
   assert.equal("anonymous" in patch, false);
-  assert.equal(marketWantedLifecycleSchema.parse({ action: "renew" }).action, "renew");
+  assert.equal(marketWantedLifecycleSchema.parse({ action: "cancel" }).action, "cancel");
+  assert.equal(marketWantedLifecycleSchema.safeParse({ action: "renew" }).success, false);
   assert.equal(marketWantedLifecycleSchema.safeParse({ action: "accept" }).success, false);
 
   assert.equal(canManageWantedPost(7, { userId: 7, role: "user" }), true);
@@ -346,7 +351,8 @@ test("wanted response schemas, order privacy and web actions share one contract"
     images: ["javascript:alert(1)"],
     availableTime: "周六下午",
   }).success, false);
-  assert.equal(marketWantedResponseActionSchema.parse({ action: "accept" }).action, "accept");
+  assert.equal(marketWantedResponseActionSchema.safeParse({ action: "accept" }).success, false);
+  assert.equal(marketWantedResponseActionSchema.parse({ action: "reject" }).action, "reject");
   assert.equal(marketWantedResponseActionSchema.safeParse({ action: "complete" }).success, false);
 
   const encrypted = sealMarketSensitive("仅交易双方可见");
@@ -382,12 +388,13 @@ test("wanted response schemas, order privacy and web actions share one contract"
   assert.match(service, /acquireMarketWantedLock\(tx, wantedPostId\)/);
   assert.match(service, /acquireMarketWantedLock\(tx, reference\.wantedPostId\)/);
   assert.match(webApi, /export interface WantedResponseInput/);
-  assert.match(webApi, /export type WantedResponseAction = "accept" \| "reject" \| "cancel"/);
+  assert.match(webApi, /export type WantedResponseAction = "reject" \| "cancel"/);
   assert.match(webApi, /respondToWanted: \(id: number, payload: WantedResponseInput\)/);
-  assert.match(wantedDetail, /action: WantedResponseAction/);
+  assert.match(wantedDetail, /startResponseChat\(response/);
+  assert.match(wantedDetail, /marketApi\.createConversation\(/);
 });
 
-test("item trade schemas, serializers, locks and web actions share one contract", () => {
+test("legacy intent contracts remain readable while the live product uses direct chat", () => {
   const intent = marketTradeIntentInputSchema.parse({
     price: "88",
     availableTime: "工作日 18:00 后",
@@ -416,22 +423,23 @@ test("item trade schemas, serializers, locks and web actions share one contract"
   assert.equal(marketItemLockKey(51), expectedLockKey);
   assert.notEqual(marketItemLockKey(51), marketItemLockKey(52));
 
-  const service = readFileSync(new URL("../src/services/marketTradeService.ts", import.meta.url), "utf8");
+  const service = readFileSync(new URL("../src/services/marketConversationService.ts", import.meta.url), "utf8");
+  const marketRoute = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
   const wantedResponseService = readFileSync(new URL("../src/services/marketWantedResponseService.ts", import.meta.url), "utf8");
   const itemWriteService = readFileSync(new URL("../src/services/marketItemWriteService.ts", import.meta.url), "utf8");
   const webApi = readFileSync(new URL("../../web/src/api/market.ts", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../../web/src/views/market/Detail.vue", import.meta.url), "utf8");
   assert.match(service, /acquireMarketItemLock\(tx, itemId\)/);
-  assert.match(service, /acquireMarketItemLock\(tx, reference\.itemId\)/);
-  assert.match(service, /tx\.marketOffer\.updateMany/);
-  assert.match(service, /tx\.tradeIntent\.updateMany/);
-  assert.match(service, /tx\.wantedResponse\.updateMany/);
+  assert.match(service, /status: "negotiating"/);
+  assert.match(service, /tx\.marketConversation\.upsert/);
+  assert.doesNotMatch(marketRoute, /marketTradeRouter/);
   assert.match(wantedResponseService, /acquireMarketItemLock\(tx, response\.itemId\)/);
   assert.match(itemWriteService, /acquireMarketItemLock\(tx, itemId\)/);
   assert.match(webApi, /export interface MarketTradeIntentInput/);
   assert.match(webApi, /export interface MarketOfferInput/);
-  assert.match(webApi, /export type MarketTradeAction = "accept" \| "reject" \| "cancel"/);
-  assert.match(detail, /reactive<MarketTradeIntentInput/);
+  assert.match(webApi, /createConversation: \(itemId: number/);
+  assert.match(detail, /@click="startChat">发起私聊/);
+  assert.doesNotMatch(detail, /MarketTradeIntentInput/);
 });
 
 test("ordinary item write schemas, state guards and web contracts share one boundary", () => {
@@ -449,7 +457,7 @@ test("ordinary item write schemas, state guards and web contracts share one boun
   assert.equal(created.campus, "");
   assert.equal(
     marketItemPatchSchema.safeParse({ status: "reserved" }).success,
-    true,
+    false,
   );
   assert.equal(
     marketItemPatchSchema.safeParse({ status: "deleted" }).success,
@@ -492,13 +500,10 @@ test("ordinary item write schemas, state guards and web contracts share one boun
 });
 
 test("order fulfillment schema, route, lock and web contract share one state boundary", () => {
-  const meetup = marketOrderActionSchema.parse({
-    action: "set_meetup",
-    meetupTime: "2026-07-30T10:00:00.000Z",
-    meetupLocation: "中心楼大厅",
-  });
-  assert.equal(meetup.action, "set_meetup");
-  assert.equal(meetup.meetupLocation, "中心楼大厅");
+  const confirm = marketOrderActionSchema.parse({ action: "buyer_confirm" });
+  assert.equal(confirm.action, "buyer_confirm");
+  assert.equal(marketOrderActionSchema.safeParse({ action: "set_meetup" }).success, false);
+  assert.equal(marketOrderActionSchema.safeParse({ action: "report_no_show" }).success, false);
   assert.equal(
     marketOrderActionSchema.safeParse({ action: "force_complete" }).success,
     false,
@@ -511,7 +516,7 @@ test("order fulfillment schema, route, lock and web contract share one state bou
   const route = readFileSync(new URL("../src/routes/marketOrder.ts", import.meta.url), "utf8");
   const service = readFileSync(new URL("../src/services/marketOrderFulfillmentService.ts", import.meta.url), "utf8");
   const lifecycle = readFileSync(new URL("../src/services/marketLifecycle.ts", import.meta.url), "utf8");
-  const matching = readFileSync(new URL("../src/services/marketMatching.ts", import.meta.url), "utf8");
+  const workers = readFileSync(new URL("../src/runtime/backgroundWorkers.ts", import.meta.url), "utf8");
   const webApi = readFileSync(new URL("../../web/src/api/market.ts", import.meta.url), "utf8");
   assert.ok(marketOrderRouter);
   assert.match(route, /positiveRouteInteger\(req\.params\.id\)/);
@@ -521,7 +526,7 @@ test("order fulfillment schema, route, lock and web contract share one state bou
   assert.match(service, /tx\.marketOffer\.updateMany/);
   assert.match(lifecycle, /acquireMarketOrderLock\(tx, candidate\.id\)/);
   assert.match(lifecycle, /status: \{ in: \["reserved", "pending_payment"\] \}/);
-  assert.match(matching, /acquireMarketOrderLock\(tx, candidate\.id\)/);
+  assert.doesNotMatch(workers, /startMarketReminderPoller/);
   assert.match(webApi, /export type MarketOrderAction =/);
   assert.match(webApi, /payload: MarketOrderUpdateInput/);
   assert.match(webApi, /MarketOrderActionResult/);
@@ -836,13 +841,15 @@ test("market write routes require authentication and reject malformed ids before
   assert.equal(invalidConversationBody.code, 4000);
   assert.equal(invalidConversationBody.message, "会话 ID 不合法");
 
-  const invalidContactOrderId = await fetch(`http://127.0.0.1:${port}/api/market/orders/not-a-number/contact-cards`, {
-    headers: { authorization: `Bearer ${token}` },
+  const invalidMessageReportId = await fetch(`http://127.0.0.1:${port}/api/market/conversations/1/messages/not-a-number/report`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason: "测试举报" }),
   });
-  assert.equal(invalidContactOrderId.status, 400);
-  const invalidContactOrderBody = await invalidContactOrderId.json() as any;
-  assert.equal(invalidContactOrderBody.code, 4000);
-  assert.equal(invalidContactOrderBody.message, "订单 ID 不合法");
+  assert.equal(invalidMessageReportId.status, 400);
+  const invalidMessageReportBody = await invalidMessageReportId.json() as any;
+  assert.equal(invalidMessageReportBody.code, 4000);
+  assert.equal(invalidMessageReportBody.message, "会话或消息 ID 不合法");
 
   const invalidReviewOrderId = await fetch(`http://127.0.0.1:${port}/api/market/orders/not-a-number/reviews`, {
     method: "POST",

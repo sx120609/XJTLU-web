@@ -43,7 +43,7 @@
               :loading="linkOptionsLoading"
               placeholder="选择公开商品"
             >
-              <el-option v-for="item in marketItems" :key="item.id" :value="item.id" :label="`${item.title} · ¥${item.price}`" />
+              <el-option v-for="item in marketItems" :key="item.id" :value="item.id" :label="`${isLearningItem(item) ? '📝 学习资料' : '📦 实体商品'} · ${item.title} · ¥${item.price}`" />
             </el-select>
             <el-select
               v-else-if="relationType === 'wanted'"
@@ -63,7 +63,7 @@
           <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
             <el-switch v-model="form.anonymous" :disabled="!anonymousEnabledForForm || !!editingId" />
             <div class="anonymous-copy">
-              <b>{{ editingId ? "保持匿名状态" : "使用匿名积分发帖" }}</b>
+              <b>{{ editingId ? "保持匿名状态" : "免费匿名发布" }}</b>
               <p>{{ anonymousHint }}</p>
             </div>
           </div>
@@ -266,6 +266,7 @@ import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDia
 import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { marketApi, type MarketItem, type WantedPost } from "@/api/market";
+import { learningMaterialsApi } from "@/api/learningMaterials";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
 
@@ -336,25 +337,15 @@ const boardType = computed(() => currentBoard.value?.type ?? "normal");
 const formDraftKey = computed(() => editingId.value ? "" : "cpu-post-new-draft");
 const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
 const anonymousEnabledForForm = computed(() => {
-  const anonymousState = auth.user?.anonymousState;
   if (!currentBoard.value?.anonymousEnabled) return false;
-  if (editingId.value) return true;
-  return Boolean(
-    anonymousState?.eligible &&
-    !anonymousState?.frozen &&
-    (anonymousState?.availableCredits ?? 0) > 0
-  );
+  return true;
 });
 const anonymousHint = computed(() => {
-  const anonymousState = auth.user?.anonymousState;
   if (editingId.value) {
     return form.anonymous ? "这篇帖子会继续以匿名身份展示，编辑不会公开你的真实身份。" : "这篇帖子当前不是匿名帖。";
   }
   if (!currentBoard.value?.anonymousEnabled) return "当前板块暂不支持匿名发帖。";
-  if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 30} 后才能匿名发帖。`;
-  if (anonymousState?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
-  if ((anonymousState?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
-  return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
+  return "匿名发布免费，不消耗积分，也不影响信誉值。";
 });
 
 const submitDisabled = computed(() =>
@@ -489,11 +480,16 @@ async function loadLinkOptions() {
   linkOptionsLoading.value = true;
   try {
     if (relationType.value === "item") {
-      const result = await marketApi.items({ page: 1, size: 30 }, { suppressErrorMessage: true });
-      marketItems.value = result.list;
+      const [physical, learning] = await Promise.all([
+        marketApi.items({ page: 1, size: 30 }, { suppressErrorMessage: true }),
+        learningMaterialsApi.items({ page: 1, size: 30 }, { suppressErrorMessage: true }),
+      ]);
+      marketItems.value = [...physical.list, ...learning.list];
       const selectedId = form.linkedMarketItemId;
       if (selectedId && !marketItems.value.some((item) => item.id === selectedId)) {
-        const selected = await marketApi.item(selectedId, { suppressErrorMessage: true }).catch(() => null);
+        const selected = await marketApi.item(selectedId, { suppressErrorMessage: true }).catch(
+          () => learningMaterialsApi.item(selectedId, { suppressErrorMessage: true }).catch(() => null),
+        );
         if (selected) marketItems.value.unshift(selected);
       }
     } else {
@@ -508,6 +504,10 @@ async function loadLinkOptions() {
   } finally {
     linkOptionsLoading.value = false;
   }
+}
+
+function isLearningItem(item: MarketItem) {
+  return item.deliveryType === "digital" || item.category === "digital_goods";
 }
 
 function getRequestMessage(error: unknown) {

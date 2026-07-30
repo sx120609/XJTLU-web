@@ -11,6 +11,7 @@ import {
 import {
   cents,
   getMarketCategory,
+  LEARNING_MATERIAL_WANTED_CATEGORY,
 } from "./marketCatalogService";
 import { requireVerifiedMarketUser } from "./marketAccessService";
 import {
@@ -29,10 +30,7 @@ import {
   MARKET_CAMPUSES,
   normalizeMarketCampus,
 } from "./marketCampus";
-import {
-  consumeAnonymousCredit,
-  createAnonymousAlias,
-} from "./userTrust";
+import { createAnonymousAlias } from "./userTrust";
 import { MARKET_PUBLIC_USER_SELECT } from "./marketPublicUser";
 import {
   closePendingWantedInterest,
@@ -66,7 +64,7 @@ export const marketWantedPatchSchema = marketWantedInputSchema
   .partial();
 
 export const marketWantedLifecycleSchema = z.object({
-  action: z.enum(["renew", "cancel", "complete"]),
+  action: z.enum(["cancel", "complete"]),
 });
 
 export type MarketWantedInput = z.infer<typeof marketWantedInputSchema>;
@@ -92,13 +90,18 @@ function ensureValidBudgetRange(budgetMinCents: number, budgetMaxCents: number) 
   }
 }
 
+async function ensureWantedCategory(categorySlug: string) {
+  if (categorySlug === LEARNING_MATERIAL_WANTED_CATEGORY) return;
+  const category = await getMarketCategory(categorySlug);
+  if (category.fulfillmentType !== "physical") throw Errors.badRequest("求购分类不合法");
+}
+
 export async function createMarketWantedPost(actor: MarketWantedActor, input: MarketWantedInput) {
   const authorId = actor.userId;
   await requireVerifiedMarketUser(authorId, actor.role, "publish");
   await ensureUserCanSpeak(authorId);
   await ensureUserCanSubmitTopic(authorId);
-  const category = await getMarketCategory(input.category);
-  if (category.fulfillmentType !== "physical") throw Errors.badRequest("求购只支持实体物品");
+  await ensureWantedCategory(input.category);
   const budgetMinCents = cents(input.budgetMin) ?? 0;
   const budgetMaxCents = cents(input.budgetMax) ?? 0;
   ensureValidBudgetRange(budgetMinCents, budgetMaxCents);
@@ -126,7 +129,6 @@ export async function createMarketWantedPost(actor: MarketWantedActor, input: Ma
   }
   const anonymousAlias = input.anonymous ? createAnonymousAlias() : null;
   const { post, topic } = await prisma.$transaction(async (tx) => {
-    if (input.anonymous) await consumeAnonymousCredit(authorId, tx);
     const createdPost = await tx.wantedPost.create({
       data: {
         authorId,
@@ -198,8 +200,7 @@ export async function updateMarketWantedPost(
   delete data.budgetMax;
   delete data.expiryDays;
   if (input.category) {
-    const category = await getMarketCategory(input.category);
-    if (category.fulfillmentType !== "physical") throw Errors.badRequest("求购只支持实体物品");
+    await ensureWantedCategory(input.category);
   }
   if (input.budgetMin !== undefined) data.budgetMinCents = cents(input.budgetMin) ?? 0;
   if (input.budgetMax !== undefined) data.budgetMaxCents = cents(input.budgetMax) ?? 0;
@@ -250,29 +251,9 @@ export async function transitionMarketWantedPost(
   const current = await prisma.wantedPost.findUnique({ where: { id } });
   if (!current) throw Errors.notFound("求购不存在");
   if (!canManageWantedPost(current.authorId, actor)) throw Errors.forbidden();
-  let renewalStatus = "active";
-  if (action === "renew" && !isMarketStaff(actor.role)) {
-    await requireVerifiedMarketUser(actor.userId, actor.role, "publish");
-    const safety = await evaluateMarketContent(
-      prisma,
-      [current.title, current.description, current.brandModel, current.location],
-    );
-    if (safety.action === "block") {
-      throw Errors.badRequest("求购内容包含市集禁售或高风险信息，请编辑后再续期");
-    }
-    if (safety.action === "review") renewalStatus = "reviewing";
-  }
-  const data = action === "renew"
-    ? { status: renewalStatus, expiresAt: nextWantedExpiry() }
-    : action === "complete"
-      ? { status: "completed" }
-      : { status: "cancelled" };
-  if (
-    action === "renew"
-    && !["active", "responded", "expired", "cancelled"].includes(current.status)
-  ) {
-    throw Errors.badRequest("当前求购不能续期");
-  }
+  const data = action === "complete"
+    ? { status: "completed" }
+    : { status: "cancelled" };
   const updated = await prisma.$transaction(async (tx) => {
     await acquireMarketWantedLock(tx, id);
     const lockedCurrent = await tx.wantedPost.findUnique({ where: { id } });
@@ -282,14 +263,7 @@ export async function transitionMarketWantedPost(
       throw Errors.conflict("求购状态已变化，请刷新后重试");
     }
     if (
-      action === "renew"
-      && !["active", "responded", "expired", "cancelled"].includes(lockedCurrent.status)
-    ) {
-      throw Errors.badRequest("当前求购不能续期");
-    }
-    if (
-      action !== "renew"
-      && !["active", "responded"].includes(lockedCurrent.status)
+      !["active", "responded"].includes(lockedCurrent.status)
     ) {
       throw Errors.badRequest("当前求购不能结束");
     }
@@ -301,9 +275,7 @@ export async function transitionMarketWantedPost(
         _count: { select: { responses: true } },
       },
     });
-    if (action !== "renew") {
-      await closePendingWantedInterest(tx, id);
-    }
+    await closePendingWantedInterest(tx, id);
     return post;
   });
   const topic = await syncPersistedWantedDemandTopic(updated);

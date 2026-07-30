@@ -134,7 +134,6 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     location: "",
     flaws: "",
     availableTime: "",
-    contactVisibility: "after_accept",
     images: [],
     draft: true,
   });
@@ -170,7 +169,6 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     accessories: "包装",
     testAllowed: true,
     availableTime: "工作日 18:00 后",
-    contactVisibility: "after_accept",
     images: ["/uploads/phase4-test.jpg"],
   });
   assert.equal(listing.campus, "SIP");
@@ -265,7 +263,7 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
   assert.equal(listedWanted?.authorId, null);
   assert.equal(listedWanted?.author?.anonymous, true);
   const anonymousStateAfterWanted = await prisma.user.findUnique({ where: { id: user.id }, select: { anonymousCredits: true } });
-  assert.equal(anonymousStateAfterWanted?.anonymousCredits, 1);
+  assert.equal(anonymousStateAfterWanted?.anonymousCredits, 2);
 
   const duplicateWantedTopic = await call("/topics", "POST", {
     boardSlug: "wanted-demand",
@@ -317,7 +315,6 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     location: "",
     flaws: "无明显瑕疵",
     availableTime: "工作日 18:00 后",
-    contactVisibility: "after_accept",
     images: ["/uploads/phase4-draft-publish.jpg"],
     draft: false,
     status: "active",
@@ -340,9 +337,14 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
 
   const materialMeta = await api("/market/materials/meta");
   assert.equal(materialMeta.commerce.paidEnabled, true);
-  await prisma.learningCreatorProfile.create({
-    data: { userId: user.id, status: "active" },
-  });
+  const publisherContext = await api("/market/materials/commerce/creator/me");
+  assert.equal(publisherContext.publishingAllowed, true);
+  assert.equal(publisherContext.publishingStatus, "active");
+  assert.equal(publisherContext.profile.status, "active");
+  assert.equal(
+    await prisma.learningCreatorProfile.count({ where: { userId: user.id, status: "active" } }),
+    1,
+  );
   const forumPostCountBeforeMaterial = (await prisma.user.findUnique({ where: { id: user.id }, select: { postCount: true } }))!.postCount;
   const draftMaterial = await api("/market/materials/items", "POST", {
     title: `阶段四独立学习资料草稿 ${suffix}`,
@@ -369,7 +371,7 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
   assert.equal((await call(`/market/materials/items/${draftMaterial.id}`, "GET", undefined, false)).response.status, 404);
   const publicDraftMaterials = await call("/market/materials/items?status=draft", "GET", undefined, false);
   assert.equal(publicDraftMaterials.response.status, 400);
-  assert.match(publicDraftMaterials.body.message, /草稿.*“我的交易”/);
+  assert.match(publicDraftMaterials.body.message, /草稿.*“资料发布中心”/);
 
   const blockedForum = await call("/topics", "POST", {
     boardSlug: "question",

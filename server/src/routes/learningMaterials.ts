@@ -52,6 +52,7 @@ import { acquireMarketOrderLock } from "../services/marketOrderLockService";
 import { evaluateMarketContent } from "../services/marketTrust";
 import {
   createPaidLearningOrder,
+  ensureLearningPublisherProfile,
   submitMaterialVersionReview,
 } from "../services/learningCommerceService";
 import { normalizeIdempotencyKey } from "../services/learningCommerceContracts";
@@ -66,6 +67,7 @@ import {
   validateLearningPdfPreviewRange,
 } from "../services/learningMaterialPdfService";
 import { listLearningMaterialRatings } from "../services/learningTrustService";
+import { recordUniqueContentView } from "../services/contentViews";
 
 export const learningMaterialsRouter = Router();
 const materialStaffRequired: RequestHandler = (req, _res, next) => {
@@ -86,7 +88,7 @@ async function ensureLearningMaterialCategory() {
     update: {
       name: "付费学习资料",
       icon: "📁",
-      description: "通过创作者认证与人工审核的校园学习资料，卖家确认收款后自动交付",
+      description: "校园用户均可发布、经内容审核后上架的学习资料，卖家确认收款后自动交付",
       fulfillmentType: "digital",
       imageRequired: false,
       enabled: true,
@@ -96,7 +98,7 @@ async function ensureLearningMaterialCategory() {
       slug: CATEGORY,
       name: "付费学习资料",
       icon: "📁",
-      description: "通过创作者认证与人工审核的校园学习资料，卖家确认收款后自动交付",
+      description: "校园用户均可发布、经内容审核后上架的学习资料，卖家确认收款后自动交付",
       fulfillmentType: "digital",
       imageRequired: false,
       enabled: true,
@@ -329,7 +331,8 @@ export function serializeLearningMaterialItem(item: any, viewerId?: number) {
     cover: item.images?.[0]?.url || parseImagesFromDescription(item.description || "")[0] || "",
     seller: seller ? {
       ...seller,
-      creatorCertified: creatorProfile?.status === "active",
+      publisherActive: creatorProfile ? creatorProfile.status === "active" : true,
+      creatorCertified: creatorProfile ? creatorProfile.status === "active" : true,
       creatorCertifiedAt: creatorProfile?.certifiedAt || null,
       creatorLevel: creatorProfile?.level || "certified",
       creatorQualityScore: creatorProfile?.qualityScore ?? 60,
@@ -521,7 +524,7 @@ learningMaterialsRouter.get("/items", async (req, res, next) => {
     const page = queryPage(req.query.page);
     const size = querySize(req.query.size, 24, 1, 60);
     const requestedStatus = String(req.query.status || "active");
-    if (requestedStatus !== "active") throw Errors.badRequest("公开资料专区只能查询已发布内容；草稿和审核中内容请在“我的交易”查看");
+    if (requestedStatus !== "active") throw Errors.badRequest("公开资料专区只能查询已发布内容；草稿和审核中内容请在“资料发布中心”查看");
     const q = String(req.query.q || "").trim();
     const courseCode = normalizeCourseCode(String(req.query.courseCode || ""));
     const semester = String(req.query.semester || "").trim();
@@ -573,6 +576,29 @@ learningMaterialsRouter.get("/items", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+learningMaterialsRouter.get("/my-items", authRequired, async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    await requireVerifiedMaterialUser(userId, req.user!.role);
+    await ensureLearningPublisherProfile({
+      userId,
+      role: req.user!.role,
+      requestId: requestIdFromResponse(res),
+    });
+    const list = await prisma.marketItem.findMany({
+      where: {
+        sellerId: userId,
+        category: CATEGORY,
+        deliveryType: "digital",
+      },
+      include: materialItemInclude(userId),
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 200,
+    });
+    ok(res, list.map((item) => serializeLearningMaterialItem(item, userId)));
+  } catch (error) { next(error); }
+});
+
 learningMaterialsRouter.get("/items/:id", async (req, res, next) => {
   try {
     const id = positiveRouteInteger(req.params.id);
@@ -601,7 +627,7 @@ learningMaterialsRouter.get("/items/:id", async (req, res, next) => {
     ) {
       throw Errors.notFound("该资料尚未通过人工审核");
     }
-    if (item.status !== "draft") prisma.marketItem.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => null);
+    if (item.status !== "draft") recordUniqueContentView(req, "market_item", id).catch(() => null);
     const rating = await prisma.marketReview.aggregate({ where: { targetUserId: item.sellerId }, _avg: { rating: true }, _count: true });
     ok(res, {
       ...serializeLearningMaterialItem(item, req.user?.userId),
@@ -652,8 +678,12 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
     await requireVerifiedMaterialUser(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
     if (!PAID_LEARNING_MATERIALS_ENABLED) throw Errors.forbidden(PAID_MATERIAL_DISABLED_MESSAGE);
-    const creator = await prisma.learningCreatorProfile.findUnique({ where: { userId } });
-    if (!creator || creator.status !== "active") throw Errors.forbidden("通过创作者认证后才能创建付费资料");
+    const publisher = await ensureLearningPublisherProfile({
+      userId,
+      role: req.user!.role,
+      requestId: requestIdFromResponse(res),
+    });
+    if (publisher.status !== "active") throw Errors.forbidden("当前资料发布权限受限，请先查看治理记录并申诉");
     await Promise.all([ensureDefaultTypes(), ensureLearningMaterialCategory()]);
     const input = req.body as z.infer<typeof materialItemInputSchema>;
     await getUsableType(input.profile.typeId, userId, input.draft);
@@ -734,8 +764,12 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
     if (current.sellerId !== userId && !["admin", "mod"].includes(req.user!.role)) throw Errors.forbidden("无权修改该资料");
     if (!PAID_LEARNING_MATERIALS_ENABLED) throw Errors.forbidden(PAID_MATERIAL_DISABLED_MESSAGE);
     if (!["admin", "mod"].includes(req.user!.role)) {
-      const creator = await prisma.learningCreatorProfile.findUnique({ where: { userId } });
-      if (!creator || creator.status !== "active") throw Errors.forbidden("通过创作者认证后才能维护付费资料");
+      const publisher = await ensureLearningPublisherProfile({
+        userId,
+        role: req.user!.role,
+        requestId: requestIdFromResponse(res),
+      });
+      if (publisher.status !== "active") throw Errors.forbidden("当前资料发布权限受限，请先查看治理记录并申诉");
     }
     const input = req.body as z.infer<typeof materialItemPatchSchema>;
     const requestedPrice = input.price === undefined ? current.priceCents : (priceCents(input.price) ?? 0);

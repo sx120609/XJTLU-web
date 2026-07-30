@@ -193,7 +193,7 @@ test("admin user router delegates locked service operations with safe ids", () =
   assert.match(service, /protectedAdminUserDependencies\(tx, userId\)/);
   assert.match(service, /affectedReplyAuthors/);
   assert.match(service, /tx\.user\.updateMany/);
-  assert.match(service, /tx\.messageSetting\.create/);
+  assert.doesNotMatch(service, /tx\.messageSetting\.create/);
   assert.match(adminIndex, /adminRouter\.use\("\/", adminUserRouter\)/);
   assert.doesNotMatch(
     adminIndex,

@@ -7,7 +7,7 @@ process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
 process.env.JWT_SECRET = "phase-5-commercialization-secret";
 
-test("stage 5 real routes complete four manual promotion flows with configurable pricing and deduplicated analytics", async (t) => {
+test("stage 5 real routes keep three content promotion flows and reject V1 merchant onboarding", async (t) => {
   const express = (await import("express")).default;
   const { router } = await import("../src/routes");
   const { errorHandler } = await import("../src/middleware/error");
@@ -107,7 +107,7 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   }
 
   const plans = await api("/market/promotions/plans");
-  assert.deepEqual(plans.map((plan: any) => plan.code), ["listing_pin_7d", "wanted_urgent_7d", "home_featured_7d", "merchant_homepage_30d"]);
+  assert.deepEqual(plans.map((plan: any) => plan.code), ["listing_pin_7d", "wanted_urgent_7d", "home_featured_7d"]);
   assert.ok(plans.every((plan: any) => typeof plan.priceCents === "number" && plan.paymentMode === undefined));
   const contentPlans = await api("/market/promotions/plans?scope=content");
   assert.deepEqual(contentPlans.map((plan: any) => plan.code), ["listing_pin_7d", "wanted_urgent_7d", "home_featured_7d"]);
@@ -117,7 +117,7 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   const illegalCapacity = await call(`/market/admin/promotions/plans/${homePlan.id}`, adminToken, "PATCH", { maxActive: 7 });
   assert.equal(illegalCapacity.response.status, 400);
   const merchantPlans = await api("/market/promotions/plans?scope=merchant");
-  assert.deepEqual(merchantPlans.map((plan: any) => plan.code), ["merchant_homepage_30d"]);
+  assert.deepEqual(merchantPlans, []);
 
   const listingPayload = (title: string) => ({
     listingType: "sell",
@@ -137,7 +137,6 @@ test("stage 5 real routes complete four manual promotion flows with configurable
     accessories: "原包装",
     testAllowed: true,
     availableTime: "工作日 18:00 后",
-    contactVisibility: "after_accept",
     images: ["/uploads/phase5-test.jpg"],
   });
   const listing = await api("/market/items", sellerToken, "POST", listingPayload(`阶段五置顶商品 ${suffix}`));
@@ -217,8 +216,7 @@ test("stage 5 real routes complete four manual promotion flows with configurable
   assert.ok(home.hotTopics.length <= 8);
   assert.equal(home.hotTopics.find((topic: any) => topic.linkedWantedPost?.id === wanted.id)?.promotion?.label, "加急");
 
-  const contactValue = `phase5_wechat_${suffix}`;
-  const merchant = await api("/market/merchant/me", sellerToken, "PUT", {
+  const merchantOnboarding = await call("/market/merchant/me", sellerToken, "PUT", {
     slug: `phase5-${suffix.replaceAll("_", "-")}`.slice(0, 40),
     name: `阶段五校园服务 ${suffix}`.slice(0, 80),
     category: "校园生活",
@@ -227,48 +225,23 @@ test("stage 5 real routes complete four manual promotion flows with configurable
     serviceArea: "SIP 校区及周边",
     studentDiscount: "学生身份可享九折",
     contactMethod: "wechat",
-    contactValue,
+    contactValue: `phase5_wechat_${suffix}`,
     images: ["/uploads/phase5-merchant.jpg"],
   });
-  assert.equal(merchant.status, "reviewing");
-  assert.equal(JSON.stringify(merchant).includes(contactValue), false);
-  await api(`/market/admin/merchants/${merchant.id}`, adminToken, "PATCH", { status: "approved", note: "资料核验通过" });
-  const inactiveMerchant = await call(`/market/merchants/${merchant.slug}`);
-  assert.equal(inactiveMerchant.response.status, 404);
-  const merchantOrder = await api("/market/promotions/orders", sellerToken, "POST", { planCode: "merchant_homepage_30d", targetId: merchant.id });
-  await confirmPromotion(merchantOrder, `P5-MERCHANT-${suffix}`);
+  assert.equal(merchantOnboarding.response.status, 403);
+  assert.match(merchantOnboarding.body.message, /可直接发布实物商品/);
+  const merchantPromotion = await call("/market/promotions/orders", sellerToken, "POST", {
+    planCode: "merchant_homepage_30d",
+    targetId: 1,
+  });
+  assert.equal(merchantPromotion.response.status, 403);
   const contentOrders = await api("/market/promotions/orders?scope=content&size=50", sellerToken);
   assert.ok(contentOrders.list.length >= 3);
   assert.ok(contentOrders.list.every((order: any) => order.targetType !== "merchant_profile"));
-  const merchantOrders = await api("/market/promotions/orders?scope=merchant&size=50", sellerToken);
-  assert.ok(merchantOrders.list.some((order: any) => order.id === merchantOrder.id));
-  assert.ok(merchantOrders.list.every((order: any) => order.targetType === "merchant_profile"));
-  const publicMerchant = await api(`/market/merchants/${merchant.slug}`);
-  assert.equal(publicMerchant.promotion.homepage.label, "合作商户");
-  assert.equal(JSON.stringify(publicMerchant).includes(contactValue), false);
-  const ownMerchantFavorite = await call(`/market/merchants/${merchant.slug}/favorite`, sellerToken, "POST", {});
-  assert.equal(ownMerchantFavorite.response.status, 400);
-  const ownMerchantInquiry = await call(`/market/merchants/${merchant.slug}/inquiry`, sellerToken, "POST", {});
-  assert.equal(ownMerchantInquiry.response.status, 400);
-  const concurrentMerchantFavorites = await Promise.all([
-    api(`/market/merchants/${merchant.slug}/favorite`, viewerToken, "POST", {}),
-    api(`/market/merchants/${merchant.slug}/favorite`, viewerToken, "POST", {}),
-  ]);
-  assert.deepEqual(concurrentMerchantFavorites.map((result: any) => result.favorited).sort(), [false, true]);
-  const merchantAfterFavorites = await api(`/market/merchants/${merchant.slug}`, viewerToken);
-  assert.equal(merchantAfterFavorites.favoriteCount, 0);
-  assert.equal(merchantAfterFavorites.favorited, false);
-  const inquiry = await api(`/market/merchants/${merchant.slug}/inquiry`, viewerToken, "POST", {});
-  assert.equal(inquiry.value, contactValue);
-  assert.equal(inquiry.counted, true);
-  const repeatedInquiry = await api(`/market/merchants/${merchant.slug}/inquiry`, viewerToken, "POST", {});
-  assert.equal(repeatedInquiry.counted, false);
-  assert.equal(repeatedInquiry.inquiryCount, inquiry.inquiryCount);
 
   const search = await api(`/search?q=${encodeURIComponent(suffix)}`, sellerToken);
   assert.ok(search.marketItems.some((item: any) => item.id === listing.id && item.promotions.pinned?.label === "置顶"));
   assert.ok(search.wantedPosts.some((post: any) => post.id === wanted.id && post.promotion.urgent?.label === "加急"));
-  assert.ok(search.merchants.some((row: any) => row.id === merchant.id && row.promotion.homepage?.label === "合作商户"));
 
   await api(`/market/promotions/orders/${homeOrder.id}/events`, sellerToken, "POST", { type: "impression" });
   await api(`/market/promotions/orders/${homeOrder.id}/events`, sellerToken, "POST", { type: "impression" });

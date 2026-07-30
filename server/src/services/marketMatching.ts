@@ -2,6 +2,7 @@ import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { acquireMarketOrderLock } from "./marketOrderLockService";
 import { runTrackedJob } from "./runtimeHealth";
+import { LEARNING_MATERIAL_WANTED_CATEGORY } from "./marketCatalogService";
 
 type MatchableItem = {
   id: number;
@@ -78,7 +79,10 @@ function keywordPoints(item: MatchableItem, wanted: MatchableWantedPost) {
 export function scoreMarketMatch(item: MatchableItem, wanted: MatchableWantedPost): MarketMatchScore {
   const reasons: MarketMatchReason[] = [];
 
-  if (item.category === wanted.category) {
+  const itemWantedCategory = item.category === "digital_goods"
+    ? LEARNING_MATERIAL_WANTED_CATEGORY
+    : item.category;
+  if (itemWantedCategory === wanted.category) {
     reasons.push({ key: "category", label: "品类一致", points: 35 });
   }
 
@@ -148,9 +152,10 @@ export async function findMatchesForWanted(wantedPostId: number, limit = 8) {
       sellerId: { not: wantedPost.authorId },
       status: "active",
       visibility: "public",
-      deliveryType: "physical",
       listingType: "sell",
-      category: wantedPost.category,
+      ...(wantedPost.category === LEARNING_MATERIAL_WANTED_CATEGORY
+        ? { deliveryType: "digital", category: "digital_goods" }
+        : { deliveryType: "physical", category: wantedPost.category }),
     },
     orderBy: { createdAt: "desc" },
     take: 120,

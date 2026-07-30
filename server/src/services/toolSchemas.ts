@@ -49,17 +49,6 @@ export const questionnaireResponseSchema = z.object({
   answers: z.record(z.union([z.string(), z.array(z.string())])),
 }).strict();
 
-export const toolQqReminderPatchSchema = z.object({
-  enabled: z.boolean().optional(),
-  events: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
-  timing: z.enum(["instant", "after", "deadline"]).optional(),
-  afterAt: z.string().datetime().nullable().optional(),
-  deadlineAt: z.string().datetime().nullable().optional(),
-  beforeDeadlineHours: z.number().int().min(1).max(720).nullable().optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, {
-  message: "至少需要修改一项",
-});
-
 const gradeCheckCellSchema = z.union([
   z.string(),
   z.number(),

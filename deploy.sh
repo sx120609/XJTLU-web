@@ -466,7 +466,7 @@ ensure_redis() {
 }
 
 # ---------- 环境检查与安装 ----------
-NODE_MIN_MAJOR=22  # QQBot WebSocket / modern undici runtime fresh deploy 统一使用 Node 22 LTS
+NODE_MIN_MAJOR=22  # modern undici runtime fresh deploy 统一使用 Node 22 LTS
 
 ensure_node() {
   if command -v node >/dev/null 2>&1; then

@@ -32,10 +32,12 @@ import {
 import { autoFormatTopicContent } from "../services/topicAiFormat";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
-import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
+import { createAnonymousAlias } from "../services/userTrust";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
+import { recordUniqueContentView } from "../services/contentViews";
+import { expirePointBoosts } from "../services/pointBoosts";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { WEIWALL_BOARD_SLUG } from "../services/weiwallSync";
 import { evaluateMarketContent } from "../services/marketTrust";
@@ -50,6 +52,7 @@ const topicLinkInclude = {
       id: true,
       title: true,
       category: true,
+      deliveryType: true,
       status: true,
       priceCents: true,
       images: { select: { url: true }, orderBy: { sort: "asc" as const }, take: 1 },
@@ -105,6 +108,7 @@ topicRouter.get("/", async (req, res, next) => {
     const page = queryPage(req.query.page);
     const size = querySize(req.query.size, 20, 5, 50);
     const sort = String(req.query.sort ?? "new");
+    await expirePointBoosts();
     if (sort === "hot") await ensureV1HotRankingFresh();
     const pinnedMode = req.query.pinned ? String(req.query.pinned) : "include";
     const requesterId = req.user?.userId ?? null;
@@ -137,8 +141,8 @@ topicRouter.get("/", async (req, res, next) => {
     const orderBy: any = pinnedMode === "only"
       ? [{ createdAt: "desc" }]
       : sort === "hot"
-        ? [{ pinned: "desc" }, { hotScore: "desc" }, { createdAt: "desc" }]
-        : [{ pinned: "desc" }, { createdAt: "desc" }];
+        ? [{ pinned: "desc" }, { boostedUntil: { sort: "desc", nulls: "last" } }, { hotScore: "desc" }, { createdAt: "desc" }]
+        : [{ pinned: "desc" }, { boostedUntil: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }];
 
     const cached = await withCache(
       "forum-list",
@@ -185,6 +189,7 @@ topicRouter.get("/:id", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
+        favorites: requesterId ? { where: { userId: requesterId }, select: { id: true } } : false,
         ...topicLinkInclude,
       },
     });
@@ -194,8 +199,34 @@ topicRouter.get("/:id", async (req, res, next) => {
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
     // 浏览数 +1（异步，失败也无所谓）
-    if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
-    ok(res, await decodeTopicForViewerWithImages(topic, req.user));
+    if (!topic.hidden) recordUniqueContentView(req, "topic", id).catch(() => {});
+    ok(res, {
+      ...await decodeTopicForViewerWithImages(topic, req.user),
+      favorited: Array.isArray((topic as any).favorites) && (topic as any).favorites.length > 0,
+    });
+  } catch (e) { next(e); }
+});
+
+topicRouter.post("/:id/favorite", authRequired, async (req, res, next) => {
+  try {
+    const topicId = Number(req.params.id);
+    if (!Number.isInteger(topicId) || topicId <= 0) throw Errors.badRequest("帖子 ID 不合法");
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: { board: { select: { type: true } } },
+    });
+    if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
+    if (!isBoardTypeEnabled(topic.board.type)) throw Errors.forbidden(featureClosedMessage(topic.board.type));
+    await ensureCanReadBoardType(topic.board.type, req.user!.userId, req.user!.role);
+    const existing = await prisma.topicFavorite.findUnique({
+      where: { userId_topicId: { userId: req.user!.userId, topicId } },
+    });
+    if (existing) {
+      await prisma.topicFavorite.delete({ where: { id: existing.id } });
+      return ok(res, { favorited: false });
+    }
+    await prisma.topicFavorite.create({ data: { userId: req.user!.userId, topicId } });
+    ok(res, { favorited: true });
   } catch (e) { next(e); }
 });
 
@@ -286,9 +317,6 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         || currentBoard.anonymousEnabled !== board.anonymousEnabled
       ) {
         throw Errors.conflict("板块配置已变化，请刷新后重新发布");
-      }
-      if (anonymous) {
-        await consumeAnonymousCredit(userId, tx);
       }
       const created = await tx.topic.create({
         data: {

@@ -8,6 +8,7 @@ import {
 } from "../services/marketOrderFulfillmentService";
 import { positiveRouteInteger } from "../utils/query";
 import { Errors, ok } from "../utils/response";
+import { recordMarketOrderSystemEvent } from "../services/marketConversationService";
 
 export const marketOrderRouter = Router();
 
@@ -19,11 +20,20 @@ marketOrderRouter.patch(
     try {
       const orderId = positiveRouteInteger(req.params.id);
       if (!orderId) throw Errors.badRequest("订单 ID 不合法");
-      ok(res, await transitionMarketOrder(
+      const result = await transitionMarketOrder(
         { userId: req.user!.userId, role: req.user!.role },
         orderId,
         req.body as z.infer<typeof marketOrderActionSchema>,
-      ));
+      );
+      if (["buyer_confirm", "seller_confirm", "cancel"].includes(req.body.action)) {
+        await recordMarketOrderSystemEvent(
+          orderId,
+          req.user!.userId,
+          req.body.action,
+          result.status,
+        );
+      }
+      ok(res, result);
     } catch (error) {
       next(error);
     }

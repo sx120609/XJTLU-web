@@ -29,8 +29,8 @@
         <el-tag v-if="topic.locked" size="small" type="info" class="tag">🔒</el-tag>
         <el-tag v-if="metaSolved" size="small" type="success" class="tag">已解决</el-tag>
         <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
-        <el-tag v-if="topic.linkedMarketItem" size="small" type="success" effect="plain" class="tag">关联商品</el-tag>
-        <el-tag v-else-if="topic.linkedWantedPost" size="small" type="success" effect="plain" class="tag">关联求购</el-tag>
+        <el-tag v-if="topic.linkedMarketItem" size="small" :type="topic.linkedMarketItem.category === 'digital_goods' ? 'primary' : 'success'" effect="plain" class="tag">{{ topic.linkedMarketItem.category === "digital_goods" ? "关联学习资料" : "关联实体商品" }}</el-tag>
+        <el-tag v-else-if="topic.linkedWantedPost" size="small" :type="topic.linkedWantedPost.category === 'learning_materials' ? 'primary' : 'success'" effect="plain" class="tag">{{ topic.linkedWantedPost.category === "learning_materials" ? "学习资料求购" : "关联求购" }}</el-tag>
       </div>
       <div class="line2">
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
@@ -42,7 +42,6 @@
         <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
         <span class="dot">·</span>
         <span class="heat">热度 {{ hotScore }}</span>
-        <span v-if="hotReasons.length" class="hot-reason">因 {{ hotReasons.join(" · ") }}</span>
         <span class="dot">·</span>
         <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
         <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
@@ -80,14 +79,11 @@ const metaRating = computed(() => {
 });
 const hotScore = computed(() => {
   const persisted = Number(props.topic.hotScore);
-  if (props.topic.hotScoreUpdatedAt && Number.isFinite(persisted)) return Math.round(persisted);
-  return Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03);
+  const score = props.topic.hotScoreUpdatedAt && Number.isFinite(persisted)
+    ? persisted
+    : (props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03;
+  return Math.max(0, Math.min(100, Math.round(score)));
 });
-const hotReasons = computed(() => (
-  Array.isArray(props.topic.hotReasons)
-    ? props.topic.hotReasons.filter((reason: unknown) => typeof reason === "string").slice(0, 2)
-    : []
-));
 const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
 const titlelessWeiwall = computed(() => {
   if (props.topic.metadata?.externalPlatform !== "weiwall") return false;
@@ -173,7 +169,6 @@ function openTopic() {
 .line2 .bot { color: #ef4444; }
 .line2 .edited { color: #b45309; }
 .line2 .heat { color: #0f766e; font-weight: 600; }
-.line2 .hot-reason { color: #047857; }
 .line2 .dot { color: var(--cpu-border); }
 
 .price {

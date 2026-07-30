@@ -25,6 +25,8 @@ import { serializeWantedPost } from "../services/marketWantedService";
 import { findMatchesForItem } from "../services/marketMatching";
 import { marketCampusStorageAliases } from "../services/marketCampus";
 import { ensureV1HotRankingFresh } from "../services/v1DiscoveryService";
+import { recordUniqueContentView } from "../services/contentViews";
+import { expirePointBoosts } from "../services/pointBoosts";
 
 // Public, read-oriented marketplace endpoints. URLs and response envelopes
 // remain mounted under /api/market by the parent market router.
@@ -34,6 +36,7 @@ async function listMarketItems(req: any, res: any, next: any, scope: MarketCatal
   try {
     if (!isFeatureOn("market")) throw Errors.forbidden("市集当前已关闭");
     await closeExpiredMarketOrders();
+    await expirePointBoosts();
     const page = queryPage(req.query.page);
     const size = querySize(req.query.size, 24, 8, 60);
     const q = String(req.query.q || "").trim();
@@ -50,6 +53,7 @@ async function listMarketItems(req: any, res: any, next: any, scope: MarketCatal
       status: "active",
       visibility: "public",
       listingType: "sell",
+      deliveryType: scope === "market" ? "physical" : "digital",
     };
     const categoryBoundary = resolveMarketCategoryBoundary(scope, category);
     if (!categoryBoundary.valid) {
@@ -80,6 +84,7 @@ async function listMarketItems(req: any, res: any, next: any, scope: MarketCatal
           : { createdAt: "desc" };
     const orderBy: any = [
       { pinnedUntil: { sort: "desc", nulls: "last" } },
+      { boostedUntil: { sort: "desc", nulls: "last" } },
       ...(Array.isArray(contentOrderBy) ? contentOrderBy : [contentOrderBy]),
     ];
     const [list, total] = await Promise.all([
@@ -134,7 +139,12 @@ marketCatalogRouter.get("/items/:id", async (req, res, next) => {
     const isOwnerOrStaff = Boolean(
       item && (req.user?.userId === item.sellerId || ["admin", "mod"].includes(req.user?.role || "")),
     );
-    if (!item || (PRIVATE_ITEM_STATUSES.has(item.status) && !isOwnerOrStaff)) {
+    if (
+      !item
+      || item.deliveryType !== "physical"
+      || item.category === "digital_goods"
+      || (PRIVATE_ITEM_STATUSES.has(item.status) && !isOwnerOrStaff)
+    ) {
       throw Errors.notFound("商品不存在");
     }
     if (
@@ -147,9 +157,7 @@ marketCatalogRouter.get("/items/:id", async (req, res, next) => {
         : null;
       if (!wanted || wanted.authorId !== req.user?.userId) throw Errors.notFound("商品不存在");
     }
-    if (item.status !== "draft") {
-      prisma.marketItem.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => null);
-    }
+    if (item.status !== "draft") recordUniqueContentView(req, "market_item", id).catch(() => null);
     const rating = await prisma.marketReview.aggregate({
       where: { targetUserId: item.sellerId },
       _avg: { rating: true },
@@ -171,9 +179,15 @@ marketCatalogRouter.get("/items/:id/matches", async (req, res, next) => {
     if (!id) throw Errors.badRequest("商品 ID 不合法");
     const item = await prisma.marketItem.findUnique({
       where: { id },
-      select: { id: true, status: true, visibility: true },
+      select: { id: true, status: true, visibility: true, deliveryType: true, category: true },
     });
-    if (!item || item.status !== "active" || item.visibility !== "public") {
+    if (
+      !item
+      || item.deliveryType !== "physical"
+      || item.category === "digital_goods"
+      || item.status !== "active"
+      || item.visibility !== "public"
+    ) {
       throw Errors.notFound("商品不存在或已结束");
     }
     const matches = await findMatchesForItem(id, 8);

@@ -33,8 +33,8 @@
 | 校园小工具入口 | `/services/tools` `/services/tools/:slug` | 公开 | 具体工具是否要求登录由工具配置决定 |
 | 问卷填写 / 文件提交 | `/services/tools/questionnaires/:slug` `/filestore/submit/:slug` | 通常公开 | 支持按工具设置切换是否要求登录 |
 | 成绩核对查询 | `/services/tools/grade-checks/:slug` | 默认需登录 | 登录后只看自己的学号记录 |
-| 个人中心 / 赞助 / QQBot 绑定 | `/profile` `/u/:id` `/sponsor-wall` | 部分公开、部分登录 | 鸣谢墙公开；个人资料、赞助订单、QQBot 绑定需登录 |
-| 管理后台 | `/admin` | `mod` / `admin` | 含用户、板块、站务、AI 审核、支付、QQBot、数据库等后台 |
+| 个人中心 / 赞助 | `/profile` `/u/:id` `/sponsor-wall` | 部分公开、部分登录 | 鸣谢墙公开；个人资料、赞助订单需登录 |
+| 管理后台 | `/admin` | `mod` / `admin` | 含用户、板块、站务、AI 审核、支付、数据库等后台 |
 
 ### 功能摘要
 
@@ -50,7 +50,6 @@
 - 校园小工具：当前内置需求反馈、在线问卷、成绩表核对、文件收集。
 - 文件收集：`server/filestore/` 只承载静态工作台页面，任务、提交、模板与文件记录统一写入主站 PostgreSQL。
 - 支付与赞助：支持统一易支付配置、商城与赞助独立下单/流水、订单状态管理、鸣谢墙展示、过期订单自动关闭。
-- QQBot：支持绑定 QQ、私聊/群投稿、Webhook 接入、通知派发、审核提醒。
 - 多端容器：内置 Android 与 HarmonyOS WebView 壳，便于直接打包课表与站点能力。
 
 ## 技术栈
@@ -76,7 +75,7 @@ CPU-web/
 │   ├── scripts/             # 调试脚本与数据修复脚本
 │   └── src/
 │       ├── routes/          # auth / forum / jwxt / payments / tools / admin 等接口
-│       ├── services/        # 公告抓取、教务、QQBot、赞助、AI 审核、Filestore 等服务
+│       ├── services/        # 公告抓取、教务、赞助、AI 审核、Filestore 等服务
 │       ├── middleware/      # 鉴权、参数校验、错误处理
 │       └── utils/           # JWT、密码、响应格式、客户端识别等工具
 ├── web/

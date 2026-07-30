@@ -1,8 +1,6 @@
 import { Router } from "express";
-import { z } from "zod";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
-import { validate } from "../middleware/validate";
 import { detectLoginClient } from "../utils/loginClient";
 import {
   notificationTargetClientWhere,
@@ -98,34 +96,3 @@ messageRouter.post("/read-all", async (req, res, next) => {
     ok(res, { ok: true });
   } catch (e) { next(e); }
 });
-
-messageRouter.get("/settings", async (req, res, next) => {
-  try {
-    const userId = req.user!.userId;
-    let s = await prisma.messageSetting.findUnique({ where: { userId } });
-    if (!s) s = await prisma.messageSetting.create({ data: { userId } });
-    ok(res, s);
-  } catch (e) { next(e); }
-});
-
-messageRouter.patch(
-  "/settings",
-  validate(z.object({
-    quietStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-    quietEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-    qqBotNotifyEnabled: z.boolean().optional(),
-    subscribeReply: z.boolean().optional(),
-    subscribeLike: z.boolean().optional(),
-    subscribeSchool: z.boolean().optional(),
-    subscribeSystem: z.boolean().optional(),
-  })),
-  async (req, res, next) => {
-    try {
-      const userId = req.user!.userId;
-      let s = await prisma.messageSetting.findUnique({ where: { userId } });
-      if (!s) s = await prisma.messageSetting.create({ data: { userId, ...req.body } });
-      else s = await prisma.messageSetting.update({ where: { userId }, data: req.body });
-      ok(res, s);
-    } catch (e) { next(e); }
-  }
-);

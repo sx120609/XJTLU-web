@@ -6,16 +6,16 @@ import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCa
 import { getFeatures } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
 import { authOptional } from "../middleware/auth";
-import { refreshExpiredPromotions, serializeItemPromotions, serializeMerchantPromotion, serializeWantedPromotion } from "../services/promotion";
+import { refreshExpiredPromotions, serializeItemPromotions, serializeWantedPromotion } from "../services/promotion";
 
 export const searchRouter = Router();
 searchRouter.use(authOptional);
 
-/** 全局搜索：商品 / 求购 + 帖子 + 校园资源 + 合作商户。 */
+/** 全局搜索：商品 / 求购 + 帖子 + 校园资源。 */
 searchRouter.get("/", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
-    if (!q) return ok(res, { marketItems: [], wantedPosts: [], topics: [], courses: [], services: [], merchants: [] });
+    if (!q) return ok(res, { marketItems: [], wantedPosts: [], topics: [], courses: [], services: [] });
     const userId = req.user?.userId ?? null;
     const role = req.user?.role ?? null;
     const forumAccessEnabled = await resolveForumAccess(userId, role);
@@ -23,17 +23,16 @@ searchRouter.get("/", async (req, res, next) => {
     const searchableBoardTypes = ["announce"];
     if (forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question", "coursereview");
     await refreshExpiredPromotions();
-    const promotionNow = new Date();
 
     const cacheParts = [
-      "v4-market-wanted-merchants",
+      "v5-market-wanted-no-merchants",
       q,
       forumAccessEnabled ? "forum-enabled" : "announce-only",
       features.forum ? "forum-on" : "forum-off",
       features.market ? "market-on" : "market-off",
     ];
-    const { marketItems, wantedPosts, topics, services, merchants } = await withCache("search", cacheParts, 60_000, async () => {
-      const [marketItems, wantedPosts, topics, services, merchants] = await Promise.all([
+    const { marketItems, wantedPosts, topics, services } = await withCache("search", cacheParts, 60_000, async () => {
+      const [marketItems, wantedPosts, topics, services] = await Promise.all([
         forumAccessEnabled && features.market
           ? prisma.marketItem.findMany({
             where: {
@@ -114,36 +113,8 @@ searchRouter.get("/", async (req, res, next) => {
           }),
           take: 8,
         }),
-        features.market ? prisma.merchantProfile.findMany({
-          where: {
-            status: "approved",
-            activeUntil: { gt: promotionNow },
-            activePromotionOrderId: { not: null },
-            activePromotionOrder: { is: { status: "confirmed", startsAt: { lte: promotionNow }, expiresAt: { gt: promotionNow } } },
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { category: { contains: q, mode: "insensitive" } },
-              { description: { contains: q, mode: "insensitive" } },
-              { serviceArea: { contains: q, mode: "insensitive" } },
-            ],
-          },
-          select: {
-            id: true,
-            slug: true,
-            name: true,
-            category: true,
-            description: true,
-            priceRange: true,
-            serviceArea: true,
-            images: true,
-            activeUntil: true,
-            activePromotionOrder: { select: { id: true, status: true, type: true, startsAt: true, expiresAt: true } },
-          },
-          orderBy: [{ activeUntil: "desc" }, { createdAt: "desc" }],
-          take: 8,
-        }) : Promise.resolve([]),
       ]);
-      return { marketItems, wantedPosts, topics, services, merchants };
+      return { marketItems, wantedPosts, topics, services };
     });
 
     ok(res, {
@@ -181,17 +152,6 @@ searchRouter.get("/", async (req, res, next) => {
       })),
       courses: [],
       services: services.map(normalizeServiceCard),
-      merchants: merchants.map((merchant) => ({
-        id: merchant.id,
-        slug: merchant.slug,
-        name: merchant.name,
-        category: merchant.category,
-        description: merchant.description,
-        priceRange: merchant.priceRange,
-        serviceArea: merchant.serviceArea,
-        cover: safeImages(merchant.images)[0] || "",
-        promotion: serializeMerchantPromotion(merchant),
-      })),
     });
   } catch (e) { next(e); }
 });
@@ -199,11 +159,4 @@ searchRouter.get("/", async (req, res, next) => {
 function safeJson(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
-}
-
-function safeImages(value: string | null | undefined) {
-  try {
-    const parsed = JSON.parse(value || "[]");
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
-  } catch { return []; }
 }

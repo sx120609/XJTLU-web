@@ -14,7 +14,7 @@ test("campus square exposes the restored twelve-channel catalog", () => {
 
   assert.deepEqual(grouped, {
     general: ["校园广场", "求购需求", "新生专区", "问答互助"],
-    study: ["课程学习", "科研实习", "雅思留学", "课程点评"],
+    study: ["课程学习", "2+2专区", "雅思留学", "课程点评"],
     social: ["校园生活", "社团活动", "树洞", "交友扩列"],
   });
 

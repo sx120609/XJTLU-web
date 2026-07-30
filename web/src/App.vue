@@ -312,18 +312,8 @@ async function loadStrongNotices() {
   const seq = ++strongNoticeLoadSeq;
   strongNoticeLoading = true;
   try {
-    const [list, settings] = await Promise.all([
-      messageApi.list("system").catch(() => []),
-      messageApi.settings().catch(() => null),
-    ]);
+    const list = await messageApi.list("system").catch(() => []);
     if (disposed || seq !== strongNoticeLoadSeq || !auth.isLoggedIn || auth.needDataAuthAgreement) return;
-    if (settings && settings.subscribeSystem === false) {
-      strongNoticeQueue.value = [];
-      strongNoticeOpen.value = false;
-      pendingStrongNoticeOpen = false;
-      clearStrongNoticeTimer();
-      return;
-    }
     strongNoticeQueue.value = (list as NoticeRow[])
       .filter((n) => n.level === "strong" && !n.readAt)
       .sort((a, b) => (new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()));

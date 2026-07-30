@@ -84,7 +84,6 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                  <el-dropdown-item command="settings">消息设置</el-dropdown-item>
                   <el-dropdown-item v-if="auth.isMod" command="admin" divided>🛠 管理后台</el-dropdown-item>
                   <el-dropdown-item command="logout" :divided="!auth.isMod">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
@@ -121,25 +120,6 @@
         </transition>
       </router-view>
     </main>
-
-    <footer v-if="!hideChrome && !useNativeShell" class="footer">
-      <div class="footer-inner">
-        <section class="footer-brand">
-          <img :src="site.siteLogoUrl || '/brand/kaopu-mark.svg'" alt="" />
-          <div><b>{{ site.siteName }}</b><span>{{ site.siteSubtitle }}</span></div>
-        </section>
-        <nav aria-label="页脚导航">
-          <router-link to="/market">校园市集</router-link><router-link to="/market/wanted">求购</router-link><router-link to="/learning">学习中心</router-link><router-link to="/square">广场</router-link><router-link to="/services">工具</router-link>
-        </nav>
-        <section class="footer-safety"><b>校内互助提醒</b><span>公共区域见面 · 当面验货 · 学生商品款由双方直接结算</span></section>
-        <div class="footer-bottom">
-          <span class="footer-item">© 2026 {{ site.siteName }}</span>
-          <a class="footer-item" href="https://github.com/sx120609/XJTLU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <span class="footer-item">非学校官方站点</span>
-          <a v-if="site.siteFilingNumber" class="footer-item" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ site.siteFilingNumber }}</a>
-        </div>
-      </div>
-    </footer>
 
     <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
       <router-link
@@ -261,7 +241,6 @@ import {
   Tools,
   Sunny,
   Moon,
-  Monitor,
 } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -290,12 +269,11 @@ let focusOutTimer = 0;
 let disposed = false;
 
 const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
-  { value: "system", label: "跟随", icon: Monitor },
   { value: "light", label: "浅色", icon: Sunny },
   { value: "dark", label: "深色", icon: Moon },
 ];
 const appearanceIcon = computed(() => (
-  appearance.mode === "system" ? Monitor : appearance.resolved === "dark" ? Moon : Sunny
+  appearance.resolved === "dark" ? Moon : Sunny
 ));
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer */
@@ -555,7 +533,6 @@ async function onMobileLogout() {
 
 async function onUserCmd(cmd: string) {
   if (cmd === "profile") router.push("/profile");
-  else if (cmd === "settings") router.push("/messages?tab=settings");
   else if (cmd === "admin") router.push("/admin");
   else if (cmd === "logout") {
     await auth.logout();
@@ -565,7 +542,7 @@ async function onUserCmd(cmd: string) {
 
 function setAppearanceMode(command: string | number | object) {
   const mode = String(command);
-  if (mode === "system" || mode === "light" || mode === "dark") appearance.setMode(mode);
+  if (mode === "light" || mode === "dark") appearance.setMode(mode);
 }
 </script>
 
@@ -825,45 +802,9 @@ function setAppearanceMode(command: string | number | object) {
   min-width: 0;
 }
 
-.footer {
-  background: var(--cpu-surface);
-  border-top: 1px solid var(--cpu-border-soft);
-  padding: 16px 20px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: var(--cpu-text-muted);
-}
-
-.footer-item {
-  color: inherit;
-  line-height: 1.6;
-}
-
-.footer a.footer-item {
-  color: var(--cpu-primary);
-  text-decoration: none;
-}
-
 .mobile-tabbar {
   display: none;
 }
-
-.footer-inner { width: min(1200px, 100%); display: grid; grid-template-columns: minmax(220px, 1fr) auto minmax(260px, 1fr); align-items: center; gap: 20px 34px; }
-.footer-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.footer-brand img { width: 38px; height: 38px; object-fit: contain; }
-.footer-brand div { display: grid; min-width: 0; }
-.footer-brand b { color: var(--cpu-text); font-size: 15px; }
-.footer-brand span { overflow: hidden; color: var(--cpu-text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.footer-inner nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; }
-.footer-inner nav a { color: var(--cpu-text-secondary); text-decoration: none; }
-.footer-inner nav a:hover { color: var(--cpu-primary); }
-.footer-safety { display: grid; justify-self: end; gap: 3px; text-align: right; }
-.footer-safety b { color: var(--cpu-text); font-size: 12px; }
-.footer-safety span { color: var(--cpu-text-secondary); font-size: 10px; }
-.footer-bottom { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px 14px; padding-top: 13px; border-top: 1px solid var(--cpu-border-soft); }
 
 .layout-root--tabbar-fallback.keyboard-open .main {
   padding-bottom: 12px;
@@ -1136,12 +1077,6 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (max-width: 768px) {
-  .footer-inner { grid-template-columns: 1fr; gap: 16px; }
-  .footer-brand { justify-content: center; }
-  .footer-inner nav { order: 2; }
-  .footer-safety { order: 3; justify-self: stretch; padding: 10px 12px; border-radius: 10px; background: var(--cpu-surface-soft); text-align: center; }
-  .footer-bottom { order: 4; }
-
   .layout-root.keyboard-open .main {
     padding-bottom: 12px;
   }

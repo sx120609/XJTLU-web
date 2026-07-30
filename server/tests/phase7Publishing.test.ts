@@ -35,9 +35,10 @@ test("phase 7 mobile web exposes complete site and publishing navigation", () =>
   const market = readFileSync(new URL("../../web/src/views/market/Index.vue", import.meta.url), "utf8");
   const hub = readFileSync(new URL("../../web/src/views/publish/Index.vue", import.meta.url), "utf8");
   const sheet = readFileSync(new URL("../../web/src/components/navigation/PublishActionSheet.vue", import.meta.url), "utf8");
-  assert.match(layout, /footer-safety/);
-  assert.match(layout, /页脚导航/);
+  assert.doesNotMatch(layout, /footer-safety|页脚导航|footer-inner/);
   assert.match(market, /mobileFiltersOpen/);
-  assert.match(hub, /\/learning\/materials\/publish/);
-  assert.match(sheet, /发布付费资料/);
+  assert.match(hub, /进入学习资料专区/);
+  assert.match(hub, /to: "\/learning\/materials"/);
+  assert.match(sheet, /学习资料专区/);
+  assert.doesNotMatch(`${hub}\n${sheet}`, /申请成为创作者|创作者认证/);
 });

@@ -38,6 +38,7 @@
           <el-icon><ArrowLeft /></el-icon> {{ backLabel }}
         </button>
         <div class="actions">
+          <el-button v-if="canBoost" text type="primary" @click="boostTopic">积分推流</el-button>
           <el-button v-if="canEdit" text :disabled="isTopicActionBusy" @click="onEdit">编辑</el-button>
           <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'pin'" :disabled="isTopicActionBusy" @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
           <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'globalPin'" :disabled="isTopicActionBusy" @click="onGlobalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
@@ -91,7 +92,6 @@
             <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
             · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
           </div>
-          <div v-if="hotReasons.length" class="hot-reasons">热门原因：{{ hotReasons.join(" · ") }}</div>
         </div>
         <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>
       </div>
@@ -133,13 +133,13 @@
         <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
       </div>
 
-      <router-link v-if="topic.linkedMarketItem" :to="`/market/item/${topic.linkedMarketItem.id}`" class="linked-market-card">
-        <div class="linked-cover"><img v-if="topic.linkedMarketItem.images?.[0]?.url" :src="topic.linkedMarketItem.images[0].url" :alt="topic.linkedMarketItem.title" /><span v-else>🛍️</span></div>
-        <div><small>关联商品</small><b>{{ topic.linkedMarketItem.title }}</b><span>¥{{ moneyFromCents(topic.linkedMarketItem.priceCents) }} · {{ linkedStatusLabel(topic.linkedMarketItem.status) }}</span></div><em>查看商品 →</em>
+      <router-link v-if="topic.linkedMarketItem" :to="topic.linkedMarketItem.category === 'digital_goods' ? `/learning/materials/item/${topic.linkedMarketItem.id}` : `/market/item/${topic.linkedMarketItem.id}`" class="linked-market-card" :class="{ learning: topic.linkedMarketItem.category === 'digital_goods' }">
+        <div class="linked-cover"><img v-if="topic.linkedMarketItem.images?.[0]?.url" :src="topic.linkedMarketItem.images[0].url" :alt="topic.linkedMarketItem.title" /><span v-else>{{ topic.linkedMarketItem.category === 'digital_goods' ? '📝' : '🛍️' }}</span></div>
+        <div><small>{{ topic.linkedMarketItem.category === "digital_goods" ? "关联学习资料" : "关联实体商品" }}</small><b>{{ topic.linkedMarketItem.title }}</b><span>¥{{ moneyFromCents(topic.linkedMarketItem.priceCents) }} · {{ linkedStatusLabel(topic.linkedMarketItem.status) }}</span></div><em>查看{{ topic.linkedMarketItem.category === "digital_goods" ? "资料" : "商品" }} →</em>
       </router-link>
-      <router-link v-else-if="topic.linkedWantedPost" :to="`/market/wanted/${topic.linkedWantedPost.id}`" class="linked-market-card wanted">
-        <div class="linked-cover"><span>📣</span></div>
-        <div><small>关联求购</small><b>{{ topic.linkedWantedPost.title }}</b><span>预算 ¥{{ moneyFromCents(topic.linkedWantedPost.budgetMinCents) }}–{{ moneyFromCents(topic.linkedWantedPost.budgetMaxCents) }} · {{ linkedStatusLabel(topic.linkedWantedPost.status) }}</span></div><em>查看求购 →</em>
+      <router-link v-else-if="topic.linkedWantedPost" :to="`/market/wanted/${topic.linkedWantedPost.id}`" class="linked-market-card wanted" :class="{ learning: topic.linkedWantedPost.category === 'learning_materials' }">
+        <div class="linked-cover"><span>{{ topic.linkedWantedPost.category === "learning_materials" ? "📝" : "📣" }}</span></div>
+        <div><small>{{ topic.linkedWantedPost.category === "learning_materials" ? "学习资料求购" : "关联求购" }}</small><b>{{ topic.linkedWantedPost.title }}</b><span>预算 ¥{{ moneyFromCents(topic.linkedWantedPost.budgetMinCents) }}–{{ moneyFromCents(topic.linkedWantedPost.budgetMaxCents) }} · {{ linkedStatusLabel(topic.linkedWantedPost.status) }}</span></div><em>查看求购 →</em>
       </router-link>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
@@ -209,6 +209,9 @@
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
+        </el-button>
+        <el-button :type="topic.favorited ? 'primary' : 'default'" :loading="topicActionBusy === 'favorite'" :disabled="isTopicActionBusy" @click="onFavorite">
+          {{ topic.favorited ? "已收藏" : "收藏" }}
         </el-button>
         <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
         <el-button @click="shareDialogOpen = true">分享</el-button>
@@ -711,7 +714,7 @@ const replyManualReviewConfirmOpen = ref(false);
 const requestingTopicManualReview = ref(false);
 const topicManualReviewConfirmOpen = ref(false);
 const topicAdminReviewAction = ref<"" | "approved" | "rejected">("");
-type TopicAction = "" | "like" | "pin" | "globalPin" | "lock" | "delete";
+type TopicAction = "" | "like" | "favorite" | "pin" | "globalPin" | "lock" | "delete";
 const topicActionBusy = ref<TopicAction>("");
 const replyActionBusyId = ref<number | null>(null);
 const replyLikeBusyId = ref<number | null>(null);
@@ -765,14 +768,11 @@ const showWeiwallContactSection = computed(() => {
 });
 const hotScore = computed(() => {
   const persisted = Number(topic.value?.hotScore);
-  if (topic.value?.hotScoreUpdatedAt && Number.isFinite(persisted)) return Math.round(persisted);
-  return Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03);
+  const score = topic.value?.hotScoreUpdatedAt && Number.isFinite(persisted)
+    ? persisted
+    : (topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03;
+  return Math.max(0, Math.min(100, Math.round(score)));
 });
-const hotReasons = computed(() => (
-  Array.isArray(topic.value?.hotReasons)
-    ? topic.value.hotReasons.filter((reason: unknown) => typeof reason === "string").slice(0, 3)
-    : []
-));
 const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || site.siteName));
 const shareCardHost = computed(() => {
   try { return new URL(site.siteOrigin || window.location.origin).host; }
@@ -820,45 +820,24 @@ const displayReplies = computed(() => {
   return flattened;
 });
 const replyAnonymousEnabled = computed(() => {
-  const anonymousState = auth.user?.anonymousState;
-  const ownAnonymousTopic = Boolean(
-    topic.value?.isAnonymous &&
-    topic.value?.realAuthor?.id === auth.user?.id
-  );
-  const ownAnonymousReplyInTopic = Boolean(
-    replies.value.some((item) => item.isAnonymous && item.realAuthor?.id === auth.user?.id)
-  );
-  return Boolean(
-    topic.value?.board?.anonymousEnabled &&
-    (
-      ownAnonymousTopic ||
-      ownAnonymousReplyInTopic ||
-      (
-        anonymousState?.eligible &&
-        !anonymousState?.frozen &&
-        (anonymousState?.availableCredits ?? 0) > 0
-      )
-    )
-  );
+  return Boolean(topic.value?.board?.anonymousEnabled);
 });
 const replyAnonymousHint = computed(() => {
-  const anonymousState = auth.user?.anonymousState;
   if (!topic.value?.board?.anonymousEnabled) return "当前板块暂不支持匿名回复。";
-  if (topic.value?.isAnonymous && topic.value?.realAuthor?.id === auth.user?.id) {
-    return "这是你的匿名主帖，在这里继续匿名回复不会消耗匿名积分。";
-  }
-  if (replies.value.some((item) => item.isAnonymous && item.realAuthor?.id === auth.user?.id)) {
-    return "你已经在这条帖子里匿名回复过，后续继续匿名不会再消耗匿名积分。";
-  }
-  if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 30} 后才能匿名回复。`;
-  if (anonymousState?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
-  if ((anonymousState?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
-  return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
+  return "匿名回复免费，不消耗积分，也不影响信誉值。";
 });
 const canEdit = computed(() => {
   if (topic.value?.metadata?.kind === "wanted_demand") return false;
   return auth.user?.id === topic.value?.authorId || auth.isAdmin || (auth.isMod && !isReadOnly.value);
 });
+const canBoost = computed(() => Boolean(
+  auth.user?.id
+  && (
+    topic.value?.authorId === auth.user.id
+    || topic.value?.realAuthor?.id === auth.user.id
+  )
+  && !(topic.value?.boostedUntil && new Date(topic.value.boostedUntil).getTime() > Date.now())
+));
 const canRequestTopicManualReview = computed(() => Boolean(
   auth.isLoggedIn &&
   auth.user?.id === topic.value?.authorId &&
@@ -1779,6 +1758,30 @@ function onEdit() {
   router.push({ name: "edit-post", params: { id: topic.value!.id } });
 }
 
+async function onFavorite() {
+  if (topicActionBusy.value || !topic.value) return;
+  if (!auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: route.fullPath } });
+    return;
+  }
+  topicActionBusy.value = "favorite";
+  try {
+    const result = await topicApi.toggleFavorite(topic.value.id);
+    topic.value.favorited = result.favorited;
+    ElMessage.success(result.favorited ? "已加入我的收藏" : "已取消收藏");
+  } finally {
+    topicActionBusy.value = "";
+  }
+}
+
+async function boostTopic() {
+  if (!topic.value) return;
+  await router.push({
+    name: "market-promotions",
+    query: { mode: "points", targetType: "topic", targetId: String(topic.value.id) },
+  });
+}
+
 async function runTopicAction(action: TopicAction, task: () => Promise<void>) {
   if (!action || topicActionBusy.value) return;
   topicActionBusy.value = action;
@@ -1861,5 +1864,5 @@ async function onDelete() {
 <style scoped lang="scss" src="./styles/topic-responsive.scss"></style>
 <style scoped>
 .linked-market-card{display:flex;align-items:center;gap:12px;margin:16px 0;padding:13px;border:1px solid rgba(22,135,118,.24);border-radius:12px;color:var(--cpu-text);background:rgba(22,135,118,.06);text-decoration:none}.linked-market-card:hover{border-color:var(--cpu-primary)}.linked-market-card.wanted{border-color:rgba(109,92,231,.25);background:rgba(109,92,231,.06)}.linked-cover{display:grid;place-items:center;width:58px;height:58px;flex:0 0 58px;overflow:hidden;border-radius:9px;background:var(--cpu-card);font-size:24px}.linked-cover img{width:100%;height:100%;object-fit:cover}.linked-market-card>div:nth-child(2){display:flex;min-width:0;flex:1;flex-direction:column;gap:3px}.linked-market-card small{color:var(--cpu-primary);font-size:9px;font-weight:700}.linked-market-card b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.linked-market-card span{color:var(--cpu-text-secondary);font-size:10px}.linked-market-card em{color:var(--cpu-primary);font-size:11px;font-style:normal;white-space:nowrap}@media(max-width:560px){.linked-market-card em{display:none}}
-.hot-reasons{margin-top:5px;color:#047857;font-size:10px}
+.linked-market-card.learning{border-color:#c084fc;background:color-mix(in srgb,#a855f7 8%,var(--cpu-card))}.linked-market-card.learning small,.linked-market-card.learning em{color:#9333ea}
 </style>

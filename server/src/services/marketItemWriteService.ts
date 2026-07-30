@@ -63,6 +63,7 @@ const SELLER_ITEM_TARGET_STATUSES = [
 ] as const;
 
 const ACTIVE_MARKET_ORDER_STATUSES = [
+  "negotiating",
   "pending_payment",
   "reserved",
   "paid",
@@ -106,14 +107,13 @@ export const marketItemInputSchema = z.object({
   accessories: z.string().trim().max(500).optional().default(""),
   testAllowed: z.boolean().optional().default(true),
   availableTime: z.string().trim().max(500).optional().default(""),
-  contactVisibility: z.literal("after_accept").optional().default("after_accept"),
   images: z.array(imageUrlSchema).max(9).optional().default([]),
   digitalDelivery: z.string().trim().max(10000).optional().default(""),
   draft: z.boolean().optional().default(false),
 });
 
 export const marketItemPatchSchema = marketItemInputSchema.partial().extend({
-  status: z.enum(MARKET_ITEM_STATUSES).optional(),
+  status: z.enum(SELLER_ITEM_TARGET_STATUSES).optional(),
 });
 
 export const marketItemLifecycleSchema = z.object({
@@ -148,6 +148,15 @@ export function marketItemStatusClosesPendingInterest(status: string) {
 }
 
 async function closePendingMarketItemInterest(tx: any, itemId: number) {
+  await tx.marketOrder.updateMany({
+    where: { itemId, status: "negotiating" },
+    data: {
+      status: "cancelled",
+      closedAt: new Date(),
+      cancelReason: "商品已由卖家结束交易",
+      expiresAt: null,
+    },
+  });
   await tx.tradeIntent.updateMany({
     where: { itemId, status: "pending" },
     data: { status: "expired" },
@@ -327,7 +336,6 @@ export async function createMarketItem(
       accessories: input.accessories,
       testAllowed: input.testAllowed,
       availableTime: input.availableTime,
-      contactVisibility: input.contactVisibility,
       expiresAt: null,
       visibility: "public",
       status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",

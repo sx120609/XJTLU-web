@@ -5,39 +5,64 @@ import test from "node:test";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
-process.env.JWT_SECRET = "phase-2-trade-flow-secret";
+process.env.JWT_SECRET = "phase-2-direct-trade-secret";
 
-test("stage 2 real routes complete listing and wanted reservation flows without payment", async (t) => {
+test("stage 2 real routes complete direct-chat and wanted-response trades without reservations", async (t) => {
   const express = (await import("express")).default;
   const { router } = await import("../src/routes");
   const { errorHandler } = await import("../src/middleware/error");
   const { signToken } = await import("../src/utils/jwt");
   const { prisma } = await import("../src/prisma");
+
   const suffix = `${Date.now()}_${Math.floor(Math.random() * 100_000)}`;
-  const usernames = [`phase2_seller_${suffix}`, `phase2_buyer_${suffix}`, `phase2_seller_2_${suffix}`];
-  const users = await Promise.all(usernames.map((username, index) => prisma.user.create({
-    data: { username, passwordHash: "not-used", nickname: ["阶段二卖家", "阶段二买家", "阶段二卖家二"][index], studentSso: true, forumEnabled: true, aiReviewWhitelisted: true, dataAuthAgreedAt: new Date() },
-  })));
+  const users = await Promise.all(["seller", "buyer", "seller2"].map((label) => (
+    prisma.user.create({
+      data: {
+        username: `phase2_${label}_${suffix}`,
+        passwordHash: "not-used",
+        nickname: `Phase 2 ${label} ${suffix}`,
+        studentSso: true,
+        forumEnabled: true,
+        aiReviewWhitelisted: true,
+        dataAuthAgreedAt: new Date(),
+      },
+    })
+  )));
   const [seller, buyer, secondSeller] = users;
   const userIds = users.map((user) => user.id);
-  const board = await prisma.board.findUnique({ where: { slug: "market" } });
-  assert.ok(board, "market board must exist in the migrated baseline");
 
   t.after(async () => {
-    const topicRows = await prisma.topic.findMany({ where: { authorId: { in: userIds } }, select: { id: true, boardId: true } });
-    await prisma.marketConversation.deleteMany({ where: { OR: [{ buyerId: { in: userIds } }, { sellerId: { in: userIds } }] } });
-    await prisma.marketOrder.deleteMany({ where: { OR: [{ buyerId: { in: userIds } }, { sellerId: { in: userIds } }] } });
+    const topicRows = await prisma.topic.findMany({
+      where: { authorId: { in: userIds } },
+      select: { id: true, boardId: true },
+    });
+    await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.transactionPointEntry.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.marketReview.deleteMany({ where: { authorId: { in: userIds } } });
+    await prisma.marketFavorite.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.marketConversation.deleteMany({
+      where: { OR: [{ buyerId: { in: userIds } }, { sellerId: { in: userIds } }] },
+    });
+    await prisma.marketOrder.deleteMany({
+      where: { OR: [{ buyerId: { in: userIds } }, { sellerId: { in: userIds } }] },
+    });
     await prisma.tradeIntent.deleteMany({ where: { buyerId: { in: userIds } } });
+    await prisma.marketOffer.deleteMany({ where: { buyerId: { in: userIds } } });
     await prisma.wantedResponse.deleteMany({ where: { sellerId: { in: userIds } } });
     await prisma.wantedPost.deleteMany({ where: { authorId: { in: userIds } } });
     await prisma.marketItem.deleteMany({ where: { sellerId: { in: userIds } } });
     await prisma.topic.deleteMany({ where: { id: { in: topicRows.map((row) => row.id) } } });
-    await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+
     const topicCountByBoard = new Map<number, number>();
-    for (const row of topicRows) topicCountByBoard.set(row.boardId, (topicCountByBoard.get(row.boardId) || 0) + 1);
+    for (const row of topicRows) {
+      topicCountByBoard.set(row.boardId, (topicCountByBoard.get(row.boardId) || 0) + 1);
+    }
     for (const [boardId, count] of topicCountByBoard) {
-      await prisma.board.update({ where: { id: boardId }, data: { topicCount: { decrement: count } } });
+      await prisma.board.update({
+        where: { id: boardId },
+        data: { topicCount: { decrement: count } },
+      });
     }
   });
 
@@ -48,470 +73,229 @@ test("stage 2 real routes complete listing and wanted reservation flows without 
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
-  const { port } = server.address() as AddressInfo;
-  const baseUrl = `http://127.0.0.1:${port}/api/market`;
-  const sellerToken = signToken({ userId: seller.id, studentId: seller.username, role: seller.role, campus: "SIP" });
-  const buyerToken = signToken({ userId: buyer.id, studentId: buyer.username, role: buyer.role, campus: "SIP" });
-  const secondSellerToken = signToken({ userId: secondSeller.id, studentId: secondSeller.username, role: secondSeller.role, campus: "SIP" });
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/market`;
+  const token = (user: typeof seller) => signToken({
+    userId: user.id,
+    studentId: user.username,
+    role: user.role,
+    campus: "SIP",
+  });
+  const sellerToken = token(seller);
+  const buyerToken = token(buyer);
+  const secondSellerToken = token(secondSeller);
 
-  async function api(path: string, token: string, method = "GET", payload?: unknown) {
-    const response = await fetch(`${baseUrl}${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : { "Content-Type": "application/json" }) }, body: payload === undefined ? undefined : JSON.stringify(payload) });
+  async function call(path: string, bearer: string, method = "GET", payload?: unknown) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      signal: AbortSignal.timeout(20_000),
+      headers: {
+        Authorization: `Bearer ${bearer}`,
+        ...(payload === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+    });
     const body = await response.json() as { code: number; data: any; message: string };
-    assert.equal(response.status, 200, `${method} ${path}: ${body.message}`);
-    assert.equal(body.code, 0, `${method} ${path}: ${body.message}`);
-    return body.data;
+    return { response, body };
   }
 
-  const listing = await api("/items", sellerToken, "POST", {
-    listingType: "sell", title: `阶段二闭环商品 ${suffix}`, description: "真实接口闭环测试商品", category: "other", price: 88, negotiable: true, condition: "good", tradeMode: "meetup", campus: "SIP", location: "中心楼大厅", brand: "测试品牌", model: "T2", usageDuration: "半年", flaws: "轻微使用痕迹", accessories: "原包装", testAllowed: true, availableTime: "工作日 18:00 后", contactVisibility: "after_accept", images: ["/uploads/phase2-test.jpg"],
-  });
-  assert.equal(listing.status, "active");
-  assert.equal(listing.seller.username, undefined);
-  const favoriteRace = await Promise.all([1, 2].map(() => fetch(
-    `${baseUrl}/items/${listing.id}/favorite`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${buyerToken}` },
-    },
-  )));
-  assert.ok(favoriteRace.every((response) => response.status === 200));
-  assert.equal(await prisma.marketFavorite.count({
-    where: { itemId: listing.id, userId: buyer.id },
-  }), 0);
-  assert.equal(
-    (await prisma.marketItem.findUniqueOrThrow({ where: { id: listing.id } })).favoriteCount,
-    0,
-  );
+  async function api(path: string, bearer: string, method = "GET", payload?: unknown) {
+    const result = await call(path, bearer, method, payload);
+    assert.equal(result.response.status, 200, `${method} ${path}: ${result.body.message}`);
+    assert.equal(result.body.code, 0, `${method} ${path}: ${result.body.message}`);
+    return result.body.data;
+  }
 
-  const intent = await api(`/items/${listing.id}/intents`, buyerToken, "POST", { price: 80, message: "希望见面验货", availableTime: "周五 18:30" });
-  assert.equal(intent.status, "pending");
-  const reservation = await api(`/trade-intents/${intent.id}`, sellerToken, "PATCH", { action: "accept" });
-  assert.equal(reservation.status, "reserved");
-  assert.equal(reservation.platformFee, "0.00");
-  assert.equal(reservation.payType, "");
-  const reservedEdit = await fetch(`${baseUrl}/items/${listing.id}`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${sellerToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "active" }),
-  });
-  assert.equal(reservedEdit.status, 409);
-  const reservedDelete = await fetch(`${baseUrl}/items/${listing.id}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${sellerToken}` },
-  });
-  assert.equal(reservedDelete.status, 409);
-  assert.equal(
-    (await prisma.marketItem.findUniqueOrThrow({ where: { id: listing.id } })).status,
-    "reserved",
-  );
-
-  const meetup = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  const scheduled = await api(`/orders/${reservation.id}`, buyerToken, "PATCH", { action: "set_meetup", meetupTime: meetup, meetupLocation: "中心楼大厅", note: "当面测试" });
-  assert.equal(scheduled.status, "reserved");
-  assert.equal(scheduled.meetupLocation, "中心楼大厅");
-  const buyerConfirmed = await api(`/orders/${reservation.id}`, buyerToken, "PATCH", { action: "buyer_confirm" });
-  assert.ok(buyerConfirmed.buyerConfirmedAt);
-  assert.equal(buyerConfirmed.status, "reserved");
-  const completed = await api(`/orders/${reservation.id}`, sellerToken, "PATCH", { action: "seller_confirm" });
-  assert.equal(completed.status, "completed");
-  assert.ok(completed.completedAt);
-  const reviewRace = await Promise.all([1, 2].map(() => fetch(
-    `${baseUrl}/orders/${reservation.id}/reviews`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${buyerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ rating: 5, content: "按约见面，描述准确" }),
-    },
-  )));
-  assert.deepEqual(
-    reviewRace.map((response) => response.status).sort((a, b) => a - b),
-    [200, 409],
-  );
-  const reviewSuccess = reviewRace.find((response) => response.status === 200);
-  assert.ok(reviewSuccess);
-  const reviewBody = await reviewSuccess.json() as { data: { rating: number } };
-  assert.equal(reviewBody.data.rating, 5);
-  assert.equal(await prisma.marketReview.count({
-    where: { orderId: reservation.id, authorId: buyer.id },
-  }), 1);
-  const soldListing = await prisma.marketItem.findUniqueOrThrow({ where: { id: listing.id } });
-  assert.equal(soldListing.status, "sold");
-  assert.ok(soldListing.soldAt);
-  const relisted = await api(`/items/${listing.id}/lifecycle`, sellerToken, "POST", { action: "relist" });
-  assert.equal(relisted.status, "active");
-  assert.equal(relisted.soldAt, null);
-  const completedOrderAfterRelist = await prisma.marketOrder.findUniqueOrThrow({ where: { id: reservation.id } });
-  assert.equal(completedOrderAfterRelist.status, "completed");
-  await api(`/items/${listing.id}/lifecycle`, sellerToken, "POST", { action: "mark_sold" });
-  const republishedFromEdit = await api(`/items/${listing.id}`, sellerToken, "PATCH", { status: "active" });
-  assert.equal(republishedFromEdit.status, "active");
-  assert.equal(republishedFromEdit.soldAt, null);
-
-  const orderRaceListing = await api("/items", sellerToken, "POST", {
+  const listingPayload = (title: string, price: number) => ({
     listingType: "sell",
-    title: `阶段二订单竞态商品 ${suffix}`,
-    description: "验证确认完成与取消预约不能互相覆盖",
+    title,
+    description: "A physical listing used to verify the direct private-chat trade lifecycle.",
     category: "other",
-    price: 66,
-    negotiable: false,
-    condition: "good",
-    tradeMode: "meetup",
-    campus: "SIP",
-    location: "中心楼大厅",
-    availableTime: "工作日晚上",
-    contactVisibility: "after_accept",
-    images: ["/uploads/phase2-order-race.jpg"],
-  });
-  const orderRaceIntent = await api(
-    `/items/${orderRaceListing.id}/intents`,
-    buyerToken,
-    "POST",
-    { price: 66, message: "订单竞态测试", availableTime: "周五晚上" },
-  );
-  const orderRaceReservation = await api(
-    `/trade-intents/${orderRaceIntent.id}`,
-    sellerToken,
-    "PATCH",
-    { action: "accept" },
-  );
-  await api(
-    `/orders/${orderRaceReservation.id}`,
-    buyerToken,
-    "PATCH",
-    { action: "buyer_confirm" },
-  );
-  const completionCancellationRace = await Promise.all([
-    fetch(`${baseUrl}/orders/${orderRaceReservation.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${sellerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "seller_confirm" }),
-    }),
-    fetch(`${baseUrl}/orders/${orderRaceReservation.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${buyerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "cancel", reason: "并发取消测试" }),
-    }),
-  ]);
-  assert.deepEqual(
-    completionCancellationRace.map((response) => response.status).sort((a, b) => a - b),
-    [200, 400],
-  );
-  const [orderRaceState, orderRaceItemState] = await Promise.all([
-    prisma.marketOrder.findUniqueOrThrow({ where: { id: orderRaceReservation.id } }),
-    prisma.marketItem.findUniqueOrThrow({ where: { id: orderRaceListing.id } }),
-  ]);
-  assert.ok(["completed", "cancelled"].includes(orderRaceState.status));
-  assert.equal(
-    orderRaceItemState.status,
-    orderRaceState.status === "completed" ? "sold" : "active",
-  );
-
-  const refundListing = await api("/items", sellerToken, "POST", {
-    listingType: "sell",
-    title: `阶段二退款竞态商品 ${suffix}`,
-    description: "验证同一历史订单不能并发创建两个退款申请",
-    category: "other",
-    price: 54,
-    negotiable: false,
-    condition: "good",
-    tradeMode: "meetup",
-    campus: "SIP",
-    location: "中心楼大厅",
-    availableTime: "工作日晚上",
-    contactVisibility: "after_accept",
-    images: ["/uploads/phase2-refund-race.jpg"],
-  });
-  await prisma.marketItem.update({
-    where: { id: refundListing.id },
-    data: { status: "reserved" },
-  });
-  const refundOrder = await prisma.marketOrder.create({
-    data: {
-      itemId: refundListing.id,
-      buyerId: buyer.id,
-      sellerId: seller.id,
-      outTradeNo: `MKREFUND${suffix}`,
-      amountCents: 5400,
-      platformFeeCents: 0,
-      sellerAmountCents: 5400,
-      deliveryType: "physical",
-      status: "paid",
-      paidAt: new Date(),
-    },
-  });
-  const duplicateRefundRace = await Promise.all([1, 2].map(() => fetch(
-    `${baseUrl}/orders/${refundOrder.id}`,
-    {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${buyerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "request_refund", reason: "并发退款申请" }),
-    },
-  )));
-  assert.deepEqual(
-    duplicateRefundRace.map((response) => response.status).sort((a, b) => a - b),
-    [200, 400],
-  );
-  assert.equal(await prisma.marketRefund.count({
-    where: { orderId: refundOrder.id, status: "pending" },
-  }), 1);
-  assert.equal(
-    (await prisma.marketOrder.findUniqueOrThrow({ where: { id: refundOrder.id } })).status,
-    "refund_pending",
-  );
-
-  const competingListing = await api("/items", sellerToken, "POST", {
-    listingType: "sell",
-    title: `阶段二并发商品 ${suffix}`,
-    description: "验证购买意向与旧报价不会同时成交",
-    category: "other",
-    price: 96,
+    price,
     negotiable: true,
     condition: "good",
     tradeMode: "meetup",
     campus: "SIP",
-    location: "中心楼大厅",
-    brand: "测试品牌",
-    model: "C2",
-    usageDuration: "三个月",
-    flaws: "轻微使用痕迹",
-    accessories: "包装",
+    location: "Central Building",
+    brand: "Test",
+    model: "V1",
+    usageDuration: "six months",
+    flaws: "minor signs of use",
+    accessories: "original packaging",
     testAllowed: true,
-    availableTime: "工作日晚上",
-    contactVisibility: "after_accept",
-    images: ["/uploads/phase2-competing.jpg"],
+    availableTime: "weekday evenings",
+    images: ["/uploads/phase2-direct-trade.jpg"],
   });
-  const duplicateIntentPayload = {
-    price: 90,
-    message: "并发重复购买意向",
-    availableTime: "周五晚上",
-  };
-  const duplicateIntentResponses = await Promise.all([1, 2].map(() => fetch(
-    `${baseUrl}/items/${competingListing.id}/intents`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${buyerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify(duplicateIntentPayload),
-    },
+
+  const listing = await api(
+    "/items",
+    sellerToken,
+    "POST",
+    listingPayload(`Direct chat listing ${suffix}`, 88),
+  );
+  assert.equal(listing.status, "active");
+  assert.equal(listing.seller.username, undefined);
+
+  const favoriteRace = await Promise.all([1, 2].map(() => (
+    call(`/items/${listing.id}/favorite`, buyerToken, "POST")
+  )));
+  assert.ok(favoriteRace.every((result) => result.response.status === 200));
+  assert.equal(await prisma.marketFavorite.count({
+    where: { itemId: listing.id, userId: buyer.id },
+  }), 0);
+
+  const conversations = await Promise.all([
+    api(`/items/${listing.id}/conversations`, buyerToken, "POST", {
+      message: "Hi, is this still available?",
+    }),
+    api(`/items/${listing.id}/conversations`, buyerToken, "POST", {}),
+  ]);
+  assert.equal(conversations[0].id, conversations[1].id);
+  assert.equal(conversations[0].orderId, conversations[1].orderId);
+  const order = await prisma.marketOrder.findUniqueOrThrow({
+    where: { id: conversations[0].orderId },
+  });
+  assert.equal(order.status, "negotiating");
+  assert.equal(order.tradeIntentId, null);
+  assert.equal(order.offerId, null);
+  assert.equal((await prisma.marketItem.findUniqueOrThrow({
+    where: { id: listing.id },
+  })).status, "active");
+
+  const confirmations = await Promise.all([
+    api(`/orders/${order.id}`, buyerToken, "PATCH", { action: "buyer_confirm" }),
+    api(`/orders/${order.id}`, sellerToken, "PATCH", { action: "seller_confirm" }),
+  ]);
+  assert.ok(confirmations.some((entry) => entry.status === "completed"));
+  assert.equal((await prisma.marketOrder.findUniqueOrThrow({ where: { id: order.id } })).status, "completed");
+  assert.equal((await prisma.marketItem.findUniqueOrThrow({ where: { id: listing.id } })).status, "sold");
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: seller.id } })).transactionPoints, 10);
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: buyer.id } })).transactionPoints, 10);
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: seller.id } })).reputation, 100);
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: buyer.id } })).reputation, 100);
+
+  const reviewRace = await Promise.all([1, 2].map(() => (
+    call(`/orders/${order.id}/reviews`, buyerToken, "POST", {
+      rating: 5,
+      content: "The item matched the description and the trade went smoothly.",
+    })
   )));
   assert.deepEqual(
-    duplicateIntentResponses.map((response) => response.status).sort((a, b) => a - b),
+    reviewRace.map((result) => result.response.status).sort((a, b) => a - b),
     [200, 409],
   );
-  const duplicateIntentBodies = await Promise.all(
-    duplicateIntentResponses.map((response) => response.json() as Promise<{ data: any }>),
-  );
-  const competingIntent = duplicateIntentBodies[
-    duplicateIntentResponses.findIndex((response) => response.status === 200)
-  ].data;
-  assert.ok(competingIntent?.id);
-  assert.equal(await prisma.tradeIntent.count({
-    where: {
-      itemId: competingListing.id,
-      buyerId: buyer.id,
-      status: "pending",
-    },
+  assert.equal(await prisma.marketReview.count({
+    where: { orderId: order.id, authorId: buyer.id },
   }), 1);
-  const competingOffer = await api(
-    `/items/${competingListing.id}/offers`,
-    secondSellerToken,
-    "POST",
-    { price: 91, message: "旧客户端报价入口" },
-  );
-  const competingAcceptanceResponses = await Promise.all([
-    fetch(`${baseUrl}/trade-intents/${competingIntent.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${sellerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept" }),
-    }),
-    fetch(`${baseUrl}/offers/${competingOffer.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${sellerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept" }),
-    }),
-  ]);
-  assert.deepEqual(
-    competingAcceptanceResponses.map((response) => response.status).sort((a, b) => a - b),
-    [200, 400],
-  );
-  assert.equal(await prisma.marketOrder.count({
-    where: { itemId: competingListing.id },
-  }), 1);
-  const [competingIntentState, competingOfferState, competingItemState] = await Promise.all([
-    prisma.tradeIntent.findUniqueOrThrow({ where: { id: competingIntent.id } }),
-    prisma.marketOffer.findUniqueOrThrow({ where: { id: competingOffer.id } }),
-    prisma.marketItem.findUniqueOrThrow({ where: { id: competingListing.id } }),
-  ]);
-  assert.deepEqual(
-    [competingIntentState.status, competingOfferState.status].sort(),
-    ["accepted", "rejected"],
-  );
-  assert.equal(competingItemState.status, "reserved");
 
-  const writeRaceListing = await api("/items", sellerToken, "POST", {
-    listingType: "sell",
-    title: `阶段二商品写入竞态 ${suffix}`,
-    description: "验证编辑下架与接受购买意向不能留下半完成状态",
-    category: "other",
-    price: 72,
-    negotiable: false,
-    condition: "good",
-    tradeMode: "meetup",
-    campus: "SIP",
-    location: "中心楼大厅",
-    availableTime: "工作日晚上",
-    contactVisibility: "after_accept",
-    images: ["/uploads/phase2-item-write-race.jpg"],
+  const relisted = await api(`/items/${listing.id}/lifecycle`, sellerToken, "POST", {
+    action: "relist",
   });
-  const writeRaceIntent = await api(
-    `/items/${writeRaceListing.id}/intents`,
+  assert.equal(relisted.status, "active");
+  assert.equal((await prisma.marketOrder.findUniqueOrThrow({ where: { id: order.id } })).status, "completed");
+
+  const raceListing = await api(
+    "/items",
+    sellerToken,
+    "POST",
+    listingPayload(`Confirm cancel race ${suffix}`, 66),
+  );
+  const raceConversation = await api(
+    `/items/${raceListing.id}/conversations`,
     buyerToken,
     "POST",
-    { price: 72, message: "商品写入竞态测试", availableTime: "周五晚上" },
+    { message: "Let's discuss this item." },
   );
-  const itemWriteRace = await Promise.all([
-    fetch(`${baseUrl}/trade-intents/${writeRaceIntent.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${sellerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept" }),
+  await api(`/orders/${raceConversation.orderId}`, buyerToken, "PATCH", {
+    action: "buyer_confirm",
+  });
+  const completionCancellationRace = await Promise.all([
+    call(`/orders/${raceConversation.orderId}`, sellerToken, "PATCH", {
+      action: "seller_confirm",
     }),
-    fetch(`${baseUrl}/items/${writeRaceListing.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${sellerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "draft" }),
+    call(`/orders/${raceConversation.orderId}`, buyerToken, "PATCH", {
+      action: "cancel",
+      reason: "The parties could not agree on the handover time.",
     }),
   ]);
-  const itemWriteRaceStatuses = itemWriteRace
-    .map((response) => response.status)
-    .sort((a, b) => a - b);
-  assert.equal(itemWriteRaceStatuses[0], 200);
-  assert.ok([400, 409].includes(itemWriteRaceStatuses[1]));
-  const [writeRaceItemState, writeRaceIntentState, writeRaceOrders] = await Promise.all([
-    prisma.marketItem.findUniqueOrThrow({ where: { id: writeRaceListing.id } }),
-    prisma.tradeIntent.findUniqueOrThrow({ where: { id: writeRaceIntent.id } }),
-    prisma.marketOrder.findMany({ where: { itemId: writeRaceListing.id } }),
-  ]);
-  if (writeRaceOrders.length) {
-    assert.equal(writeRaceOrders.length, 1);
-    assert.equal(writeRaceItemState.status, "reserved");
-    assert.equal(writeRaceIntentState.status, "accepted");
-  } else {
-    assert.equal(writeRaceItemState.status, "draft");
-    assert.equal(writeRaceIntentState.status, "expired");
-  }
+  assert.deepEqual(
+    completionCancellationRace.map((result) => result.response.status).sort((a, b) => a - b),
+    [200, 400],
+  );
+  const raceOrder = await prisma.marketOrder.findUniqueOrThrow({
+    where: { id: raceConversation.orderId },
+  });
+  const raceItem = await prisma.marketItem.findUniqueOrThrow({
+    where: { id: raceListing.id },
+  });
+  assert.ok(["completed", "cancelled"].includes(raceOrder.status));
+  assert.equal(raceItem.status, raceOrder.status === "completed" ? "sold" : "active");
 
-  const wanted = await api("/wanted", buyerToken, "POST", { title: `阶段二求购 ${suffix}`, category: "other", budgetMin: 40, budgetMax: 120, brandModel: "不限", condition: "使用良好", expectedTradeTime: "本周内", campus: "SIP", location: "中心楼大厅", description: "希望现场测试功能", allowSellerOffers: true, expiryDays: 21 });
-  assert.equal(wanted.status, "active");
-  const wantedResponse = await api(`/wanted/${wanted.id}/responses`, sellerToken, "POST", { title: `定向响应商品 ${suffix}`, price: 70, description: "功能正常，有轻微使用痕迹", images: ["/uploads/phase2-targeted.jpg"], condition: "good", brand: "测试品牌", model: "W2", availableTime: "周六下午" });
-  assert.equal(wantedResponse.status, "pending");
-  assert.equal(wantedResponse.item.visibility, "targeted");
-  const wantedReservation = await api(`/wanted-responses/${wantedResponse.id}`, buyerToken, "PATCH", { action: "accept" });
-  assert.equal(wantedReservation.status, "reserved");
-  assert.equal(wantedReservation.wantedPostId, wanted.id);
-  const cancelled = await api(`/orders/${wantedReservation.id}`, sellerToken, "PATCH", { action: "cancel", reason: "双方时间无法协调" });
-  assert.equal(cancelled.status, "cancelled");
-  assert.equal(cancelled.cancelReason, "双方时间无法协调");
-  const reopenedWanted = await prisma.wantedPost.findUniqueOrThrow({ where: { id: wanted.id } });
-  assert.equal(reopenedWanted.status, "responded");
-
-  const concurrentWanted = await api("/wanted", buyerToken, "POST", {
-    title: `阶段二并发求购 ${suffix}`,
+  const wanted = await api("/wanted", buyerToken, "POST", {
+    title: `Direct wanted request ${suffix}`,
     category: "other",
     budgetMin: 40,
     budgetMax: 120,
-    brandModel: "不限",
-    condition: "使用良好",
-    expectedTradeTime: "本周内",
+    brandModel: "Any suitable model",
+    condition: "good working condition",
+    expectedTradeTime: "this week",
     campus: "SIP",
-    location: "中心楼大厅",
-    description: "验证同一求购只能接受一个响应",
+    location: "Central Building",
+    description: "A wanted request used to verify direct chat with a targeted response.",
     allowSellerOffers: true,
     expiryDays: 21,
   });
-  const [firstResponse, secondResponse] = await Promise.all([
-    api(`/wanted/${concurrentWanted.id}/responses`, sellerToken, "POST", {
-      title: `并发响应商品一 ${suffix}`,
-      price: 75,
-      description: "第一件响应商品",
-      images: ["/uploads/phase2-concurrent-1.jpg"],
-      condition: "good",
-      availableTime: "周六下午",
-    }),
-    api(`/wanted/${concurrentWanted.id}/responses`, secondSellerToken, "POST", {
-      title: `并发响应商品二 ${suffix}`,
-      price: 78,
-      description: "第二件响应商品",
-      images: ["/uploads/phase2-concurrent-2.jpg"],
-      condition: "good",
-      availableTime: "周日下午",
-    }),
-  ]);
-  const acceptanceResponses = await Promise.all([
-    fetch(`${baseUrl}/wanted-responses/${firstResponse.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${buyerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept" }),
-    }),
-    fetch(`${baseUrl}/wanted-responses/${secondResponse.id}`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${buyerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept" }),
-    }),
-  ]);
-  assert.deepEqual(acceptanceResponses.map((response) => response.status).sort((a, b) => a - b), [200, 400]);
-  const concurrentOrders = await prisma.marketOrder.findMany({
-    where: { wantedPostId: concurrentWanted.id },
-  });
-  assert.equal(concurrentOrders.length, 1);
-  const matchedConcurrentWanted = await prisma.wantedPost.findUniqueOrThrow({
-    where: { id: concurrentWanted.id },
-  });
-  assert.equal(matchedConcurrentWanted.status, "matched");
-  const concurrentResponseStates = await prisma.wantedResponse.findMany({
-    where: { wantedPostId: concurrentWanted.id },
-    orderBy: { id: "asc" },
-  });
-  assert.deepEqual(
-    concurrentResponseStates.map((response) => response.status).sort(),
-    ["accepted", "rejected"],
-  );
-
-  const duplicateWanted = await api("/wanted", buyerToken, "POST", {
-    title: `阶段二重复响应求购 ${suffix}`,
-    category: "other",
-    budgetMin: 30,
-    budgetMax: 100,
-    brandModel: "不限",
-    condition: "使用良好",
-    expectedTradeTime: "下周内",
-    campus: "SIP",
-    location: "中心楼大厅",
-    description: "验证同一卖家不能并发提交两个待处理响应",
-    allowSellerOffers: true,
-    expiryDays: 21,
-  });
-  const duplicatePayload = {
-    title: `重复响应商品 ${suffix}`,
-    price: 65,
-    description: "并发重复响应测试商品",
-    images: ["/uploads/phase2-duplicate.jpg"],
-    condition: "good",
-    availableTime: "工作日晚上",
-  };
-  const duplicateResponses = await Promise.all([1, 2].map(() => fetch(
-    `${baseUrl}/wanted/${duplicateWanted.id}/responses`,
+  const wantedResponse = await api(
+    `/wanted/${wanted.id}/responses`,
+    secondSellerToken,
+    "POST",
     {
-      method: "POST",
-      headers: { Authorization: `Bearer ${sellerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify(duplicatePayload),
+      title: `Targeted response item ${suffix}`,
+      price: 70,
+      description: "The item works normally and can be inspected before the trade.",
+      images: ["/uploads/phase2-targeted.jpg"],
+      condition: "good",
+      brand: "Test",
+      model: "Wanted V1",
+      availableTime: "Saturday afternoon",
     },
-  )));
-  assert.deepEqual(duplicateResponses.map((response) => response.status).sort((a, b) => a - b), [200, 409]);
-  assert.equal(await prisma.wantedResponse.count({
-    where: { wantedPostId: duplicateWanted.id, sellerId: seller.id, status: "pending" },
-  }), 1);
+  );
+  assert.equal(wantedResponse.status, "pending");
+  assert.equal(wantedResponse.item.visibility, "targeted");
+
+  const wantedConversation = await api(
+    `/items/${wantedResponse.itemId}/conversations`,
+    buyerToken,
+    "POST",
+    { wantedResponseId: wantedResponse.id, message: "Let's discuss your response." },
+  );
+  const wantedOrder = await prisma.marketOrder.findUniqueOrThrow({
+    where: { id: wantedConversation.orderId },
+  });
+  assert.equal(wantedOrder.status, "negotiating");
+  assert.equal(wantedOrder.wantedPostId, wanted.id);
+  assert.equal(wantedOrder.wantedResponseId, wantedResponse.id);
+  assert.equal((await prisma.wantedPost.findUniqueOrThrow({ where: { id: wanted.id } })).status, "responded");
+  assert.equal((await prisma.wantedResponse.findUniqueOrThrow({
+    where: { id: wantedResponse.id },
+  })).status, "accepted");
+
+  const cancelled = await api(`/orders/${wantedOrder.id}`, secondSellerToken, "PATCH", {
+    action: "cancel",
+    reason: "The parties could not agree on a handover time.",
+  });
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal((await prisma.wantedPost.findUniqueOrThrow({ where: { id: wanted.id } })).status, "responded");
+  assert.equal((await prisma.wantedResponse.findUniqueOrThrow({
+    where: { id: wantedResponse.id },
+  })).status, "cancelled");
+  assert.equal((await prisma.marketItem.findUniqueOrThrow({
+    where: { id: wantedResponse.itemId },
+  })).status, "withdrawn");
 
   const mine = await api("/mine", buyerToken);
-  assert.ok(mine.orders.some((order: any) => order.id === reservation.id && order.status === "completed"));
-  assert.ok(mine.wantedPosts.some((post: any) => post.id === wanted.id));
-  assert.ok(mine.tradeIntents.some((row: any) => row.id === intent.id && row.status === "accepted"));
+  assert.ok(mine.orders.some((entry: any) => entry.id === order.id && entry.status === "completed"));
+  assert.ok(mine.orders.some((entry: any) => entry.id === wantedOrder.id && entry.status === "cancelled"));
+  assert.ok(mine.wantedPosts.some((entry: any) => entry.id === wanted.id));
+  assert.equal(await prisma.tradeIntent.count({ where: { buyerId: buyer.id } }), 0);
+  assert.equal(await prisma.marketOffer.count({ where: { buyerId: buyer.id } }), 0);
 });

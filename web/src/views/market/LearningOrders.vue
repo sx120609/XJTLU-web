@@ -4,11 +4,11 @@
       <div>
         <span>LEARNING ORDERS</span>
         <h1>学习资料订单</h1>
-        <p>资料款由买家直接支付给创作者；平台记录凭证、确认与交付过程。</p>
+        <p>资料款由买家直接支付给资料发布者；平台记录凭证、确认与交付过程。</p>
       </div>
       <div>
         <el-button @click="router.push({ name: 'market-learning-materials' })">浏览资料</el-button>
-        <el-button type="primary" @click="router.push({ name: 'market-learning-creator' })">创作者中心</el-button>
+        <el-button type="primary" @click="router.push({ name: 'market-learning-creator' })">资料发布中心</el-button>
       </div>
     </header>
 
@@ -60,16 +60,16 @@
 
         <section v-if="selected.status === 'pending_payment' && selected.mine.buyer" class="payment-panel">
           <div>
-            <h3>向创作者付款</h3>
+            <h3>向资料发布者付款</h3>
             <p>请核对收款平台和金额。付款后必须上传真实付款截图，等待卖家确认到账。</p>
             <dl>
               <div><dt>收款平台</dt><dd>{{ providerLabel(selected.collectionMethod?.provider) }}</dd></div>
-              <div><dt>收款备注</dt><dd>{{ selected.collectionMethod?.label || "创作者本人收款码" }}</dd></div>
+              <div><dt>收款备注</dt><dd>{{ selected.collectionMethod?.label || "资料发布者本人收款码" }}</dd></div>
               <div><dt>应付金额</dt><dd>¥{{ selected.amount }}</dd></div>
               <div><dt>付款期限</dt><dd>{{ formatDate(selected.paymentDueAt) }}</dd></div>
             </dl>
           </div>
-          <img v-if="selected.collectionMethod?.qrImageUrl" :src="selected.collectionMethod.qrImageUrl" alt="创作者收款码" />
+          <img v-if="selected.collectionMethod?.qrImageUrl" :src="selected.collectionMethod.qrImageUrl" alt="资料发布者收款码" />
         </section>
 
         <section v-if="latestEvidence" class="evidence-panel">
@@ -393,7 +393,7 @@ async function sendIssueMessage() {
 }
 
 function responsibilityLabel(value: string) {
-  return { buyer: "买家责任", creator: "创作者责任", platform: "平台责任", shared: "双方责任", no_fault: "无责处理", unassigned: "待认定" }[value] || value;
+  return { buyer: "买家责任", creator: "资料发布者责任", platform: "平台责任", shared: "双方责任", no_fault: "无责处理", unassigned: "待认定" }[value] || value;
 }
 
 function statusLabel(status: LearningCommerceOrderStatus) {

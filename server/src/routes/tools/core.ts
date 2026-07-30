@@ -15,14 +15,8 @@ import {
 } from "../../services/serviceTools";
 import {
   toolManagerCreateSchema,
-  toolQqReminderPatchSchema,
   toolSettingPatchSchema,
 } from "../../services/toolSchemas";
-import {
-  listToolQqReminderItems,
-  normalizeToolQqReminderTargetType,
-  updateToolQqReminderItem,
-} from "../../services/toolQqReminders";
 import { Errors, ok } from "../../utils/response";
 
 export const toolCoreRouter = Router();
@@ -85,56 +79,6 @@ toolCoreRouter.get("/permissions/me", authRequired, async (req, res, next) => {
     next(error);
   }
 });
-
-toolCoreRouter.get("/qqbot-reminders", authRequired, async (req, res, next) => {
-  try {
-    const [items, binding] = await Promise.all([
-      listToolQqReminderItems(req.user),
-      prisma.qqBotBinding.findFirst({
-        where: { userId: req.user!.userId },
-        orderBy: [{ enabled: "desc" }, { updatedAt: "desc" }],
-        select: {
-          id: true,
-          qqId: true,
-          nickname: true,
-          enabled: true,
-          updatedAt: true,
-        },
-      }),
-    ]);
-    ok(res, { binding, items });
-  } catch (error) {
-    next(error);
-  }
-});
-
-toolCoreRouter.patch(
-  "/qqbot-reminders/:targetType/:id",
-  authRequired,
-  validate(toolQqReminderPatchSchema),
-  async (req, res, next) => {
-    try {
-      const targetType = normalizeToolQqReminderTargetType(
-        req.params.targetType,
-      );
-      const id = Number(req.params.id);
-      if (!targetType || !Number.isInteger(id) || id <= 0) {
-        throw Errors.badRequest("提醒对象不合法");
-      }
-      ok(
-        res,
-        await updateToolQqReminderItem(
-          req.user,
-          targetType,
-          id,
-          req.body,
-        ),
-      );
-    } catch (error) {
-      next(error);
-    }
-  },
-);
 
 toolCoreRouter.get("/:toolCode/managers", authRequired, async (req, res, next) => {
   try {

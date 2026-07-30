@@ -354,10 +354,10 @@ function publicSquareBoardWhere(boardTypes: string[]) {
 
 function computeHotScore(topic: any, recent: boolean) {
   if (topic.hotScoreUpdatedAt && Number.isFinite(Number(topic.hotScore))) {
-    return Number(topic.hotScore);
+    return Math.max(0, Math.min(100, Math.round(Number(topic.hotScore))));
   }
   const raw = (topic.likeCount ?? 0) * 5 + (topic.replyCount ?? 0) * 3 + (topic.viewCount ?? 0) * 0.03;
-  return recent ? raw : raw * 0.72;
+  return Math.max(0, Math.min(100, Math.round(recent ? raw : raw * 0.72)));
 }
 
 function isRecentTopic(topic: any) {

@@ -16,9 +16,6 @@
         {{ user?.nickname }}
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
         <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
-        <el-tag v-if="user?.reputationLevel" size="small" type="warning" effect="plain">
-          Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
-        </el-tag>
       </h3>
       <p class="account-note">{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
       <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
@@ -28,11 +25,11 @@
         <li><span>发帖</span><span>{{ user?.postCount }}</span></li>
         <li><span>回复</span><span>{{ user?.replyCount }}</span></li>
         <li><span>声望</span><span>{{ user?.reputation }}</span></li>
-        <li v-if="(user?.sponsorAmount ?? 0) > 0"><span>赞助</span><span class="sponsor-total">¥{{ formatMoney(user?.sponsorAmount) }}</span></li>
       </ul>
       <div class="profile-actions">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
-        <el-button plain :disabled="logoutBusy" @click="router.push('/market/mine?tab=trust')">校园身份与交易信用</el-button>
+        <el-button plain :disabled="logoutBusy" @click="scrollToSection('trust')">校园身份与信用</el-button>
+        <el-button plain :disabled="logoutBusy" @click="scrollToSection('favorites')">我的收藏</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       </div>
@@ -59,228 +56,114 @@
       </div>
     </div>
 
-    <div v-if="site.features.sponsor || (user?.sponsorAmount ?? 0) > 0" class="cpu-card sponsor-card">
-      <div class="sponsor-main">
-        <div class="sponsor-copy">
-          <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>
-          <p>{{ sponsorOptions.description || "赞助会通过易支付完成，成功后金额会展示在你的个人资料里。" }}</p>
-          <strong>已赞助 ¥{{ formatMoney(user?.sponsorAmount) }}</strong>
-          <div class="sponsor-actions">
-            <el-button v-if="sponsorOptions.wallEnabled" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
-          </div>
-        </div>
-
-        <div class="sponsor-panel">
-          <template v-if="site.features.sponsor">
-            <div v-if="sponsorOptions.enabled" class="sponsor-form">
-              <div class="amount-grid">
-                <button
-                  v-for="amount in sponsorOptions.amounts"
-                  :key="amount"
-                  type="button"
-                  :class="{ active: sponsorAmount === String(amount) }"
-                  :disabled="sponsorSubmitting"
-                  @click="sponsorAmount = String(amount)"
-                >
-                  ¥{{ amount }}
-                </button>
-              </div>
-
-              <div class="sponsor-pay-row">
-                <el-input v-model="sponsorAmount" placeholder="自定义金额" maxlength="8" class="sponsor-money-input" :disabled="sponsorSubmitting">
-                  <template #prepend>¥</template>
-                </el-input>
-                <el-select v-model="sponsorPayType" class="sponsor-pay-select" :disabled="sponsorSubmitting">
-                  <el-option v-for="item in enabledPayTypes" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-                <el-button class="sponsor-submit-btn" type="primary" :loading="sponsorSubmitting" :disabled="sponsorSubmitting" @click="openSponsorConfirm">去支付</el-button>
-              </div>
-            </div>
-            <el-alert v-else type="info" :closable="false" show-icon title="赞助支付暂不可用，请稍后再试。" />
-          </template>
-          <el-alert v-else type="info" :closable="false" show-icon title="赞助入口当前已关闭，已完成的赞助金额仍会保留展示。" />
-        </div>
-      </div>
-
-      <div v-if="sponsorOrders.length" class="sponsor-history">
-        <div class="sub-title">我的赞助记录</div>
-        <div v-for="order in sponsorOrders" :key="order.outTradeNo" class="sponsor-order-row">
-          <div>
-            <b>¥{{ order.amount }}</b>
-            <span>{{ payTypeLabels[order.payType as PayType] || order.payType }} · 已支付</span>
-          </div>
-          <div class="order-actions">
-            <span>{{ fmtDate(order.paidAt || order.createdAt, "MM-DD HH:mm") }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <el-dialog
-      v-model="sponsorConfirmOpen"
-      title="确认赞助"
-      width="420px"
-      class="sponsor-confirm-dialog"
-      append-to-body
-      :close-on-click-modal="!sponsorSubmitting"
-      :close-on-press-escape="!sponsorSubmitting"
-      :show-close="!sponsorSubmitting"
-    >
-      <div class="sponsor-confirm">
-        <div class="sponsor-confirm-summary">
-          <span>赞助金额</span>
-          <b>¥{{ formatMoney(sponsorAmount) }}</b>
-        </div>
-        <div class="sponsor-confirm-line">
-          <span>支付方式</span>
-          <strong>{{ payTypeLabels[sponsorPayType] || sponsorPayType }}</strong>
-        </div>
-        <div class="sponsor-confirm-field">
-          <span>展示方式</span>
-          <div class="sponsor-display-tabs" role="radiogroup" aria-label="展示方式">
-            <button
-              v-for="item in sponsorDisplayOptions"
-              :key="item.value"
-              type="button"
-              :class="{ active: sponsorDisplayMode === item.value }"
-              role="radio"
-              :aria-checked="sponsorDisplayMode === item.value"
-              :disabled="sponsorSubmitting"
-              @click="sponsorDisplayMode = item.value"
-            >
-              {{ item.label }}
-            </button>
-          </div>
-        </div>
-        <el-input
-          v-if="sponsorOptions.allowMessage"
-          v-model="sponsorMessage"
-          maxlength="80"
-          show-word-limit
-          placeholder="给本站留一句话（选填）"
-          :disabled="sponsorSubmitting"
-        />
-      </div>
-      <template #footer>
-        <el-button :disabled="sponsorSubmitting" @click="sponsorConfirmOpen = false">取消</el-button>
-        <el-button type="primary" :loading="sponsorSubmitting" :disabled="sponsorSubmitting" @click="submitSponsor">确认并支付</el-button>
-      </template>
-    </el-dialog>
-
-    <div class="cpu-card trust-card" v-if="user">
+    <div id="trust" class="cpu-card trust-card" v-if="user">
       <div class="trust-head">
         <div class="trust-copy">
-          <h3 class="cpu-section-title">信誉与匿名</h3>
-          <p class="trust-sub">信誉值由注册时长、发帖数量、回复数量等因素共同决定，按周发放匿名积分。</p>
+          <h3 class="cpu-section-title">校园身份与信用</h3>
+          <p class="trust-sub">身份、信誉和成交表现属于个人账户能力。成交率只统计公开实物商品的在售与已售卖状态；好评率默认 100%，仅管理员可依据投诉核验结果调整。</p>
           <div class="trust-inline-summary">
-            <span v-if="user.reputationLevel">Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}</span>
-            <span>状态 {{ anonymousStatusText }}</span>
-            <span>本周 {{ user.anonymousState?.weeklyQuota ?? 0 }} 点</span>
+            <span>{{ trust?.identity.label || (user.studentSso ? "校园身份已核验" : "校园身份未核验") }}</span>
+            <span>信誉与积分相互独立</span>
+            <span>匿名发帖与回复免费</span>
           </div>
         </div>
-        <div class="trust-score">{{ user.reputation }}</div>
+        <div class="trust-score"><b>{{ trust?.score ?? user.reputation }}</b><small>信誉值</small></div>
       </div>
 
       <div class="trust-grid">
         <div class="trust-item">
-          <span>本周额度</span>
-          <b>{{ user.anonymousState?.weeklyQuota ?? 0 }}</b>
+          <span>校园身份</span>
+          <b>{{ trust?.identity.verified ? "已核验" : "未核验" }}</b>
         </div>
         <div class="trust-item">
-          <span>剩余积分</span>
-          <b>{{ user.anonymousState?.availableCredits ?? 0 }}</b>
+          <span>已售卖</span>
+          <b>{{ trust?.physicalSoldItemCount ?? 0 }}</b>
         </div>
         <div class="trust-item">
-          <span>状态</span>
-          <b>{{ anonymousStatusText }}</b>
+          <span>成交率</span>
+          <b>{{ trust?.completionRate ?? 0 }}%</b>
         </div>
         <div class="trust-item">
-          <span>下次刷新</span>
-          <b>{{ anonymousResetText }}</b>
+          <span>好评率</span>
+          <b>{{ trust?.positiveRate ?? 100 }}%</b>
         </div>
       </div>
 
-      <div class="trust-section">
-        <div class="trust-section-head">
-          <div>
-            <div class="trust-section-title">得分详情</div>
-            <p class="trust-section-tip">需要时再展开查看各项贡献和升级进度。</p>
-          </div>
-          <el-button text type="primary" @click="trustDetailsOpen = !trustDetailsOpen">
-            {{ trustDetailsOpen ? "收起" : "点击展开" }}
-          </el-button>
+      <div class="account-assets">
+        <div class="points-summary">
+          <span>积分资产</span>
+          <strong>{{ trust?.points.points ?? user.points ?? 0 }}</strong>
+          <small>积分是流动的推流货币，不影响信誉值，也不能提现。</small>
+          <el-button type="primary" plain @click="router.push({ name: 'market-promotions', query: { mode: 'points' } })">积分推流</el-button>
         </div>
-        <div v-if="trustDetailsOpen" class="trust-section-body">
-          <div class="trust-breakdown">
-            <div class="trust-row">
-              <span>注册时长贡献</span>
-              <b>{{ user.reputationBreakdown?.agePoints ?? 0 }}</b>
-            </div>
-            <div class="trust-row">
-              <span>发帖贡献</span>
-              <b>{{ user.reputationBreakdown?.postPoints ?? 0 }}</b>
-            </div>
-            <div class="trust-row">
-              <span>回复贡献</span>
-              <b>{{ user.reputationBreakdown?.replyPoints ?? 0 }}</b>
-            </div>
-            <div class="trust-row">
-              <span>论坛资历加成</span>
-              <b>{{ user.reputationBreakdown?.forumPoints ?? 0 }}</b>
-            </div>
-          </div>
-
-          <div class="trust-progress-list">
-            <p v-if="user.anonymousState?.nextTier" class="trust-next">
-              距离下一档匿名额度还差 {{ user.anonymousState.nextTier.need }} 点信誉值，达到后每周可得 {{ user.anonymousState.nextTier.weeklyQuota }} 点。
-            </p>
-            <p v-if="user.reputationLevel?.nextLevel" class="trust-next">
-              距离下一信誉等级还差 {{ user.reputationLevel.nextLevel.need }} 点，达到后将升级为 Lv.{{ user.reputationLevel.nextLevel.level }} {{ user.reputationLevel.nextLevel.name }}。
-            </p>
-          </div>
+        <div class="point-ledger">
+          <b>最近积分流水</b>
+          <ol v-if="trust?.points.recentEntries?.length">
+            <li v-for="entry in trust.points.recentEntries.slice(0, 6)" :key="entry.id">
+              <span>{{ entry.reason }}</span>
+              <strong :class="{ negative: entry.delta < 0 }">{{ entry.delta > 0 ? "+" : "" }}{{ entry.delta }}</strong>
+              <time>{{ fmtDate(entry.createdAt, "MM-DD HH:mm") }}</time>
+            </li>
+          </ol>
+          <p v-else>完成真实交易等行为会生成可追溯的积分流水。</p>
         </div>
       </div>
 
-      <div class="trust-section">
-        <div class="trust-section-head">
-          <div>
-            <div class="trust-section-title">支持匿名的板块</div>
-            <p class="trust-section-tip">{{ anonymousBoards.length }} 个板块支持匿名发帖或回复。</p>
-          </div>
-          <el-button text type="primary" @click="anonymousBoardsOpen = !anonymousBoardsOpen">
-            {{ anonymousBoardsOpen ? "收起" : "点击展开" }}
-          </el-button>
+      <div class="trust-preferences">
+        <div>
+          <b>求购与闲置匹配提醒</b>
+          <small>出现高匹配度商品或求购时通知我</small>
         </div>
-        <div v-if="anonymousBoardsOpen" class="trust-section-body">
-          <div class="anonymous-board-tags">
-            <el-tag v-for="board in anonymousBoards" :key="board.slug" effect="plain">
-              {{ board.icon || "💬" }} {{ board.name }}
-            </el-tag>
-            <span v-if="!anonymousBoards.length" class="cpu-muted">当前还没有开放匿名的板块</span>
-          </div>
+        <el-switch v-model="marketPreferences.matchNotificationsEnabled" :loading="savingMarketPreferences" @change="saveMarketPreferences" />
+      </div>
+
+      <div v-if="trust?.restrictions?.length" class="trust-section">
+        <div class="trust-section-title">信用处理与申诉</div>
+        <div class="violation-list">
+          <article v-for="violation in trust.restrictions" :key="violation.id">
+            <div><b>{{ violation.reason }}</b><small>{{ violation.type }} · {{ violation.expiresAt ? `至 ${fmtDate(violation.expiresAt)}` : "长期有效" }}</small></div>
+            <el-button v-if="!violation.appeals?.length" size="small" type="primary" plain @click="appealViolation(violation.id)">提交申诉</el-button>
+            <el-tag v-else size="small">{{ appealStatus(violation.appeals[0].status) }}</el-tag>
+          </article>
         </div>
       </div>
+      <div v-else class="trust-section">
+        <div class="trust-section-title">信用状态正常</div>
+        <p class="trust-section-tip">当前没有生效中的市集治理限制。普通发帖、私聊和交易不会消耗信誉值。</p>
+      </div>
+    </div>
+
+    <div id="favorites" class="cpu-card favorites-card">
+      <div class="favorites-head">
+        <div>
+          <h3 class="cpu-section-title">我的收藏</h3>
+          <p>收藏是全站资料库，与点赞分开；帖子、商品和学习资料都在这里管理。</p>
+        </div>
+        <span>{{ favoriteCounts.all }} 项</span>
+      </div>
+      <el-segmented v-model="favoriteType" :options="favoriteOptions" @change="loadFavorites(true)" />
+      <div v-loading="favoritesLoading" class="favorite-list">
+        <button v-for="favorite in favorites" :key="`${favorite.type}-${favorite.id}`" type="button" @click="router.push(favorite.href)">
+          <span class="favorite-cover">
+            <img v-if="favorite.cover" :src="favorite.cover" :alt="favorite.title" />
+            <em v-else>{{ favoriteIcon(favorite.type) }}</em>
+          </span>
+          <span class="favorite-copy">
+            <small>{{ favoriteTypeLabel(favorite.type) }} · {{ favorite.meta }}</small>
+            <b>{{ favorite.title }}</b>
+            <span>{{ favorite.description || "点击查看详情" }}</span>
+          </span>
+          <time>{{ fmtDate(favorite.savedAt, "MM-DD") }}</time>
+        </button>
+        <el-empty v-if="!favoritesLoading && !favorites.length" description="这个分类还没有收藏" />
+      </div>
+      <el-button v-if="favoriteNextCursor" class="favorite-more" :loading="favoritesLoading" @click="loadFavorites(false)">加载更多</el-button>
     </div>
 
     <div class="cpu-card user-group-card">
       <div>
         <h3 class="cpu-section-title">加入用户 QQ 群</h3>
-        <p>遇到课表显示问题，或想反馈建议，可以加入用户群。</p>
-        <strong>{{ USER_QQ_GROUP }}</strong>
-      </div>
-      <div class="user-group-actions">
-        <el-button type="primary" @click="joinUserGroup">
-          <el-icon><ChatDotRound /></el-icon>
-          加入群聊
-        </el-button>
-        <el-button plain @click="openQqBotManage">
-          <el-icon><Bell /></el-icon>
-          QQBot 管理
-        </el-button>
-        <el-button plain @click="copyUserGroup">
-          <el-icon><CopyDocument /></el-icon>
-          复制群号
-        </el-button>
+        <p class="user-group-placeholder" aria-label="群号暂未填写">&nbsp;</p>
       </div>
     </div>
 
@@ -356,25 +239,30 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Bell, ChatDotRound, CopyDocument, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
+import { Moon, Sunny } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
-import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { authApi } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
-import { paymentsApi, type PayType, type SponsorOptions, type SponsorOrder } from "@/api/payments";
 import { request } from "@/api/request";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
-import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
+import {
+  marketApi,
+  type MarketPreference,
+  type MarketTrustProfile,
+} from "@/api/market";
+import {
+  profileApi,
+  type ProfileFavorite,
+  type ProfileFavoriteType,
+} from "@/api/profile";
 
 const auth = useAuthStore();
-const site = useSiteStore();
 const appearance = useAppearanceStore();
-const route = useRoute();
 const router = useRouter();
 const user = computed(() => auth.user);
 const myTopics = ref<any[]>([]);
@@ -384,31 +272,24 @@ const saving = ref(false);
 const logoutBusy = ref(false);
 const avatarSaving = ref(false);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
-const trustDetailsOpen = ref(false);
-const anonymousBoardsOpen = ref(false);
-const sponsorSubmitting = ref(false);
-const sponsorAmount = ref("10");
-const sponsorPayType = ref<PayType>("alipay");
-const sponsorMessage = ref("");
-const sponsorDisplayMode = ref<"public" | "anonymous" | "hidden">("public");
-const sponsorConfirmOpen = ref(false);
-const sponsorOrders = ref<SponsorOrder[]>([]);
 const profileLoading = ref(false);
 const profileLoadError = ref("");
-const sponsorOptions = reactive<SponsorOptions>({
-  enabled: false,
-  payTypes: [],
-  amounts: [5, 10, 20, 50],
-  minAmount: "1.00",
-  maxAmount: "9999.00",
-  title: "赞助本站",
-  description: "赞助会通过易支付完成，成功后金额会展示在你的个人资料里。",
-  wallEnabled: true,
-  allowMessage: true,
+const trust = ref<MarketTrustProfile | null>(null);
+const marketPreferences = reactive<Pick<MarketPreference, "matchNotificationsEnabled">>({
+  matchNotificationsEnabled: true,
+});
+const savingMarketPreferences = ref(false);
+const favoriteType = ref<ProfileFavoriteType>("all");
+const favorites = ref<ProfileFavorite[]>([]);
+const favoritesLoading = ref(false);
+const favoriteNextCursor = ref<string | null>(null);
+const favoriteCounts = reactive<Record<ProfileFavoriteType, number>>({
+  all: 0,
+  topic: 0,
+  market_item: 0,
+  learning_material: 0,
 });
 let profileLoadSeq = 0;
-let handledSponsorReturnKey = "";
-let sponsorReturnInFlightKey = "";
 
 const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
 
@@ -427,24 +308,16 @@ const anonymousResetText = computed(() => {
   const nextResetAt = user.value?.anonymousState?.nextResetAt;
   return nextResetAt ? fmtDate(nextResetAt, "MM-DD HH:mm") : "—";
 });
-const payTypeLabels: Record<PayType, string> = {
-  alipay: "支付宝",
-  wxpay: "微信支付",
-  qqpay: "QQ 钱包",
-  bank: "网银",
-  jdpay: "京东支付",
-};
-const sponsorDisplayOptions = [
-  { value: "public", label: "公开鸣谢" },
-  { value: "anonymous", label: "匿名鸣谢" },
-  { value: "hidden", label: "不展示" },
-] as const;
-const enabledPayTypes = computed(() => sponsorOptions.payTypes.map((value) => ({ value, label: payTypeLabels[value] })));
 const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
-  { value: "system", label: "跟随系统", icon: Monitor },
   { value: "light", label: "浅色", icon: Sunny },
   { value: "dark", label: "深色", icon: Moon },
 ];
+const favoriteOptions = computed(() => [
+  { label: `全部 ${favoriteCounts.all}`, value: "all" },
+  { label: `帖子 ${favoriteCounts.topic}`, value: "topic" },
+  { label: `商品 ${favoriteCounts.market_item}`, value: "market_item" },
+  { label: `学习资料 ${favoriteCounts.learning_material}`, value: "learning_material" },
+]);
 
 watch(passwordDialog, (v) => {
   if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
@@ -452,10 +325,6 @@ watch(passwordDialog, (v) => {
 
 onMounted(() => {
   void loadProfilePage();
-});
-
-watch(() => [route.query.sponsor, route.query.outTradeNo], () => {
-  void handleSponsorReturnFromQuery();
 });
 
 watch(editing, (v) => {
@@ -478,10 +347,6 @@ async function loadProfilePage() {
       profileLoadError.value = "登录状态已失效，请重新登录";
       return;
     }
-    if (!site.loaded) await site.fetch();
-    if (seq !== profileLoadSeq) return;
-    await handleSponsorReturnFromQuery();
-
     const [topicResult, boardResult] = await Promise.allSettled([
       request.get<any[]>(`/user/${auth.user.id}/topics`, undefined, { suppressErrorMessage: true }),
       boardApi.list({ suppressErrorMessage: true }),
@@ -494,8 +359,8 @@ async function loadProfilePage() {
     }
 
     await Promise.all([
-      (site.features.sponsor || (user.value?.sponsorAmount ?? 0) > 0) ? loadSponsorOptions() : Promise.resolve(),
-      loadSponsorOrders(),
+      loadTrustAndPreferences(),
+      loadFavorites(true),
     ]);
   } catch (error) {
     if (seq !== profileLoadSeq) return;
@@ -503,6 +368,75 @@ async function loadProfilePage() {
   } finally {
     if (seq === profileLoadSeq) profileLoading.value = false;
   }
+}
+
+async function loadTrustAndPreferences() {
+  const [trustResult, preferenceResult] = await Promise.allSettled([
+    profileApi.trust({ suppressErrorMessage: true }),
+    marketApi.preferences({ suppressErrorMessage: true }),
+  ]);
+  if (trustResult.status === "fulfilled") trust.value = trustResult.value;
+  if (preferenceResult.status === "fulfilled") Object.assign(marketPreferences, preferenceResult.value);
+}
+
+async function loadFavorites(reset: boolean) {
+  if (favoritesLoading.value) return;
+  favoritesLoading.value = true;
+  try {
+    const result = await profileApi.favorites({
+      type: favoriteType.value,
+      cursor: reset ? undefined : favoriteNextCursor.value || undefined,
+      size: 20,
+    }, { suppressErrorMessage: true });
+    if (reset) favorites.value = result.list;
+    else favorites.value.push(...result.list);
+    favoriteNextCursor.value = result.nextCursor;
+    Object.assign(favoriteCounts, result.counts);
+  } catch {
+    if (reset) {
+      favorites.value = [];
+      favoriteNextCursor.value = null;
+    }
+  } finally {
+    favoritesLoading.value = false;
+  }
+}
+
+async function saveMarketPreferences() {
+  if (savingMarketPreferences.value) return;
+  savingMarketPreferences.value = true;
+  try {
+    Object.assign(marketPreferences, await marketApi.updatePreferences(marketPreferences));
+    ElMessage.success("提醒偏好已保存");
+  } finally {
+    savingMarketPreferences.value = false;
+  }
+}
+
+async function appealViolation(violationId: number) {
+  const { value } = await ElMessageBox.prompt("请说明申诉理由和可供核验的情况。", "提交信用申诉", {
+    inputType: "textarea",
+    inputValidator: (input) => input.trim().length >= 10 || "请至少填写 10 个字",
+  });
+  await marketApi.appealViolation(violationId, value.trim());
+  ElMessage.success("申诉已提交");
+  trust.value = await profileApi.trust({ suppressErrorMessage: true });
+}
+
+function appealStatus(value: string) {
+  return ({ pending: "申诉处理中", approved: "申诉已通过", rejected: "申诉未通过" } as Record<string, string>)[value] || value;
+}
+
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function favoriteIcon(type: ProfileFavorite["type"]) {
+  return ({ topic: "帖", market_item: "物", learning_material: "学" } as const)[type];
+}
+
+function favoriteTypeLabel(type: ProfileFavorite["type"]) {
+  return ({ topic: "帖子", market_item: "商品", learning_material: "学习资料" } as const)[type];
 }
 
 async function saveEdit() {
@@ -524,126 +458,6 @@ async function saveEdit() {
     ElMessage.success("已保存");
     editing.value = false;
   } finally { saving.value = false; }
-}
-
-async function loadSponsorOptions() {
-  try {
-    Object.assign(sponsorOptions, await paymentsApi.sponsorOptions({ suppressErrorMessage: true }));
-    if (sponsorOptions.amounts.length) sponsorAmount.value = String(sponsorOptions.amounts[1] ?? sponsorOptions.amounts[0]);
-    if (sponsorOptions.payTypes.length) sponsorPayType.value = sponsorOptions.payTypes[0];
-  } catch {
-    sponsorOptions.enabled = false;
-  }
-}
-
-async function loadSponsorOrders() {
-  try {
-    sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10, status: "paid" }, { suppressErrorMessage: true })).list;
-  } catch {
-    sponsorOrders.value = [];
-  }
-}
-
-async function handleSponsorReturnFromQuery() {
-  const sponsorQuery = String(route.query.sponsor ?? "");
-  if (sponsorQuery !== "success") return;
-  const key = String(route.query.outTradeNo ?? "__no_trade_no");
-  if (handledSponsorReturnKey === key || sponsorReturnInFlightKey === key) return;
-  sponsorReturnInFlightKey = key;
-  try {
-    await pollSponsorReturn(String(route.query.outTradeNo ?? ""));
-    await loadSponsorOrders();
-    handledSponsorReturnKey = key;
-  } finally {
-    if (sponsorReturnInFlightKey === key) sponsorReturnInFlightKey = "";
-  }
-}
-
-function formatMoney(value: number | string | undefined | null) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
-}
-
-function submitEpayForm(result: { epay: { method: "POST"; submitUrl: string; params: Record<string, string> } }) {
-  const form = document.createElement("form");
-  form.method = result.epay.method;
-  form.action = result.epay.submitUrl;
-  form.style.display = "none";
-  for (const [key, value] of Object.entries(result.epay.params)) {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = key;
-    input.value = value;
-    form.appendChild(input);
-  }
-  document.body.appendChild(form);
-  form.submit();
-}
-
-function validateSponsorAmount() {
-  const amount = Number(sponsorAmount.value);
-  const min = Number(sponsorOptions.minAmount);
-  const max = Number(sponsorOptions.maxAmount);
-  if (!Number.isFinite(amount) || amount < min || amount > max) {
-    ElMessage.warning(`赞助金额需在 ${formatMoney(min)} - ${formatMoney(max)} 元之间`);
-    return false;
-  }
-  return true;
-}
-
-function openSponsorConfirm() {
-  if (sponsorSubmitting.value) return;
-  if (!validateSponsorAmount()) return;
-  if (!enabledPayTypes.value.length) {
-    ElMessage.warning("当前没有可用支付方式");
-    return;
-  }
-  sponsorConfirmOpen.value = true;
-}
-
-async function submitSponsor() {
-  if (sponsorSubmitting.value) return;
-  if (!validateSponsorAmount()) return;
-  if (!enabledPayTypes.value.length) {
-    ElMessage.warning("当前没有可用支付方式");
-    return;
-  }
-  sponsorSubmitting.value = true;
-  try {
-    const result = await paymentsApi.createSponsorOrderWithOptions({
-      amount: sponsorAmount.value,
-      payType: sponsorPayType.value,
-      message: sponsorMessage.value.trim(),
-      displayMode: sponsorDisplayMode.value,
-    });
-    sponsorConfirmOpen.value = false;
-    submitEpayForm(result);
-  } finally {
-    sponsorSubmitting.value = false;
-  }
-}
-
-async function pollSponsorReturn(outTradeNo: string) {
-  if (!outTradeNo) {
-    await auth.fetchMe();
-    ElMessage.success("支付完成后赞助金额会自动刷新，若未显示请稍等片刻");
-    return;
-  }
-  for (let i = 0; i < 6; i += 1) {
-    const order = await paymentsApi.sponsorOrder(outTradeNo, { suppressErrorMessage: true }).catch(() => null);
-    if (order?.status === "paid") {
-      await auth.fetchMe();
-      ElMessage.success("赞助已到账，感谢支持");
-      return;
-    }
-    if (order?.status === "closed") {
-      ElMessage.warning("该订单已超时关闭，请重新发起赞助");
-      return;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 1200));
-  }
-  await auth.fetchMe();
-  ElMessage.info("已返回本站，支付状态还在确认中");
 }
 
 async function savePassword() {
@@ -672,19 +486,6 @@ async function onLogout() {
   } finally {
     logoutBusy.value = false;
   }
-}
-
-async function copyUserGroup() {
-  await copyText(USER_QQ_GROUP);
-  ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
-}
-
-function joinUserGroup() {
-  openUserGroup();
-}
-
-function openQqBotManage() {
-  router.push("/messages?tab=settings");
 }
 
 function pickAvatar() {
@@ -789,8 +590,6 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .kv li:last-child { border-bottom: none; }
 .kv li span:first-child { color: var(--cpu-text-secondary); }
 .kv li span:last-child { color: var(--cpu-text); font-weight: 500; }
-.sponsor-total { color: var(--cpu-warn) !important; }
-
 .profile-actions {
   display: flex;
   gap: 8px;
@@ -816,7 +615,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 .appearance-options {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   min-width: min(360px, 100%);
   padding: 4px;
@@ -848,225 +647,6 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .appearance-options button:not(.active):hover {
   color: var(--cpu-primary);
   background: rgba(20, 143, 123, 0.1);
-}
-
-.sponsor-card {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.sponsor-main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-}
-.sponsor-copy {
-  flex: 1;
-  min-width: 0;
-}
-.sponsor-copy p {
-  margin: 4px 0 8px;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-.sponsor-copy strong {
-  display: block;
-  color: var(--cpu-primary);
-  font-size: 20px;
-  letter-spacing: 0;
-  margin-bottom: 12px;
-}
-.sponsor-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.sponsor-actions .el-button {
-  margin-left: 0 !important;
-}
-.sponsor-panel {
-  width: min(560px, 100%);
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.sponsor-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.amount-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-.amount-grid button {
-  height: 38px;
-  border: 1px solid var(--cpu-border);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-  color: var(--cpu-text);
-  font-weight: 700;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
-}
-.amount-grid button:not(:disabled):hover {
-  border-color: var(--cpu-primary);
-  color: var(--cpu-primary);
-}
-.amount-grid button:disabled,
-.sponsor-display-tabs button:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-.amount-grid button.active {
-  border-color: var(--cpu-primary);
-  background: rgba(20, 143, 123, 0.12);
-  color: var(--cpu-primary);
-  box-shadow: inset 0 0 0 1px rgba(22, 135, 118, 0.18);
-}
-.sponsor-pay-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 136px 108px;
-  gap: 8px;
-  align-items: center;
-}
-.sponsor-submit-btn {
-  width: 100%;
-  margin-left: 0 !important;
-  font-weight: 700;
-}
-.sponsor-money-input :deep(.el-input-group__prepend),
-.sponsor-money-input :deep(.el-input__wrapper),
-.sponsor-pay-select :deep(.el-select__wrapper) {
-  background: var(--cpu-surface);
-  min-height: 40px;
-}
-.sponsor-history {
-  padding-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border-top: 1px dashed var(--cpu-border-soft);
-}
-.sub-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--cpu-text);
-}
-.sponsor-order-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0 0;
-}
-.sponsor-order-row b {
-  display: block;
-  color: var(--cpu-warn);
-}
-.sponsor-order-row span {
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-}
-.order-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.sponsor-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.sponsor-confirm-summary,
-.sponsor-confirm-line,
-.sponsor-confirm-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.sponsor-confirm-summary {
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: var(--cpu-surface-soft);
-  border: 1px solid var(--cpu-border-soft);
-}
-.sponsor-confirm-summary span,
-.sponsor-confirm-line span,
-.sponsor-confirm-field > span {
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-}
-.sponsor-confirm-summary b {
-  color: var(--cpu-primary);
-  font-size: 22px;
-}
-.sponsor-confirm-line strong {
-  color: var(--cpu-text);
-}
-.sponsor-confirm-field {
-  align-items: flex-start;
-}
-.sponsor-confirm-field > span {
-  padding-top: 7px;
-  white-space: nowrap;
-}
-.sponsor-display-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  width: 100%;
-  overflow: hidden;
-  border: 1px solid var(--cpu-border);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-}
-.sponsor-display-tabs button {
-  appearance: none;
-  min-width: 0;
-  width: 100%;
-  height: 36px;
-  padding: 0 8px;
-  border: 0;
-  border-right: 1px solid var(--cpu-border);
-  background: var(--cpu-surface);
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.sponsor-display-tabs button:last-child {
-  border-right: 0;
-}
-.sponsor-display-tabs button.active {
-  background: var(--cpu-primary);
-  color: #05201c;
-}
-.sponsor-display-tabs button:focus-visible {
-  position: relative;
-  z-index: 1;
-  outline: 2px solid rgba(22, 135, 118, 0.35);
-  outline-offset: -2px;
-}
-.sponsor-display-tabs button:disabled {
-  background: var(--cpu-surface-soft);
-}
-.sponsor-display-tabs button.active:disabled {
-  background: var(--cpu-primary);
 }
 
 .trust-card {
@@ -1120,6 +700,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   font-size: 24px;
   font-weight: 700;
 }
+.trust-score b,.trust-score small{display:block}.trust-score small{margin-top:2px;font-size:10px;font-weight:500;opacity:.82}
 
 .trust-grid {
   display: grid;
@@ -1213,6 +794,10 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   margin-top: 12px;
 }
 
+.account-assets{display:grid;grid-template-columns:220px 1fr;gap:12px}.points-summary,.point-ledger{padding:16px;border:1px solid var(--cpu-border-soft);border-radius:14px;background:var(--cpu-surface-soft)}.points-summary{display:flex;flex-direction:column;align-items:flex-start;gap:8px}.points-summary>span,.points-summary>small{color:var(--cpu-text-secondary);font-size:12px}.points-summary>strong{font-size:32px;color:var(--cpu-primary)}.point-ledger>b{font-size:13px}.point-ledger ol{list-style:none;padding:0;margin:10px 0 0}.point-ledger li{display:grid;grid-template-columns:1fr auto auto;gap:12px;padding:7px 0;border-top:1px dashed var(--cpu-border-soft);font-size:12px}.point-ledger li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.point-ledger li strong{color:var(--cpu-primary)}.point-ledger li strong.negative{color:var(--cpu-danger)}.point-ledger time,.point-ledger p{color:var(--cpu-text-secondary);font-size:11px}.trust-preferences{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px;border:1px solid var(--cpu-border-soft);border-radius:14px}.trust-preferences div{display:flex;flex-direction:column;gap:4px}.trust-preferences small{color:var(--cpu-text-secondary)}.violation-list{display:grid;gap:8px;margin-top:10px}.violation-list article{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border-radius:10px;background:var(--cpu-card)}.violation-list article>div{display:flex;flex-direction:column;gap:4px}.violation-list small{color:var(--cpu-text-secondary)}
+
+.favorites-card{scroll-margin-top:20px}.favorites-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.favorites-head p{margin:4px 0 0;color:var(--cpu-text-secondary);font-size:13px}.favorites-head>span{color:var(--cpu-primary);font-weight:700}.favorite-list{display:grid;gap:8px;min-height:100px;margin-top:14px}.favorite-list>button{width:100%;display:grid;grid-template-columns:58px 1fr auto;align-items:center;gap:12px;padding:10px;border:1px solid var(--cpu-border-soft);border-radius:12px;background:var(--cpu-card);color:var(--cpu-text);text-align:left;cursor:pointer}.favorite-list>button:hover{border-color:var(--cpu-primary);background:var(--cpu-primary-soft)}.favorite-cover{width:58px;height:52px;display:grid;place-items:center;overflow:hidden;border-radius:10px;background:var(--cpu-surface-soft)}.favorite-cover img{width:100%;height:100%;object-fit:cover}.favorite-cover em{color:var(--cpu-primary);font-style:normal;font-size:18px;font-weight:800}.favorite-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.favorite-copy small,.favorite-copy>span,.favorite-list time{overflow:hidden;color:var(--cpu-text-secondary);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.favorite-copy b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.favorite-more{width:100%;margin-top:12px}
+
 .anonymous-board-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1231,19 +816,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   font-size: 13px;
   line-height: 1.6;
 }
-.user-group-card strong {
-  color: var(--cpu-primary);
-  font-size: 20px;
-  letter-spacing: 0;
-}
-.user-group-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.user-group-actions .el-button {
-  margin-left: 0 !important;
-}
+.user-group-placeholder { min-height: 20px; }
 
 .topic-line {
   display: flex;
@@ -1312,63 +885,6 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
     gap: 6px;
   }
 
-  .sponsor-main {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .sponsor-copy strong {
-    font-size: 20px;
-  }
-
-  .amount-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .amount-grid button {
-    height: 42px;
-  }
-
-  .sponsor-pay-row {
-    grid-template-columns: minmax(0, 1fr) 118px;
-    gap: 10px;
-  }
-
-  .sponsor-submit-btn {
-    grid-column: 1 / -1;
-    height: 42px;
-  }
-
-  .sponsor-history {
-    text-align: left;
-  }
-
-  .sponsor-order-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .sponsor-confirm-summary,
-  .sponsor-confirm-line,
-  .sponsor-confirm-field {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .sponsor-confirm-field > span {
-    padding-top: 0;
-  }
-
-  .sponsor-display-tabs button {
-    height: 38px;
-    padding: 0 4px;
-    font-size: 12px;
-  }
-
   .trust-score {
     min-width: 0;
     width: 100%;
@@ -1379,6 +895,8 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
     grid-template-columns: 1fr;
   }
 
+  .account-assets{grid-template-columns:1fr}.favorite-list>button{grid-template-columns:50px 1fr}.favorite-cover{width:50px;height:48px}.favorite-list time{display:none}.favorites-card .el-segmented{width:100%;overflow:auto}
+
   .trust-section-head {
     flex-direction: column;
   }
@@ -1386,11 +904,6 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   .user-group-card {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .user-group-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
 
   .topic-line {

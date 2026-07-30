@@ -35,7 +35,6 @@ export function buildSelfUser(u: any) {
     postCount: u.postCount,
     replyCount: u.replyCount,
     reputation: trust.reputation,
-    reputationLevel: trust.reputationLevel,
     reputationBreakdown: trust.reputationBreakdown,
     lastSeenAt: u.lastSeenAt,
     lastLoginAt: u.lastLoginAt,
@@ -48,6 +47,7 @@ export function buildSelfUser(u: any) {
     forumEnabled: u.forumEnabled,
     forumEnabledAt: u.forumEnabledAt,
     anonymousState: trust.anonymousState,
+    points: Math.max(0, Number(u.transactionPoints ?? 0)),
     sponsorTotalCents: u.sponsorTotalCents ?? 0,
     sponsorAmount: sponsorAmount(u),
     status: u.status,
@@ -69,7 +69,7 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
     postCount: u.postCount,
     replyCount: u.replyCount,
     reputation: trust.reputation,
-    reputationLevel: trust.reputationLevel,
+    points: Math.max(0, Number(u.transactionPoints ?? 0)),
     sponsorTotalCents: u.sponsorTotalCents ?? 0,
     sponsorAmount: sponsorAmount(u),
     createdAt: u.createdAt,
@@ -95,7 +95,6 @@ export function buildUserPreview(u: any, viewer?: Viewer) {
   };
 
   if ("reputation" in u) result.reputation = u.reputation;
-  if ("reputationLevel" in u) result.reputationLevel = u.reputationLevel;
 
   if ("bio" in u) result.bio = u.bio;
   if (canSeeUsername(viewer, u.id)) result.username = u.username;

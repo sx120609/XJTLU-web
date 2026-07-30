@@ -142,7 +142,7 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
   const denied = await call("/market/admin/operations?days=30", sellerToken);
   assert.equal(denied.response.status, 403);
   const dashboard = await api("/market/admin/operations?days=30", adminToken);
-  assert.deepEqual(dashboard.funnels.map((funnel: any) => funnel.key), ["trade", "wanted", "learning", "merchant", "promotion"]);
+  assert.deepEqual(dashboard.funnels.map((funnel: any) => funnel.key), ["trade", "wanted", "learning", "promotion"]);
   assert.ok(dashboard.headline.promotionRevenueCents >= order.amountCents);
   assert.ok(dashboard.timeline.some((entry: any) => entry.kind === "action" && entry.target.includes(String(order.id))));
   const audit = await prisma.adminActionLog.findFirstOrThrow({ where: { actorId: admin.id, targetType: "promotion_order", targetId: String(order.id) } });

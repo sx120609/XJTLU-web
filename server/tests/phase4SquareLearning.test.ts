@@ -72,7 +72,9 @@ test("stage 4 routes and pages expose linked discussions and the four-part learn
   assert.doesNotMatch(`${marketRoute}\n${marketItemWriteService}`, /tx\.topic\.create/);
   assert.doesNotMatch(learningMaterialsRoute, /tx\.topic\.create/);
   assert.match(post, /关联市集信息/);
-  assert.match(topic, /关联商品/);
+  assert.match(topic, /关联实体商品/);
+  assert.match(topic, /关联学习资料/);
+  assert.match(topic, /学习资料求购/);
   for (const title of ["学习好物", "学习交流", "付费学习资料", "官方学习资源"]) assert.match(hub, new RegExp(title));
   assert.match(router, /path: "learning"[^\n]+views\/learning\/Hub\.vue/);
   assert.match(router, /path: "learning\/materials"[^\n]+LearningMaterials\.vue/);
@@ -88,14 +90,17 @@ test("structured wanted demands expose anonymous publishing without leaking iden
     readFileSync(new URL("../src/services/marketWantedService.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/services/marketWantedWriteService.ts", import.meta.url), "utf8"),
   ].join("\n");
+  const trustService = readFileSync(new URL("../src/services/userTrust.ts", import.meta.url), "utf8");
   const wantedTopic = readFileSync(new URL("../src/services/wantedDemandTopic.ts", import.meta.url), "utf8");
   const wantedPublish = readFileSync(new URL("../../web/src/views/market/WantedPublish.vue", import.meta.url), "utf8");
   const square = readFileSync(new URL("../../web/src/views/forum/Index.vue", import.meta.url), "utf8");
   assert.match(marketRoute, /anonymous:\s*z\.boolean\(\)/);
-  assert.match(marketRoute, /consumeAnonymousCredit\(authorId, tx\)/);
+  assert.doesNotMatch(marketRoute, /consumeAnonymousCredit\(authorId, tx\)/);
+  assert.match(trustService, /eligible: true/);
   assert.match(marketRoute, /authorId:\s*isAnonymous\s*\?\s*null/);
   assert.match(wantedTopic, /isAnonymous:\s*Boolean\(wanted\.isAnonymous\)/);
   assert.match(wantedPublish, /匿名发布求购/);
+  assert.match(wantedPublish, /匿名发布免费，不消耗积分/);
   assert.match(square, /board-card--wanted/);
   assert.match(square, /#ea580c/);
 });

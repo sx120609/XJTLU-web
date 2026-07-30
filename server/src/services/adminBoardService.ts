@@ -187,7 +187,6 @@ export async function updateAdminBoard(
         throw Errors.conflict("目标 slug 属于系统板块");
       }
 
-      const nextSlug = patch.slug ?? current.slug;
       const board = await tx.board.update({
         where: { id: boardId },
         data: {
@@ -202,18 +201,6 @@ export async function updateAdminBoard(
           anonymousEnabled: patch.anonymousEnabled,
         },
       });
-      if (nextSlug !== current.slug) {
-        await Promise.all([
-          tx.qqBotConfig.updateMany({
-            where: { defaultBoardSlug: current.slug },
-            data: { defaultBoardSlug: nextSlug },
-          }),
-          tx.qqBotGroup.updateMany({
-            where: { defaultBoardSlug: current.slug },
-            data: { defaultBoardSlug: nextSlug },
-          }),
-        ]);
-      }
       return board;
     });
     await invalidateBoardCaches();
@@ -242,21 +229,15 @@ export async function deleteAdminBoard(
 
     const [
       topicCount,
-      qqBotConfigCount,
-      qqBotGroupCount,
       weiwallConfigCount,
     ] = await Promise.all([
       tx.topic.count({ where: { boardId } }),
-      tx.qqBotConfig.count({ where: { defaultBoardSlug: board.slug } }),
-      tx.qqBotGroup.count({ where: { defaultBoardSlug: board.slug } }),
       tx.weiwallSyncConfig.count({ where: { boardId } }),
     ]);
     if (topicCount > 0) {
       throw Errors.conflict(`该板块下仍有 ${topicCount} 篇帖子，不能删除`);
     }
     const references = [
-      qqBotConfigCount > 0 ? `QQBot 默认板块配置 ${qqBotConfigCount} 个` : "",
-      qqBotGroupCount > 0 ? `QQ群默认板块配置 ${qqBotGroupCount} 个` : "",
       weiwallConfigCount > 0 ? `逛逛同步配置 ${weiwallConfigCount} 个` : "",
     ].filter(Boolean);
     if (references.length) {

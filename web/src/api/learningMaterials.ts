@@ -100,6 +100,7 @@ export interface LearningMaterialProfile {
 
 export interface LearningMaterialItem extends MarketItem {
   seller: MarketUser & {
+    publisherActive?: boolean;
     creatorCertified?: boolean;
     creatorCertifiedAt?: string | null;
     creatorLevel?: "certified" | "reliable" | "excellent";
@@ -196,6 +197,8 @@ export interface LearningCreatorProfile {
 }
 
 export interface LearningCreatorContext {
+  publishingAllowed: boolean;
+  publishingStatus: "active" | "suspended" | "revoked";
   profile: LearningCreatorProfile | null;
   application: LearningCreatorApplication | null;
 }
@@ -334,8 +337,8 @@ export interface LearningCreatorViolation {
 
 export interface LearningOperationsOverview {
   generatedAt: string;
-  slaHours: { creatorReview: number; materialReview: number; issueFirstResponse: number };
-  queues: Record<"creatorApplications" | "materialReviews" | "orderIssues" | "sellerConfirmations", {
+  slaHours: { materialReview: number; issueFirstResponse: number };
+  queues: Record<"materialReviews" | "orderIssues" | "sellerConfirmations", {
     pending: number;
     overdue: number;
   }>;
@@ -507,6 +510,7 @@ export const learningMaterialsApi = {
   types: (options?: RequestOptions) => request.get<LearningMaterialType[]>("/market/materials/types", undefined, options),
   createType: (name: string) => request.post<LearningMaterialType>("/market/materials/types", { name }),
   items: (params?: LearningMaterialListParams, options?: RequestOptions) => request.get<{ page: number; size: number; total: number; list: LearningMaterialItem[] }>("/market/materials/items", params as Record<string, unknown>, options),
+  myItems: (options?: RequestOptions) => request.get<LearningMaterialItem[]>("/market/materials/my-items", undefined, options),
   item: (id: number, options?: RequestOptions) => request.get<LearningMaterialItem>(`/market/materials/items/${id}`, undefined, options),
   createItem: (payload: LearningMaterialItemInput) => request.post<LearningMaterialItem>("/market/materials/items", payload),
   updateItem: (id: number, payload: Partial<LearningMaterialItemInput>) => request.patch<LearningMaterialItem>(`/market/materials/items/${id}`, payload),

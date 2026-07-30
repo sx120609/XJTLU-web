@@ -72,7 +72,6 @@ import {
   sendFilestoreApiError,
 } from "./filestoreApiError";
 export { normalizeFilestoreStatus } from "./filestoreContracts";
-import { notifyFileCollectSubmissionForQqBot } from "./toolQqReminders";
 import {
   buildOfficeViewerUrl,
   canUseOfficeWebViewer,
@@ -1521,18 +1520,6 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
         };
       });
       await Promise.all(completed.stalePaths.map((item) => unlinkFileCollectPath(item)));
-      if (!completed.alreadySubmitted) {
-        await notifyFileCollectSubmissionForQqBot({
-          task: completed.submission.task,
-          submission: {
-            id: completed.submission.id,
-            identity: completed.submission.identity,
-            submitterId: completed.submission.submitterId,
-            data: completed.submission.data,
-          },
-          fileCount: completed.submission.files.length,
-        }).catch((error) => console.warn("[filestore] qqbot reminder failed", error));
-      }
       res.json({
         ok: true,
         id: completed.submission.id,
@@ -1709,20 +1696,10 @@ async function handleFilestoreUtilityRoute(req: Request, res: Response, user: Fi
           data: { status: "submitted" },
         });
         await refreshFileCollectTaskCounters(tx, current.taskId);
-        return { submission, files: fileRows, oldPaths, task: current.task };
+        return { submission, files: fileRows, oldPaths };
       });
       pendingSubmissionId = null;
       await Promise.all(result.oldPaths.map((item) => unlinkFileCollectPath(item)));
-      await notifyFileCollectSubmissionForQqBot({
-        task: result.task,
-        submission: {
-          id: result.submission.id,
-          identity: result.submission.identity,
-          submitterId: result.submission.submitterId,
-          data: result.submission.data,
-        },
-        fileCount: result.files.length,
-      }).catch((error) => console.warn("[filestore] qqbot reminder failed", error));
       res.json({
         ok: true,
         id: result.submission.id,

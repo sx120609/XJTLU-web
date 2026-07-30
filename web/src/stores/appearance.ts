@@ -1,20 +1,16 @@
 import { defineStore } from "pinia";
 
-export type AppearanceMode = "system" | "light" | "dark";
+export type AppearanceMode = "light" | "dark";
 export type ResolvedAppearance = "light" | "dark";
 
 const STORAGE_KEY = "kaopu-appearance-mode-v2";
-const DARK_QUERY = "(prefers-color-scheme: dark)";
 const THEME_COLORS: Record<ResolvedAppearance, string> = {
   light: "#6D5CE7",
   dark: "#8B7CF6",
 };
 
-let mediaQuery: MediaQueryList | null = null;
-let mediaListenerInstalled = false;
-
 function normalizeMode(value: unknown): AppearanceMode {
-  return value === "light" || value === "dark" || value === "system" ? value : "light";
+  return value === "dark" ? "dark" : "light";
 }
 
 function readStoredMode(): AppearanceMode {
@@ -33,15 +29,8 @@ function writeStoredMode(mode: AppearanceMode) {
   }
 }
 
-function systemPrefersDark() {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  mediaQuery ??= window.matchMedia(DARK_QUERY);
-  return mediaQuery.matches;
-}
-
 function resolveMode(mode: AppearanceMode): ResolvedAppearance {
-  if (mode === "dark" || mode === "light") return mode;
-  return systemPrefersDark() ? "dark" : "light";
+  return mode;
 }
 
 function applyAppearance(mode: AppearanceMode) {
@@ -65,15 +54,13 @@ export const useAppearanceStore = defineStore("appearance", {
     isDark: (state) => state.resolved === "dark",
     modeLabel: (state) => {
       if (state.mode === "dark") return "深色";
-      if (state.mode === "light") return "浅色";
-      return "跟随系统";
+      return "浅色";
     },
   },
   actions: {
     hydrate() {
       this.mode = readStoredMode();
       this.syncResolved();
-      this.installSystemListener();
     },
     setMode(mode: AppearanceMode) {
       this.mode = normalizeMode(mode);
@@ -81,20 +68,12 @@ export const useAppearanceStore = defineStore("appearance", {
       this.syncResolved();
     },
     cycleMode() {
-      const next: AppearanceMode = this.mode === "system" ? "dark" : this.mode === "dark" ? "light" : "system";
+      const next: AppearanceMode = this.mode === "dark" ? "light" : "dark";
       this.setMode(next);
     },
     syncResolved() {
       this.resolved = resolveMode(this.mode);
       applyAppearance(this.mode);
-    },
-    installSystemListener() {
-      if (typeof window === "undefined" || !window.matchMedia || mediaListenerInstalled) return;
-      mediaQuery ??= window.matchMedia(DARK_QUERY);
-      mediaQuery.addEventListener("change", () => {
-        if (this.mode === "system") this.syncResolved();
-      });
-      mediaListenerInstalled = true;
     },
   },
 });

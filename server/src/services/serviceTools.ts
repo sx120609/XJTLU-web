@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 
-export const SERVICE_TOOL_CODES = ["feedback", "questionnaire", "grade_check", "file_collect", "pdf_tools"] as const;
+export const SERVICE_TOOL_CODES = ["feedback", "pdf_tools", "questionnaire", "grade_check", "file_collect"] as const;
 export type ServiceToolCode = typeof SERVICE_TOOL_CODES[number];
 
 export const SERVICE_TOOL_META: Record<ServiceToolCode, { code: ServiceToolCode; name: string; description: string }> = {

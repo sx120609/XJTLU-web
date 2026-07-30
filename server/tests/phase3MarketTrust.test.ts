@@ -13,7 +13,6 @@ import {
 import {
   isMarketPrivateTradeStatus,
   MARKET_MESSAGE_PAGE_SIZE,
-  marketContactCardSchema,
   marketConversationCreateSchema,
   marketConversationVisibilityWhere,
   marketMessageSchema,
@@ -21,6 +20,7 @@ import {
 } from "../src/services/marketConversationService";
 import {
   marketAdminReportActionSchema,
+  marketPositiveRateAdjustmentSchema,
   marketReviewSchema,
   marketSafetyRulePatchSchema,
   marketViolationCreateSchema,
@@ -62,15 +62,17 @@ test("stage 3 contact cards are masked and encrypted independently from public p
 test("stage 3 conversation contracts normalize messages and expose only physical private trades", () => {
   assert.deepEqual(marketConversationCreateSchema.parse({ message: "  约在北门  " }), { message: "约在北门" });
   assert.deepEqual(marketConversationCreateSchema.parse({}), { message: "" });
-  assert.equal(marketMessageSchema.safeParse({ content: "   " }).success, false);
-  assert.equal(marketMessageSchema.safeParse({ content: "a".repeat(2001) }).success, false);
-  assert.equal(marketContactCardSchema.safeParse({ method: "phone", value: "13812345678" }).success, true);
+  assert.equal(marketMessageSchema.safeParse({ content: "   ", clientMessageId: "message-123" }).success, false);
+  assert.equal(marketMessageSchema.safeParse({ content: "a".repeat(2001), clientMessageId: "message-123" }).success, false);
+  assert.equal(marketMessageSchema.safeParse({ content: "确认北门见", clientMessageId: "message-123" }).success, true);
+  assert.equal(marketMessageSchema.safeParse({ content: "", clientMessageId: "message-123", attachments: [{ url: "/uploads/a.jpg", mimeType: "image/jpeg" }] }).success, true);
+  assert.equal(isMarketPrivateTradeStatus("negotiating"), true);
   assert.equal(isMarketPrivateTradeStatus("reserved"), true);
-  assert.equal(isMarketPrivateTradeStatus("cancelled"), false);
-  assert.equal(MARKET_MESSAGE_PAGE_SIZE, 300);
+  assert.equal(isMarketPrivateTradeStatus("cancelled"), true);
+  assert.equal(MARKET_MESSAGE_PAGE_SIZE, 50);
   assert.deepEqual(marketConversationVisibilityWhere(8), {
     orderId: { not: null },
-    order: { status: { in: ["reserved", "paid", "delivering", "completed", "disputed", "no_show"] } },
+    order: { status: { in: ["negotiating", "reserved", "paid", "delivering", "completed", "cancelled", "disputed", "no_show"] } },
     item: { deliveryType: "physical" },
     OR: [{ buyerId: 8 }, { sellerId: 8 }],
   });
@@ -111,6 +113,19 @@ test("stage 3 governance schemas reject ambiguous or empty moderation writes", (
     status: "rejected",
     hideItem: true,
   }).success, false);
+  assert.deepEqual(marketPositiveRateAdjustmentSchema.parse({
+    positiveRate: 100,
+    reason: "投诉核验后恢复",
+    reportId: 9,
+  }), {
+    positiveRate: 100,
+    reason: "投诉核验后恢复",
+    reportId: 9,
+  });
+  assert.equal(marketPositiveRateAdjustmentSchema.safeParse({
+    positiveRate: 101,
+    reason: "越界",
+  }).success, false);
   assert.equal(marketViolationCreateSchema.safeParse({
     userId: 2,
     itemId: 3,
@@ -135,14 +150,11 @@ test("stage 3 governance advisory locks isolate targets and state records", () =
 test("stage 3 workspace schemas keep preference and payout writes narrow", () => {
   assert.deepEqual(marketPreferenceSchema.parse({
     matchNotificationsEnabled: true,
-    meetupRemindersEnabled: false,
   }), {
     matchNotificationsEnabled: true,
-    meetupRemindersEnabled: false,
   });
   assert.equal(marketPreferenceSchema.safeParse({
     matchNotificationsEnabled: true,
-    meetupRemindersEnabled: false,
     userId: 99,
   }).success, false);
   assert.deepEqual(marketPayoutProfileSchema.parse({
@@ -186,7 +198,7 @@ test("stage 3 admin audit detail removes sensitive contact and credential fields
   assert.deepEqual(safe.nested, { reason: "违规" });
 });
 
-test("stage 3 routes enforce post-accept privacy and expose trust administration", () => {
+test("stage 3 routes enforce direct-chat privacy and expose trust administration", () => {
   const market = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
   const conversationRoute = readFileSync(new URL("../src/routes/marketConversation.ts", import.meta.url), "utf8");
   const conversationService = readFileSync(new URL("../src/services/marketConversationService.ts", import.meta.url), "utf8");
@@ -194,20 +206,27 @@ test("stage 3 routes enforce post-accept privacy and expose trust administration
   const governanceService = readFileSync(new URL("../src/services/marketGovernanceService.ts", import.meta.url), "utf8");
   const workspaceRoute = readFileSync(new URL("../src/routes/marketWorkspace.ts", import.meta.url), "utf8");
   const workspaceService = readFileSync(new URL("../src/services/marketWorkspaceService.ts", import.meta.url), "utf8");
-  const trade = readFileSync(new URL("../src/services/marketTradeService.ts", import.meta.url), "utf8");
   const marketApi = readFileSync(new URL("../../web/src/api/market.ts", import.meta.url), "utf8");
   const mine = readFileSync(new URL("../../web/src/views/market/Mine.vue", import.meta.url), "utf8");
   const admin = readFileSync(new URL("../../web/src/views/admin/MarketPane.vue", import.meta.url), "utf8");
   assert.match(market, /marketRouter\.use\("\/", marketConversationRouter\)/);
-  assert.match(conversationRoute, /"\/orders\/:id\/contact-cards"/);
+  assert.doesNotMatch(conversationRoute, /contact-card|contact-cards/);
+  assert.match(conversationRoute, /"\/conversations\/events"/);
+  assert.match(conversationRoute, /"\/conversations\/unread-count"/);
+  assert.match(conversationRoute, /"\/conversations\/:id\/confirm-completion"/);
+  assert.match(conversationRoute, /"\/conversations\/:id\/read"/);
+  assert.match(conversationRoute, /"\/conversations\/:id\/block"/);
+  assert.match(conversationRoute, /"\/conversations\/:id\/messages\/:messageId\/report"/);
   assert.match(conversationRoute, /positiveRouteInteger\(req\.params\.id\)/);
-  assert.match(conversationService, /卖家接受购买意向后才开放交易会话/);
+  assert.match(conversationService, /status: "negotiating"/);
+  assert.match(conversationService, /requireVerifiedMarketUser\(actor\.userId, actor\.role, "trade"\)/);
   assert.match(conversationService, /acquireMarketOrderLock/);
   assert.match(conversationService, /id: \{ in: unreadMessageIds \}/);
+  assert.match(conversationService, /getMarketConversationUnreadSummary/);
+  assert.match(conversationService, /confirmMarketConversationCompletion/);
   assert.match(conversationService, /deliveryType !== "physical"/);
-  assert.match(marketApi, /export function canOpenMarketOrderContacts/);
-  assert.match(mine, /canOpenMarketOrderContacts\(props\.order\)/);
-  assert.match(trade, /conversationId: null/);
+  assert.doesNotMatch(marketApi, /canOpenMarketOrderContacts|saveContactCard|orderContactCards/);
+  assert.doesNotMatch(mine, /联系方式|contactOpen|orderContacts/);
   assert.match(market, /marketRouter\.use\("\/", marketGovernanceRouter\)/);
   assert.match(governanceRoute, /marketGovernanceRouter\.get\("\/trust\/me"/);
   assert.match(governanceRoute, /"\/admin\/violations"/);
@@ -222,12 +241,17 @@ test("stage 3 routes enforce post-accept privacy and expose trust administration
   assert.match(workspaceRoute, /"\/items\/:id\/favorite"/);
   assert.match(workspaceRoute, /positiveRouteInteger\(req\.params\.id\)/);
   assert.match(workspaceService, /acquireMarketItemLock\(tx, itemId\)/);
-  assert.match(workspaceService, /item: serializeItem\(offer\.item, userId\)/);
-  assert.match(workspaceService, /status: \{ notIn: PRIVATE_FAVORITE_STATUSES \}/);
+  assert.match(workspaceService, /orders: orders\.map\(\(order\) =>/);
+  assert.doesNotMatch(workspaceService, /prisma\.tradeIntent\.findMany/);
+  assert.doesNotMatch(workspaceService, /prisma\.marketOffer\.findMany/);
+  assert.match(workspaceService, /PRIVATE_FAVORITE_STATUSES\.includes\(item\.status\)/);
   assert.match(workspaceService, /status: \{ in: PUBLIC_PROFILE_ITEM_STATUSES \}/);
   assert.match(marketApi, /request\.get<MarketMineWorkspace>/);
   assert.match(marketApi, /request\.get<MarketPublicUserProfile>/);
-  assert.match(mine, /校园身份与信用/);
+  const profile = readFileSync(new URL("../../web/src/views/profile/Index.vue", import.meta.url), "utf8");
+  assert.doesNotMatch(mine, /label="校园身份与信用"|name="trust"/);
+  assert.match(profile, /校园身份与信用/);
+  assert.match(profile, /我的收藏/);
   assert.match(admin, /信用处理与申诉/);
   assert.match(admin, /内容规则/);
 });

@@ -332,7 +332,12 @@ export async function getMarketAdminOverview(role: string) {
         item: { select: { id: true, title: true, status: true } },
         wantedPost: { select: { id: true, title: true, status: true } },
         order: { select: { id: true, outTradeNo: true, status: true } },
-        reportedUser: { select: MARKET_PUBLIC_USER_SELECT },
+        reportedUser: {
+          select: {
+            ...MARKET_PUBLIC_USER_SELECT,
+            marketPositiveRate: true,
+          },
+        },
         reporter: { select: MARKET_PUBLIC_USER_SELECT },
       },
       orderBy: { createdAt: "desc" },

@@ -1,7 +1,5 @@
 import { startForumImageModerationPoller } from "../services/imageModeration";
-import { startMarketReminderPoller } from "../services/marketMatching";
 import { startPromotionExpiryPoller } from "../services/promotion";
-import { startQqNotificationPoller } from "../services/qqbot";
 import { startRuntimeSync } from "../services/runtimeSync";
 import { startScheduler } from "../services/schoolCrawler";
 import { startSponsorOrderExpiryPoller } from "../services/sponsor";
@@ -26,10 +24,8 @@ export function startBackgroundWorkers() {
   startRuntimeSync();
   startForumImageModerationPoller();
   startForumVideoModerationPoller();
-  startQqNotificationPoller();
   startSponsorOrderExpiryPoller();
   startPromotionExpiryPoller();
-  startMarketReminderPoller();
   startV1HotRankingPoller();
   startScheduler();
   startWeiwallSyncScheduler();

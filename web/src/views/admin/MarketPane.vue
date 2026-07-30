@@ -94,6 +94,7 @@
             <template #default="{ row }">
               <router-link v-if="reportRoute(row)" :to="reportRoute(row)">{{ reportTarget(row) }}</router-link><b v-else>{{ reportTarget(row) }}</b>
               <small>{{ reportType(row.type) }} · 举报人：{{ row.reporter?.nickname || "校园用户" }}</small>
+              <small v-if="row.reportedUserId">被投诉用户当前好评率：{{ row.reportedUser?.marketPositiveRate ?? 100 }}%</small>
             </template>
           </el-table-column>
           <el-table-column prop="reason" label="原因" width="140" />
@@ -101,10 +102,11 @@
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="操作" width="260">
+          <el-table-column label="操作" width="350">
             <template #default="{ row }">
               <el-button v-if="row.status === 'pending'" size="small" type="danger" @click="handleReport(row, true)">处置并处理</el-button>
               <el-button v-if="row.status === 'pending'" size="small" @click="handleReport(row, false)">驳回</el-button>
+              <el-button v-if="auth.isAdmin && row.reportedUserId && row.status === 'resolved'" size="small" type="primary" plain @click="openPositiveRate(row)">调整好评率</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -163,12 +165,32 @@
     </el-dialog>
     <el-dialog v-model="ruleOpen" :title="editingRuleId ? '编辑内容规则' : '新增内容规则'" width="500px"><el-form label-position="top"><el-form-item label="关键词"><el-input v-model="ruleForm.keyword" maxlength="80" /></el-form-item><div class="category-form-grid"><el-form-item label="作用范围"><el-select v-model="ruleForm.scope"><el-option label="市集" value="market" /><el-option label="广场" value="forum" /><el-option label="付费学习资料" value="learning" /><el-option label="全部" value="all" /></el-select></el-form-item><el-form-item label="风险分类"><el-input v-model="ruleForm.category" maxlength="80" /></el-form-item><el-form-item label="处理动作"><el-select v-model="ruleForm.action"><el-option label="禁止发布" value="block" /><el-option label="人工复核" value="review" /></el-select></el-form-item></div><el-form-item label="规则说明"><el-input v-model="ruleForm.note" maxlength="500" /></el-form-item><el-switch v-model="ruleForm.enabled" active-text="启用规则" inactive-text="停用规则" /></el-form><template #footer><el-button @click="ruleOpen = false">取消</el-button><el-button type="primary" @click="saveRule">保存</el-button></template></el-dialog>
     <el-dialog v-model="violationOpen" title="新增市集信用处理" width="520px"><el-form label-position="top"><el-form-item label="用户 ID"><el-input-number v-model="violationForm.userId" :min="1" controls-position="right" /></el-form-item><div class="category-form-grid"><el-form-item label="违规类型"><el-input v-model="violationForm.type" maxlength="80" placeholder="例如：禁售物品、交易骚扰" /></el-form-item><el-form-item label="处理等级"><el-select v-model="violationForm.level"><el-option label="提醒" value="warning" /><el-option label="一般" value="moderate" /><el-option label="严重" value="serious" /></el-select></el-form-item></div><div class="category-form-grid"><el-form-item label="处理措施"><el-select v-model="violationForm.action"><el-option label="警告" value="warning" /><el-option label="限制发布" value="restrict_publish" /><el-option label="限制交易" value="restrict_trade" /></el-select></el-form-item><el-form-item label="限制天数（0 为长期）"><el-input-number v-model="violationForm.days" :min="0" :max="3650" controls-position="right" /></el-form-item></div><el-form-item label="处理原因"><el-input v-model="violationForm.reason" type="textarea" :rows="4" maxlength="500" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="violationOpen = false">取消</el-button><el-button type="primary" @click="createViolation">确认处理</el-button></template></el-dialog>
+    <el-dialog v-model="positiveRateOpen" title="管理员调整好评率" width="500px" :close-on-click-modal="!positiveRateSaving">
+      <el-alert type="warning" :closable="false" show-icon title="好评率只由管理员依据投诉核验结果调整，用户评价不会自动改写。" />
+      <el-form label-position="top">
+        <el-form-item label="处理对象">
+          <el-input :model-value="`${positiveRateForm.nickname}（用户 #${positiveRateForm.userId}）`" disabled />
+        </el-form-item>
+        <el-form-item label="好评率">
+          <el-input-number v-model="positiveRateForm.positiveRate" :min="0" :max="100" :step="1" controls-position="right" />
+          <span class="rate-unit">%</span>
+        </el-form-item>
+        <el-form-item label="调整依据">
+          <el-input v-model="positiveRateForm.reason" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="填写投诉核验结论与调整依据，至少 2 个字符" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="positiveRateSaving" @click="positiveRateOpen = false">取消</el-button>
+        <el-button type="primary" :loading="positiveRateSaving" @click="savePositiveRate">确认调整</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { useAuthStore } from "@/stores/auth";
 import LearningCommerceAdminPane from "./LearningCommerceAdminPane.vue";
 import {
   marketApi,
@@ -183,6 +205,7 @@ import {
   type WantedPost,
 } from "@/api/market";
 
+const auth = useAuthStore();
 const loading = ref(false);
 const tab = ref("moderation");
 const overview = reactive<MarketAdminOverview>({
@@ -208,6 +231,9 @@ const editingRuleId = ref(0);
 const ruleForm = reactive({ keyword: "", scope: "market" as MarketSafetyRule["scope"], category: "prohibited", action: "block" as "block" | "review", enabled: true, note: "" });
 const violationOpen = ref(false);
 const violationForm = reactive({ userId: 1, type: "content", level: "warning" as "warning" | "moderate" | "serious", action: "warning" as "warning" | "restrict_publish" | "restrict_trade", days: 7, reason: "" });
+const positiveRateOpen = ref(false);
+const positiveRateSaving = ref(false);
+const positiveRateForm = reactive({ userId: 0, nickname: "", reportId: 0, positiveRate: 100, reason: "" });
 const categoryForm = reactive({
   slug: "",
   name: "",
@@ -289,6 +315,37 @@ async function removeRule(row: MarketSafetyRule) { await ElMessageBox.confirm(`�
 async function createViolation() { if (!violationForm.userId || violationForm.reason.trim().length < 2) return void ElMessage.warning("请填写用户 ID 和处理原因"); const expiresAt = violationForm.days > 0 ? new Date(Date.now() + violationForm.days * 86400000).toISOString() : null; await marketApi.adminCreateViolation({ userId: violationForm.userId, type: violationForm.type, level: violationForm.level, action: violationForm.action, reason: violationForm.reason, expiresAt }); violationOpen.value = false; violationForm.reason = ""; ElMessage.success("信用处理已生效"); await load(); }
 async function revokeViolation(row: MarketViolation) { const { value } = await ElMessageBox.prompt("请填写撤销原因", "撤销市集处理", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminRevokeViolation(row.id, value); ElMessage.success("处理已撤销"); await load(); }
 async function handleAppeal(row: MarketAppeal, status: "approved" | "rejected") { const { value } = await ElMessageBox.prompt("请填写申诉处理结论和依据", status === "approved" ? "通过申诉" : "驳回申诉", { inputPattern: /\S{2,}/, inputErrorMessage: "请至少填写 2 个字符" }); await marketApi.adminHandleAppeal(row.id, { status, note: value }); ElMessage.success("申诉已处理"); await load(); }
+
+function openPositiveRate(row: MarketReport) {
+  if (!auth.isAdmin || !row.reportedUserId) return;
+  Object.assign(positiveRateForm, {
+    userId: row.reportedUserId,
+    nickname: row.reportedUser?.nickname || `用户 #${row.reportedUserId}`,
+    reportId: row.id,
+    positiveRate: row.reportedUser?.marketPositiveRate ?? 100,
+    reason: row.status === "resolved" ? row.handledNote || row.reason : row.reason,
+  });
+  positiveRateOpen.value = true;
+}
+
+async function savePositiveRate() {
+  if (!positiveRateForm.userId || positiveRateForm.reason.trim().length < 2) {
+    return void ElMessage.warning("请填写至少 2 个字符的调整依据");
+  }
+  positiveRateSaving.value = true;
+  try {
+    await marketApi.adminAdjustPositiveRate(positiveRateForm.userId, {
+      positiveRate: positiveRateForm.positiveRate,
+      reason: positiveRateForm.reason.trim(),
+      reportId: positiveRateForm.reportId,
+    });
+    positiveRateOpen.value = false;
+    ElMessage.success("好评率已由管理员更新并写入审计日志");
+    await load();
+  } finally {
+    positiveRateSaving.value = false;
+  }
+}
 
 function openCategory(row?: MarketCategoryOption) {
   if (row?.fulfillmentType === "digital") return;
@@ -405,6 +462,7 @@ onMounted(load);
 .el-table a { color: var(--cpu-primary); text-decoration: none; }
 .table-title { margin: 6px 0 12px; font-size: 15px; }.table-title.spaced { margin-top: 26px; }
 .table-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 6px 0 14px; }.table-toolbar h3 { margin: 0 0 5px; }.table-toolbar p { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.rate-unit { margin-left: 8px; color: var(--cpu-text-secondary); }
 @media (max-width: 1000px) { .summary { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) {
   .summary { grid-template-columns: 1fr; }

@@ -37,7 +37,7 @@
               <span>{{ fmtRelative(item.lastReplyAt || item.createdAt) }}</span>
             </div>
           </div>
-          <div class="rank-score">{{ Math.round(item.hotScore || 0) }}</div>
+          <div class="rank-score">{{ Math.max(0, Math.min(100, Math.round(item.hotScore || 0))) }}</div>
         </div>
       </template>
 

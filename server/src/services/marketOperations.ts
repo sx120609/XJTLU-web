@@ -15,7 +15,6 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
   const days = Math.min(90, Math.max(7, Math.trunc(windowDays) || 30));
   const since = new Date(now.getTime() - days * 24 * 60 * 60_000);
   const staleBefore = new Date(now.getTime() - 24 * 60 * 60_000);
-  const merchantExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60_000);
 
   const [
     listings,
@@ -30,10 +29,6 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     activeVersions,
     materialAccesses,
     materialDownloads,
-    merchantApplications,
-    merchantApproved,
-    merchantActive,
-    merchantInquiries,
     promotionApplications,
     promotionConfirmed,
     promotionImpressions,
@@ -43,9 +38,7 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     pendingWanted,
     pendingReports,
     pendingAppeals,
-    pendingMerchants,
     pendingPromotions,
-    expiringMerchants,
     staleReports,
     stalePromotions,
     actionLogs,
@@ -54,8 +47,8 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     violations,
   ] = await Promise.all([
     prisma.marketItem.count({ where: { createdAt: { gte: since }, listingType: "sell", deliveryType: "physical", visibility: "public" } }),
-    prisma.tradeIntent.count({ where: { createdAt: { gte: since } } }),
-    prisma.marketOrder.count({ where: { createdAt: { gte: since }, deliveryType: "physical" } }),
+    prisma.marketConversation.count({ where: { createdAt: { gte: since }, item: { deliveryType: "physical" } } }),
+    prisma.marketOrder.count({ where: { createdAt: { gte: since }, deliveryType: "physical", status: { in: ["negotiating", "completed"] } } }),
     prisma.marketOrder.count({ where: { completedAt: { gte: since }, deliveryType: "physical", status: "completed" } }),
     prisma.wantedPost.count({ where: { createdAt: { gte: since } } }),
     prisma.wantedResponse.count({ where: { createdAt: { gte: since } } }),
@@ -65,51 +58,39 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     prisma.learningMaterialVersion.count({ where: { publishedAt: { gte: since }, status: "active" } }),
     prisma.learningMaterialAccess.count({ where: { grantedAt: { gte: since } } }),
     prisma.learningMaterialAccess.aggregate({ where: { grantedAt: { gte: since } }, _sum: { downloadCount: true } }),
-    prisma.merchantProfile.count({ where: { createdAt: { gte: since } } }),
-    prisma.merchantProfile.count({ where: { reviewedAt: { gte: since }, status: "approved" } }),
-    prisma.merchantProfile.count({ where: { status: "approved", activeUntil: { gt: now } } }),
-    prisma.merchantInquiry.count({ where: { createdAt: { gte: since } } }),
-    prisma.promotionOrder.count({ where: { createdAt: { gte: since } } }),
-    prisma.promotionOrder.count({ where: { confirmedAt: { gte: since }, paymentMode: "manual" } }),
-    prisma.promotionEvent.count({ where: { createdAt: { gte: since }, type: "impression" } }),
-    prisma.promotionEvent.count({ where: { createdAt: { gte: since }, type: "click" } }),
-    prisma.promotionOrder.aggregate({ where: { confirmedAt: { gte: since }, paymentMode: "manual" }, _sum: { amountCents: true } }),
+    prisma.promotionOrder.count({ where: { createdAt: { gte: since }, targetType: { not: "merchant_profile" } } }),
+    prisma.promotionOrder.count({ where: { confirmedAt: { gte: since }, paymentMode: "manual", targetType: { not: "merchant_profile" } } }),
+    prisma.promotionEvent.count({ where: { createdAt: { gte: since }, type: "impression", order: { targetType: { not: "merchant_profile" } } } }),
+    prisma.promotionEvent.count({ where: { createdAt: { gte: since }, type: "click", order: { targetType: { not: "merchant_profile" } } } }),
+    prisma.promotionOrder.aggregate({ where: { confirmedAt: { gte: since }, paymentMode: "manual", targetType: { not: "merchant_profile" } }, _sum: { amountCents: true } }),
     prisma.marketItem.count({ where: { status: "reviewing" } }),
     prisma.wantedPost.count({ where: { status: "reviewing" } }),
     prisma.marketReport.count({ where: { status: "pending" } }),
     prisma.marketAppeal.count({ where: { status: "pending" } }),
-    prisma.merchantProfile.count({ where: { status: "reviewing" } }),
-    prisma.promotionOrder.count({ where: { status: "pending" } }),
-    prisma.merchantProfile.count({ where: { status: "approved", activeUntil: { gt: now, lte: merchantExpiry } } }),
+    prisma.promotionOrder.count({ where: { status: "pending", targetType: { not: "merchant_profile" } } }),
     prisma.marketReport.count({ where: { status: "pending", createdAt: { lt: staleBefore } } }),
-    prisma.promotionOrder.count({ where: { status: "pending", createdAt: { lt: staleBefore } } }),
+    prisma.promotionOrder.count({ where: { status: "pending", createdAt: { lt: staleBefore }, targetType: { not: "merchant_profile" } } }),
     prisma.adminActionLog.findMany({ include: { actor: { select: { id: true, nickname: true } } }, orderBy: { createdAt: "desc" }, take: 40 }),
     prisma.marketReport.findMany({ include: { reporter: { select: { id: true, nickname: true } } }, orderBy: { createdAt: "desc" }, take: 20 }),
     prisma.marketAppeal.findMany({ include: { user: { select: { id: true, nickname: true } } }, orderBy: { createdAt: "desc" }, take: 20 }),
     prisma.marketViolation.findMany({ include: { user: { select: { id: true, nickname: true } }, createdBy: { select: { id: true, nickname: true } } }, orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
 
-  const [promotionAdjustments, confirmedOrderRows, merchantReviewDue] = await Promise.all([
+  const [promotionAdjustments, confirmedOrderRows] = await Promise.all([
     prisma.promotionAdjustment.groupBy({
       by: ["type"],
-      where: { createdAt: { gte: since } },
+      where: { createdAt: { gte: since }, order: { targetType: { not: "merchant_profile" } } },
       _sum: { amountCents: true },
       _count: true,
     }),
     prisma.promotionOrder.findMany({
-      where: { confirmedAt: { gte: since }, paymentMode: "manual" },
+      where: { confirmedAt: { gte: since }, paymentMode: "manual", targetType: { not: "merchant_profile" } },
       select: {
         createdAt: true,
         confirmedAt: true,
         manualCostCents: true,
-        type: true,
-        clickCount: true,
-        inquiryStartCount: true,
-        inquiryEndCount: true,
-        merchantProfile: { select: { inquiryCount: true } },
       },
     }),
-    prisma.merchantProfile.count({ where: { status: "approved", reviewDueAt: { lte: now } } }),
   ]);
 
   const currentWeekStart = shanghaiDateKey(new Date(now.getTime() - 6 * 86_400_000));
@@ -122,13 +103,12 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     physicalSupply,
     wantedSupply,
     learningSupply,
-    activeCreators,
+    activePublishers,
     publicSquareContent,
     pendingLearningReviews,
     pendingLearningEvidence,
     pendingLearningIssues,
     overdueLearningIssues,
-    pendingCreatorApplications,
     pendingCreatorAppeals,
   ] = await Promise.all([
     prisma.productActivityDaily.findMany({
@@ -170,7 +150,6 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
         slaDueAt: { lt: now },
       },
     }),
-    prisma.learningCreatorApplication.count({ where: { status: { in: ["submitted", "reviewing"] } } }),
     prisma.learningCreatorAppeal.count({ where: { status: "pending" } }),
   ]);
 
@@ -187,36 +166,24 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
   const averageManualReviewMinutes = reviewDurations.length
     ? Number((reviewDurations.reduce((sum, value) => sum + value, 0) / reviewDurations.length / 60_000).toFixed(1))
     : 0;
-  const merchantPromotionRows = confirmedOrderRows.filter((row) => row.type === "merchant_homepage");
-  const merchantInquiriesAttributed = merchantPromotionRows.reduce((sum, row) => {
-    const current = row.inquiryEndCount ?? row.merchantProfile?.inquiryCount ?? row.inquiryStartCount;
-    return sum + Math.max(0, current - row.inquiryStartCount);
-  }, 0);
-  const merchantPromotionClicks = merchantPromotionRows.reduce((sum, row) => sum + row.clickCount, 0);
   const funnels = [
     {
       key: "trade",
       label: "可信交易",
-      note: "公开发布 → 购买意向 → 预约 → 双方完成",
-      stages: [stage("新发布", listings), stage("购买意向", intents), stage("生成预约", reservations), stage("双方完成", completedTrades)],
+      note: "公开发布 → 发起私聊 → 双方确认 → 系统认定成交",
+      stages: [stage("新发布", listings), stage("发起私聊", intents), stage("进入洽谈", reservations), stage("双方确认成交", completedTrades)],
     },
     {
       key: "wanted",
       label: "求购撮合",
-      note: "求购发布 → 卖家响应 → 接受预约 → 求购完成",
-      stages: [stage("新求购", wantedPosts), stage("收到响应", wantedResponses), stage("接受预约", wantedReservations), stage("确认求到", wantedCompleted)],
+      note: "求购发布 → 卖家响应 → 发起私聊 → 双方确认成交",
+      stages: [stage("新求购", wantedPosts), stage("收到响应", wantedResponses), stage("发起私聊", wantedReservations), stage("双方确认成交", wantedCompleted)],
     },
     {
       key: "learning",
       label: "付费学习资料",
       note: "资料建档 → 版本发布 → 获得访问 → 下载使用",
       stages: [stage("资料建档", freeMaterials), stage("版本发布", activeVersions), stage("获得访问", materialAccesses), stage("下载次数", materialDownloads._sum.downloadCount || 0)],
-    },
-    {
-      key: "merchant",
-      label: "合作商户",
-      note: "提交资料 → 人工通过 → 主页有效 → 用户咨询",
-      stages: [stage("资料提交", merchantApplications), stage("人工通过", merchantApproved), stage("当前有效", merchantActive), stage("咨询动作", merchantInquiries)],
     },
     {
       key: "promotion",
@@ -230,15 +197,11 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     { key: "content", label: "内容审核", count: pendingItems + pendingWanted, overdue: 0, route: "/admin?tab=market" },
     { key: "report", label: "举报处理", count: pendingReports, overdue: staleReports, route: "/admin?tab=market" },
     { key: "appeal", label: "用户申诉", count: pendingAppeals, overdue: 0, route: "/admin?tab=market" },
-    { key: "merchant", label: "商户审核", count: pendingMerchants, overdue: 0, route: "/admin?tab=promotion" },
-    { key: "merchant-review", label: "商户周期复核到期", count: merchantReviewDue, overdue: merchantReviewDue, route: "/admin?tab=promotion" },
     { key: "promotion", label: "盈利订单人工确认", count: pendingPromotions, overdue: stalePromotions, route: "/admin?tab=promotion" },
-    { key: "expiry", label: "7 天内商户主页到期", count: expiringMerchants, overdue: 0, route: "/admin?tab=promotion" },
     { key: "learning-review", label: "学习资料审核", count: pendingLearningReviews, overdue: 0, route: "/admin?tab=learning-commerce" },
     { key: "learning-evidence", label: "收款凭证核验", count: pendingLearningEvidence, overdue: 0, route: "/admin?tab=learning-commerce" },
     { key: "learning-issue", label: "资料售后与争议", count: pendingLearningIssues, overdue: overdueLearningIssues, route: "/admin?tab=learning-commerce" },
-    { key: "creator", label: "创作者认证", count: pendingCreatorApplications, overdue: 0, route: "/admin?tab=learning-commerce" },
-    { key: "creator-appeal", label: "创作者申诉", count: pendingCreatorAppeals, overdue: 0, route: "/admin?tab=learning-commerce" },
+    { key: "publisher-appeal", label: "资料发布者申诉", count: pendingCreatorAppeals, overdue: 0, route: "/admin?tab=learning-commerce" },
   ];
 
   const activeToday = new Set(activityRows.filter((row) => row.dateKey === todayKey).map((row) => row.userId));
@@ -274,7 +237,7 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
     { key: "physical_supply", label: "在售实体商品", current: physicalSupply, target: 20, passed: physicalSupply >= 20 },
     { key: "wanted_supply", label: "进行中求购", current: wantedSupply, target: 5, passed: wantedSupply >= 5 },
     { key: "learning_supply", label: "已审核付费资料", current: learningSupply, target: 5, passed: learningSupply >= 5 },
-    { key: "creator_supply", label: "活跃认证创作者", current: activeCreators, target: 3, passed: activeCreators >= 3 },
+    { key: "publisher_supply", label: "活跃资料发布者", current: activePublishers, target: 3, passed: activePublishers >= 3 },
     { key: "square_supply", label: "广场公开内容", current: publicSquareContent, target: 10, passed: publicSquareContent >= 10 },
     { key: "portal_entries", label: "校园门户入口", current: FEATURED_XJTLU_APPS.length, target: 15, passed: FEATURED_XJTLU_APPS.length >= 15 },
     {
@@ -349,7 +312,6 @@ export async function getMarketOperationsDashboard(windowDays = 30, now = new Da
       promotionComplaintCount: complaintCount,
       promotionComplaintRate: promotionConfirmed ? Number(((complaintCount / promotionConfirmed) * 100).toFixed(2)) : 0,
       averageManualReviewMinutes,
-      merchantInquiryConversion: merchantPromotionClicks ? Number(((merchantInquiriesAttributed / merchantPromotionClicks) * 100).toFixed(2)) : 0,
       promotionCtr: promotionImpressions ? Number(((promotionClicks / promotionImpressions) * 100).toFixed(2)) : 0,
       verifiedCampusUsers,
       dau: activeToday.size,

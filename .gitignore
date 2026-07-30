@@ -30,6 +30,7 @@ runtime/backups/
 server/runtime/
 server/filestore/data/
 server/filestore/uploads/
+server/uploads/
 
 # 教务代登录调试快照（可能含 session cookie / 真实 HTML）
 server/.debug/

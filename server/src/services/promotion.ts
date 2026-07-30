@@ -644,11 +644,10 @@ export function startPromotionExpiryPoller() {
   const tick = () => {
     runTrackedJob(
       "promotion-expiry",
-      "推广到期、续期与商户复核提醒",
+      "推广到期与续期提醒",
       () => runWithDistributedLock("promotion-expiry-sweep", 4 * 60_000, async () => ({
         expired: await refreshExpiredPromotions(),
         renewalReminders: await sendPromotionRenewalReminders(),
-        merchantReviewReminders: await sendMerchantReviewReminders(),
       })),
       PROMOTION_EXPIRY_SWEEP_MS,
     )

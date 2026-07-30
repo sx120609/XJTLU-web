@@ -25,20 +25,6 @@ export type MessageNotification = {
   createdAt: string;
 };
 
-export type MessageSettings = {
-  id: number;
-  userId: number;
-  quietStart: string;
-  quietEnd: string;
-  qqBotNotifyEnabled: boolean;
-  subscribeReply: boolean;
-  subscribeLike: boolean;
-  subscribeSchool: boolean;
-  subscribeSystem: boolean;
-};
-
-export type MessageSettingsPatch = Omit<MessageSettings, "id" | "userId">;
-
 export const messageApi = {
   list: (category?: string, options?: RequestOptions) =>
     request.get<MessageNotification[]>(
@@ -50,10 +36,4 @@ export const messageApi = {
     request.post<MessageNotification>(`/messages/${id}/read`, undefined, options),
   readAll: (options?: RequestOptions) =>
     request.post<{ ok: true }>("/messages/read-all", undefined, options),
-  settings: (options?: RequestOptions) =>
-    request.get<MessageSettings>("/messages/settings", undefined, options),
-  updateSettings: (
-    payload: MessageSettingsPatch,
-    options?: RequestOptions,
-  ) => request.patch<MessageSettings>("/messages/settings", payload, options),
 };

@@ -42,7 +42,33 @@ test("phase 8 weak matches do not receive an unexplained score", () => {
   assert.deepEqual(result.reasons, []);
 });
 
-test("phase 8 routes and mobile pages expose matching, preferences and fulfillment guidance", () => {
+test("learning material items match the unified learning-material wanted category", () => {
+  const result = scoreMarketMatch({
+    id: 3,
+    sellerId: 10,
+    title: "ECON101 期末复习资料",
+    description: "知识点总结和模拟题",
+    category: "digital_goods",
+    priceCents: 1_990,
+    condition: "good",
+    campus: "SIP",
+  }, {
+    id: 4,
+    authorId: 11,
+    title: "求购 ECON101 复习资料",
+    description: "需要期末知识点和练习题",
+    category: "learning_materials",
+    budgetMinCents: 1_000,
+    budgetMaxCents: 3_000,
+    condition: "",
+    campus: "SIP",
+  });
+  assert.ok(result.score >= 60);
+  assert.equal(result.reasons[0]?.key, "category");
+  assert.equal(result.reasons.some((reason) => reason.key === "budget"), true);
+});
+
+test("matching and preferences remain while physical fulfillment uses direct chat", () => {
   const routes = [
     readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/routes/marketCatalog.ts", import.meta.url), "utf8"),
@@ -53,14 +79,15 @@ test("phase 8 routes and mobile pages expose matching, preferences and fulfillme
   const workers = readFileSync(new URL("../src/runtime/backgroundWorkers.ts", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../../web/src/views/market/Detail.vue", import.meta.url), "utf8");
   const wanted = readFileSync(new URL("../../web/src/views/market/WantedDetail.vue", import.meta.url), "utf8");
-  const mine = readFileSync(new URL("../../web/src/views/market/Mine.vue", import.meta.url), "utf8");
+  const messages = readFileSync(new URL("../../web/src/views/market/Messages.vue", import.meta.url), "utf8");
+  const profile = readFileSync(new URL("../../web/src/views/profile/Index.vue", import.meta.url), "utf8");
   assert.match(routes, /\/items\/:id\/matches/);
   assert.match(routes, /\/wanted\/:id\/matches/);
   assert.match(routes, /\/preferences/);
-  assert.match(routes, /meetupReminderSentAt: null/);
-  assert.match(workers, /startMarketReminderPoller/);
+  assert.doesNotMatch(workers, /startMarketReminderPoller/);
+  assert.match(routes, /status: "negotiating"/);
   assert.match(detail, /matchingWanted/);
   assert.match(wanted, /matchingItems/);
-  assert.match(mine, /求购与闲置匹配/);
-  assert.match(mine, /orderNextStep/);
+  assert.match(profile, /求购与闲置匹配/);
+  assert.match(messages, /实际成交后，请买卖双方分别确认/);
 });

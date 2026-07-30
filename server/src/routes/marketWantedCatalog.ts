@@ -19,6 +19,8 @@ import { marketCampusStorageAliases } from "../services/marketCampus";
 import { Errors, ok } from "../utils/response";
 import { positiveRouteInteger, queryPage, querySize } from "../utils/query";
 import { ensureV1HotRankingFresh } from "../services/v1DiscoveryService";
+import { recordUniqueContentView } from "../services/contentViews";
+import { expirePointBoosts } from "../services/pointBoosts";
 
 export const marketWantedCatalogRouter = Router();
 
@@ -26,6 +28,7 @@ marketWantedCatalogRouter.get("/wanted", async (req, res, next) => {
   try {
     if (!isFeatureOn("market")) throw Errors.forbidden("市集当前已关闭");
     await closeExpiredMarketOrders();
+    await expirePointBoosts();
     const page = queryPage(req.query.page);
     const size = querySize(req.query.size, 24, 8, 60);
     const q = String(req.query.q || "").trim();
@@ -61,9 +64,11 @@ marketWantedCatalogRouter.get("/wanted", async (req, res, next) => {
           linkedTopics: wantedDemandTopicInclude,
           _count: { select: { responses: true } },
         },
-        orderBy: sort === "popular"
-          ? contentOrder
-          : [{ urgentUntil: { sort: "desc", nulls: "last" } }, ...contentOrder],
+        orderBy: [
+          ...(sort === "new" ? [{ urgentUntil: { sort: "desc" as const, nulls: "last" as const } }] : []),
+          { boostedUntil: { sort: "desc" as const, nulls: "last" as const } },
+          ...contentOrder,
+        ],
         skip: (page - 1) * size,
         take: size,
       }),
@@ -106,7 +111,7 @@ marketWantedCatalogRouter.get("/wanted/:id", async (req, res, next) => {
       throw Errors.notFound("求购不存在");
     }
     if (!["reviewing", "removed"].includes(post.status)) {
-      prisma.wantedPost.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => null);
+      recordUniqueContentView(req, "wanted_post", id).catch(() => null);
     }
     const responses = visibleWantedResponses(
       post.responses,

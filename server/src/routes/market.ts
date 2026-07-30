@@ -10,11 +10,11 @@ import { marketItemWriteRouter } from "./marketItemWrite";
 import { marketOrderRouter } from "./marketOrder";
 import { marketPaymentRouter } from "./marketPayment";
 import { marketPromotionsRouter } from "./marketPromotions";
-import { marketTradeRouter } from "./marketTrade";
 import { marketWantedCatalogRouter } from "./marketWantedCatalog";
 import { marketWantedResponseRouter } from "./marketWantedResponse";
 import { marketWantedWriteRouter } from "./marketWantedWrite";
 import { marketWorkspaceRouter } from "./marketWorkspace";
+import { marketPointsRouter } from "./marketPoints";
 
 export const marketRouter = Router();
 
@@ -29,11 +29,11 @@ marketRouter.use("/", marketItemWriteRouter);
 marketRouter.use("/", marketWantedCatalogRouter);
 marketRouter.use("/", marketWantedWriteRouter);
 marketRouter.use("/", marketWantedResponseRouter);
-marketRouter.use("/", marketTradeRouter);
 marketRouter.use("/", marketOrderRouter);
 marketRouter.use("/", marketConversationRouter);
 marketRouter.use("/", marketGovernanceRouter);
 marketRouter.use("/", marketWorkspaceRouter);
+marketRouter.use("/", marketPointsRouter);
 marketRouter.use("/", marketPaymentRouter);
 marketRouter.use("/", marketAdminRouter);
 marketRouter.use("/materials/commerce", learningCommerceRouter);

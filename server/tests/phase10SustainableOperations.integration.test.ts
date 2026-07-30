@@ -7,7 +7,7 @@ process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
 process.env.JWT_SECRET = "phase-10-sustainable-secret";
 
-test("stage 10 real routes enforce inventory, renewal, manual after-service records and commercial shutdown", async (t) => {
+test("stage 10 routes enforce inventory, renewal, after-service records, V1 merchant retirement and commercial shutdown", async (t) => {
   const express = (await import("express")).default;
   const { router } = await import("../src/routes");
   const { errorHandler } = await import("../src/middleware/error");
@@ -96,9 +96,8 @@ test("stage 10 real routes enforce inventory, renewal, manual after-service reco
   assert.equal(audit.detail.includes(refundReference), false);
   assert.equal(audit.detail.includes(refundReference.slice(-4)), true);
 
-  const reviewedMerchant = await api(`/market/admin/merchants/${merchant.id}`, adminToken, "PATCH", { status: "approved", note: "资料真实合规，进入周期复核" });
-  const reviewDays = (new Date(reviewedMerchant.reviewDueAt).getTime() - Date.now()) / 86_400_000;
-  assert.ok(reviewDays > 89 && reviewDays <= 90.1);
+  const retiredMerchantReview = await call(`/market/admin/merchants/${merchant.id}`, adminToken, "PATCH", { status: "approved", note: "V1 不再启用商户审核" });
+  assert.equal(retiredMerchantReview.response.status, 404);
   const dashboard = await api("/market/admin/operations?days=30", adminToken);
   assert.ok(dashboard.headline.promotionManualCostCents >= 150);
   assert.equal(typeof dashboard.headline.promotionNetContribution, "string");

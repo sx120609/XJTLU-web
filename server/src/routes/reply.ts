@@ -10,7 +10,7 @@ import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUs
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshTopicReplyStats, refreshUserReplyCount } from "../services/forumStats";
 import { acquireForumTopicLock } from "../services/forumTopicLockService";
-import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
+import { createAnonymousAlias } from "../services/userTrust";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
@@ -74,14 +74,6 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       topic.isAnonymous &&
       topic.authorId === userId
     );
-    const reuseExistingAnonymousIdentity = Boolean(reuseTopicAnonymousIdentity || existingAnonymousReply);
-    const shouldConsumeAnonymousCredit = Boolean(anonymous && !reuseExistingAnonymousIdentity);
-    if (anonymous && reuseExistingAnonymousIdentity) {
-      const { trust } = await refreshAnonymousCreditsIfNeeded(userId);
-      if (trust.anonymousState.frozen) {
-        throw Errors.forbidden("你的匿名积分当前已被冻结，请联系管理员");
-      }
-    }
     const anonymousAlias = anonymous
       ? (
           reuseTopicAnonymousIdentity
@@ -125,9 +117,6 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             ) {
               throw Errors.badRequest("引用的回复不存在");
             }
-          }
-          if (shouldConsumeAnonymousCredit) {
-            await consumeAnonymousCredit(userId, tx);
           }
           return tx.reply.create({
             data: {
@@ -198,9 +187,6 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         select: { floor: true },
       });
       const floor = Math.max(0, last?.floor ?? 0) + 1;
-      if (shouldConsumeAnonymousCredit) {
-        await consumeAnonymousCredit(userId, tx);
-      }
       const created = await tx.reply.create({
         data: {
           topicId,

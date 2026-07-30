@@ -7,25 +7,16 @@ import {
   cents,
   closeExpiredMarketOrders,
   itemInclude,
+  LEARNING_MATERIAL_WANTED_CATEGORY,
 } from "./marketCatalogService";
 import { requireVerifiedMarketUser } from "./marketAccessService";
 import { evaluateMarketContent } from "./marketTrust";
 import { MARKET_PUBLIC_USER_SELECT } from "./marketPublicUser";
 import { serializeWantedResponse } from "./marketWantedService";
-import { directTradeOrderAmounts } from "./marketPolicy";
-import { nextReservationExpiry } from "./marketLifecycle";
-import {
-  nextMarketTradeNo,
-  serializeMarketOrder,
-} from "./marketOrderService";
 import { notifyMarketUser } from "./marketNotificationService";
 import { acquireMarketWantedLock } from "./marketWantedLockService";
 import { acquireMarketItemLock } from "./marketItemLockService";
 import { acquireMarketCategoryLock } from "./marketCategoryLockService";
-import {
-  TRANSACTION_POINT_RULES,
-  awardTransactionPointsInTransaction,
-} from "./transactionPoints";
 
 const wantedResponseImageSchema = z.string().trim().min(1).max(2048).refine(
   (value) => value.startsWith("/") || /^https?:\/\//i.test(value),
@@ -45,7 +36,7 @@ export const marketWantedResponseInputSchema = z.object({
 });
 
 export const marketWantedResponseActionSchema = z.object({
-  action: z.enum(["accept", "reject", "cancel"]),
+  action: z.enum(["reject", "cancel"]),
 });
 
 export type MarketWantedResponseInput = z.infer<typeof marketWantedResponseInputSchema>;
@@ -99,19 +90,24 @@ export async function createMarketWantedResponse(
     if (duplicate) throw Errors.conflict("你已经提交过待处理的响应");
 
     let item: any;
+    const learningWanted = wanted.category === LEARNING_MATERIAL_WANTED_CATEGORY;
     if (input.itemId) {
       await acquireMarketItemLock(tx, input.itemId);
       item = await tx.marketItem.findUnique({ where: { id: input.itemId } });
+      const learningMaterialItem = item?.category === "digital_goods" && item?.deliveryType === "digital";
       if (
         !item
         || item.sellerId !== actor.userId
         || item.status !== "active"
         || item.visibility !== "public"
-        || item.deliveryType !== "physical"
+        || (learningWanted ? !learningMaterialItem : item.deliveryType !== "physical")
       ) {
-        throw Errors.badRequest("请选择自己当前在售的实体商品");
+        throw Errors.badRequest(learningWanted ? "请选择自己当前在售的学习资料" : "请选择自己当前在售的实体商品");
       }
     } else {
+      if (learningWanted) {
+        throw Errors.badRequest("学习资料求购只能关联已在专区审核上架的资料");
+      }
       if (!input.title || !input.images.length) {
         throw Errors.badRequest("未关联在售商品时，请填写商品名称并上传至少一张实拍图");
       }
@@ -143,7 +139,6 @@ export async function createMarketWantedResponse(
           brand: input.brand,
           model: input.model,
           availableTime: input.availableTime,
-          contactVisibility: "after_accept",
           expiresAt: wanted.expiresAt,
           visibility: "targeted",
           sourceWantedPostId: wantedPostId,
@@ -260,119 +255,7 @@ export async function transitionMarketWantedResponse(
       };
     }
 
-    if (
-      !["active", "responded"].includes(response.wantedPost.status)
-      || response.wantedPost.expiresAt <= new Date()
-    ) {
-      throw Errors.badRequest("求购当前不可匹配");
-    }
-    const allowedItemStatus = lockedItem.visibility === "targeted" ? "targeted" : "active";
-    if (lockedItem.status !== allowedItemStatus) {
-      throw Errors.badRequest("响应商品当前不可预订");
-    }
-    const amounts = directTradeOrderAmounts(response.priceCents);
-    const matched = await tx.wantedPost.updateMany({
-      where: {
-        id: response.wantedPostId,
-        status: { in: ["active", "responded"] },
-        expiresAt: { gt: new Date() },
-      },
-      data: { status: "matched" },
-    });
-    if (matched.count !== 1) throw Errors.conflict("求购状态已变化，请刷新后重试");
-    const reserved = await tx.marketItem.updateMany({
-      where: { id: response.itemId, status: allowedItemStatus },
-      data: { status: "reserved" },
-    });
-    if (reserved.count !== 1) throw Errors.conflict("响应商品已不可预订");
-    const accepted = await tx.wantedResponse.updateMany({
-      where: { id: responseId, status: "pending" },
-      data: { status: "accepted" },
-    });
-    if (accepted.count !== 1) throw Errors.conflict("该响应状态已变化，请刷新后重试");
-    await tx.wantedResponse.updateMany({
-      where: {
-        wantedPostId: response.wantedPostId,
-        id: { not: responseId },
-        status: "pending",
-      },
-      data: { status: "rejected" },
-    });
-    await tx.tradeIntent.updateMany({
-      where: { itemId: response.itemId, status: "pending" },
-      data: { status: "rejected" },
-    });
-    await tx.marketOffer.updateMany({
-      where: { itemId: response.itemId, status: "pending" },
-      data: { status: "rejected" },
-    });
-    await tx.wantedResponse.updateMany({
-      where: { itemId: response.itemId, id: { not: responseId }, status: "pending" },
-      data: { status: "rejected" },
-    });
-    const order = await tx.marketOrder.create({
-      data: {
-        itemId: response.itemId,
-        wantedPostId: response.wantedPostId,
-        wantedResponseId: responseId,
-        buyerId: response.wantedPost.authorId,
-        sellerId: response.sellerId,
-        outTradeNo: nextMarketTradeNo(response.wantedPost.authorId),
-        amountCents: response.priceCents,
-        platformFeeCents: amounts.platformFeeCents,
-        sellerAmountCents: amounts.sellerAmountCents,
-        deliveryType: "physical",
-        status: "reserved",
-        expiresAt: nextReservationExpiry(),
-      },
-    });
-    await tx.marketConversation.upsert({
-      where: {
-        itemId_buyerId_sellerId: {
-          itemId: response.itemId,
-          buyerId: response.wantedPost.authorId,
-          sellerId: response.sellerId,
-        },
-      },
-      create: {
-        itemId: response.itemId,
-        orderId: order.id,
-        buyerId: response.wantedPost.authorId,
-        sellerId: response.sellerId,
-      },
-      update: { orderId: order.id },
-    });
-    await tx.marketItem.updateMany({
-      where: {
-        sourceWantedPostId: response.wantedPostId,
-        visibility: "targeted",
-        id: { not: response.itemId },
-        status: "targeted",
-      },
-      data: { status: "withdrawn" },
-    });
-    await awardTransactionPointsInTransaction(tx, {
-      userId: response.sellerId,
-      delta: TRANSACTION_POINT_RULES.wantedResponseAccepted,
-      event: "wanted_response_accepted",
-      sourceType: "wanted_response",
-      sourceId: responseId,
-    });
-    return {
-      kind: "order" as const,
-      order,
-      notification: {
-        userId: response.sellerId,
-        title: "求购响应已被接受",
-        content: `「${response.wantedPost.title}」已匹配，请在 72 小时内与买家约定校内见面。`,
-        link: "/market/mine?tab=reservations",
-        payload: {
-          type: "wanted-response-accepted",
-          wantedPostId: response.wantedPostId,
-          reservationId: order.id,
-        },
-      },
-    };
+    throw Errors.badRequest("该操作已停用，请直接发起私聊");
   });
 
   if (result.notification) {
@@ -384,7 +267,5 @@ export async function transitionMarketWantedResponse(
       result.notification.payload,
     );
   }
-  return result.kind === "order"
-    ? serializeMarketOrder(result.order, actor.userId, actor.role)
-    : serializeWantedResponse(result.response);
+  return serializeWantedResponse(result.response);
 }

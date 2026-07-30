@@ -1,165 +1,242 @@
 <template>
   <div class="mine-page">
-    <header class="page-head"><div><span>MY KAOPU TRADES</span><h1>我的交易</h1><p>管理发布、求购、购买意向、校内预约、双方确认与评价。靠浦不代收学生商品款。</p></div><div><el-button @click="$router.push({ name: 'market-messages' })">交易消息 {{ data.conversationCount || '' }}</el-button><el-button @click="$router.push('/publish/wanted')">发布求购</el-button><el-button type="primary" @click="$router.push('/publish/listing')">出售物品</el-button></div></header>
+    <header class="page-head">
+      <div>
+        <span>MY KAOPU TRADES</span>
+        <h1>我的交易</h1>
+        <p>这里只管理你的实物商品和求购需求；沟通与成交确认统一放在市集的“交易消息”。</p>
+      </div>
+    </header>
 
     <el-tabs v-model="tab" class="market-tabs cpu-card" v-loading="loading" @tab-change="syncTab">
       <el-tab-pane label="我的发布" name="selling">
-        <div class="section-tools"><el-segmented v-model="sellingStatus" :options="sellingOptions" /><span>{{ filteredSelling.length }} 件</span></div>
+        <div class="section-tools">
+          <el-segmented v-model="sellingStatus" :options="sellingOptions" />
+          <span>{{ filteredSelling.length }} 件</span>
+        </div>
         <div v-if="filteredSelling.length" class="record-list">
           <article v-for="item in filteredSelling" :key="item.id">
             <ItemCover :item="item" />
-            <div class="record-copy"><div><strong>{{ item.title }}</strong><el-tag size="small" :type="itemStatusType(item.status)">{{ itemStatus(item.status) }}</el-tag></div><p>¥{{ item.price }} · {{ item.favoriteCount }} 收藏 · {{ item.offerCount }} 意向</p><small>{{ item.campus || '校区待协商' }} · {{ item.expiresAt ? `有效期至 ${formatDate(item.expiresAt)}` : fmtRelative(item.updatedAt) }}</small></div>
-            <div class="record-actions"><el-button size="small" @click="$router.push(`/market/item/${item.id}`)">查看</el-button><el-button v-if="['active','draft','expired','withdrawn','sold'].includes(item.status)" size="small" @click="$router.push(`/market/item/${item.id}/edit`)">编辑</el-button><el-button v-if="['expired','withdrawn','sold'].includes(item.status)" size="small" @click="itemLifecycle(item, 'relist')">重新上架</el-button><el-button v-if="['active','negotiating','expired'].includes(item.status)" size="small" type="danger" plain @click="itemLifecycle(item, 'withdraw')">下架</el-button></div>
+            <div class="record-copy">
+              <div>
+                <strong>{{ item.title }}</strong>
+                <el-tag size="small" :type="itemStatusType(item.status)">{{ itemStatus(item.status) }}</el-tag>
+              </div>
+              <p>¥{{ item.price }} · {{ item.favoriteCount }} 收藏 · {{ item.offerCount }} 个私聊</p>
+              <small>{{ item.campus || "校区待协商" }} · {{ item.expiresAt ? `有效期至 ${formatDate(item.expiresAt)}` : fmtRelative(item.updatedAt) }}</small>
+            </div>
+            <div class="record-actions">
+              <el-button size="small" @click="router.push(`/market/item/${item.id}`)">查看</el-button>
+              <el-button v-if="item.status === 'active'" size="small" type="primary" plain @click="openPointPromotion('market_item', item.id)">积分推流</el-button>
+              <el-button v-if="editableItemStatuses.includes(item.status)" size="small" @click="router.push(`/market/item/${item.id}/edit`)">编辑</el-button>
+              <el-button v-if="relistItemStatuses.includes(item.status)" size="small" @click="itemLifecycle(item, 'relist')">重新上架</el-button>
+              <el-button v-if="['active','negotiating','expired'].includes(item.status)" size="small" type="danger" plain @click="itemLifecycle(item, 'withdraw')">下架</el-button>
+            </div>
           </article>
         </div>
-        <el-empty v-else description="当前没有商品" />
+        <el-empty v-else description="当前分类没有商品" />
       </el-tab-pane>
 
       <el-tab-pane label="求购需求" name="wanted">
-        <el-alert class="tab-explanation" type="info" :closable="false" show-icon title="这里管理你发布到广场“求购需求”专区的需求帖；它不是对某件在售商品提交的购买意向。" />
+        <el-alert class="tab-explanation" type="info" :closable="false" show-icon title="求购过期后不再“续期”；请检查原内容并编辑后重新发布，避免失效需求长期占位。" />
         <div v-if="data.wantedPosts.length" class="record-list">
-          <article v-for="post in data.wantedPosts" :key="post.id"><div class="wanted-mark">求</div><div class="record-copy"><div><strong>{{ post.title }}</strong><el-tag size="small" :type="wantedStatusType(post.status)">{{ wantedStatus(post.status) }}</el-tag></div><p>预算 ¥{{ post.budgetMin }}–{{ post.budgetMax }} · {{ post.responseCount }} 个响应</p><small>{{ post.campus || '校内' }} · 有效期至 {{ formatDate(post.expiresAt) }}</small></div><div class="record-actions"><el-button size="small" @click="$router.push(`/market/wanted/${post.id}`)">查看响应</el-button><el-button v-if="['active','responded','expired'].includes(post.status)" size="small" @click="$router.push(`/market/wanted/${post.id}/edit`)">编辑</el-button><el-button v-if="['active','responded','expired','cancelled'].includes(post.status)" size="small" @click="wantedLifecycle(post, 'renew')">续期</el-button><el-button v-if="['active','responded'].includes(post.status)" size="small" type="danger" plain @click="wantedLifecycle(post, 'cancel')">结束</el-button></div></article>
-        </div><el-empty v-else description="还没有发布求购"><el-button type="primary" plain @click="$router.push('/publish/wanted')">发布求购</el-button></el-empty>
-        <section v-if="data.wantedResponses.length" class="sub-section"><h3>我响应的求购</h3><div class="record-list"><article v-for="response in data.wantedResponses" :key="response.id"><ItemCover :item="response.item" /><div class="record-copy"><div><strong>{{ response.wantedPost?.title }}</strong><el-tag size="small" :type="intentStatusType(response.status)">{{ intentStatus(response.status) }}</el-tag></div><p>提供 {{ response.item.title }} · ¥{{ response.price }}</p><small>{{ response.description }}</small></div><div class="record-actions"><el-button size="small" @click="$router.push(`/market/wanted/${response.wantedPostId}`)">查看</el-button><el-button v-if="response.status === 'pending'" size="small" @click="handleWantedResponse(response.id, 'cancel')">撤回</el-button></div></article></div></section>
+          <article v-for="post in data.wantedPosts" :key="post.id">
+            <div class="wanted-mark">求</div>
+            <div class="record-copy">
+              <div>
+                <strong>{{ post.title }}</strong>
+                <el-tag size="small" :type="wantedStatusType(post.status)">{{ wantedStatus(post.status) }}</el-tag>
+              </div>
+              <p>预算 ¥{{ post.budgetMin }}–{{ post.budgetMax }} · {{ post.responseCount }} 个响应</p>
+              <small>{{ post.campus || "校内" }} · 有效期至 {{ formatDate(post.expiresAt) }}</small>
+            </div>
+            <div class="record-actions">
+              <el-button size="small" @click="router.push(`/market/wanted/${post.id}`)">查看响应</el-button>
+              <el-button v-if="['active','responded'].includes(post.status)" size="small" type="primary" plain @click="openPointPromotion('wanted_post', post.id)">积分推流</el-button>
+              <el-button v-if="['active','responded'].includes(post.status)" size="small" @click="router.push(`/market/wanted/${post.id}/edit`)">编辑</el-button>
+              <el-button v-if="post.status === 'expired'" size="small" type="primary" plain @click="router.push(`/market/wanted/${post.id}/edit`)">编辑后重新发布</el-button>
+              <el-button v-if="['active','responded'].includes(post.status)" size="small" type="danger" plain @click="wantedLifecycle(post, 'cancel')">结束</el-button>
+            </div>
+          </article>
+        </div>
+        <el-empty v-else description="还没有发布求购" />
+
+        <section v-if="data.wantedResponses.length" class="sub-section">
+          <h3>我响应的求购</h3>
+          <div class="record-list">
+            <article v-for="response in data.wantedResponses" :key="response.id">
+              <ItemCover :item="response.item" />
+              <div class="record-copy">
+                <div>
+                  <strong>{{ response.wantedPost?.title }}</strong>
+                  <el-tag size="small" :type="intentStatusType(response.status)">{{ intentStatus(response.status) }}</el-tag>
+                </div>
+                <p>提供 {{ response.item.title }} · ¥{{ response.price }}</p>
+                <small>{{ response.description }}</small>
+              </div>
+              <div class="record-actions">
+                <el-button size="small" @click="router.push(`/market/wanted/${response.wantedPostId}`)">查看</el-button>
+                <el-button v-if="response.status === 'pending'" size="small" @click="handleWantedResponse(response.id, 'cancel')">撤回</el-button>
+              </div>
+            </article>
+          </div>
+        </section>
       </el-tab-pane>
 
-      <el-tab-pane label="商品购买意向" name="intents">
-        <el-alert class="tab-explanation" type="info" :closable="false" show-icon title="这里管理围绕现有在售商品产生的购买或出价意向，不会生成广场求购帖。" />
-        <section v-if="data.sellerTradeIntents.length" class="sub-section first"><h3>别人对我商品的意向</h3><div class="record-list"><article v-for="intent in data.sellerTradeIntents" :key="intent.id"><ItemCover v-if="intent.item" :item="intent.item" /><div class="record-copy"><div><strong>{{ intent.item?.title }}</strong><el-tag size="small" type="warning">待处理</el-tag></div><p>{{ intent.buyer?.nickname || '校园用户' }} 出价 <b>¥{{ intent.price }}</b></p><small>可交易时间：{{ intent.availableTime || '待协商' }} · {{ intent.message || '未留言' }}</small></div><div class="record-actions"><el-button size="small" type="danger" plain :loading="actingKey === `intent-${intent.id}`" @click="handleIntent(intent.id, 'reject')">拒绝</el-button><el-button size="small" type="primary" :loading="actingKey === `intent-${intent.id}`" @click="handleIntent(intent.id, 'accept')">接受并预订</el-button></div></article></div></section>
-        <section v-if="data.tradeIntents.length" class="sub-section"><h3>我对商品的意向</h3><div class="record-list"><article v-for="intent in data.tradeIntents" :key="intent.id"><ItemCover v-if="intent.item" :item="intent.item" /><div class="record-copy"><div><strong>{{ intent.item?.title }}</strong><el-tag size="small" :type="intentStatusType(intent.status)">{{ intentStatus(intent.status) }}</el-tag></div><p>出价 <b>¥{{ intent.price }}</b></p><small>{{ intent.availableTime || '时间待协商' }} · {{ intent.message || '未留言' }}</small></div><div class="record-actions"><el-button size="small" @click="$router.push(`/market/item/${intent.itemId}`)">查看商品</el-button><el-button v-if="intent.status === 'pending'" size="small" @click="handleIntent(intent.id, 'cancel')">撤回</el-button><el-button v-if="intent.reservation" size="small" type="primary" @click="tab = 'reservations'">查看预约</el-button></div></article></div></section>
-        <el-empty v-if="!data.sellerTradeIntents.length && !data.tradeIntents.length" description="暂无购买意向" />
-      </el-tab-pane>
-
-      <el-tab-pane label="交易预约" name="reservations">
-        <el-alert type="info" :closable="false" show-icon title="请在校内公共区域见面，当面验货。商品款由买家直接支付给卖家；双方确认后交易才完成。" />
-        <div v-if="activeOrders.length" class="order-list"><OrderCard v-for="order in activeOrders" :key="order.id" :order="order" /></div><el-empty v-else description="暂无进行中的交易预约" />
-      </el-tab-pane>
-
-      <el-tab-pane label="交易历史" name="history">
-        <div v-if="historyOrders.length" class="order-list"><OrderCard v-for="order in historyOrders" :key="order.id" :order="order" history /></div><el-empty v-else description="还没有交易历史" />
-      </el-tab-pane>
-
-      <el-tab-pane label="校园身份与信用" name="trust">
-        <template v-if="trust">
-          <section class="trust-hero"><div class="trust-score"><strong>{{ trust.score }}</strong><span>{{ trust.label }}</span></div><div><h3>{{ trust.identity.label }}</h3><p>信用信息仅使用校园认证、真实交易、评价、取消与违规记录计算，不公开学号、登录名或联系方式。</p><div class="trust-metrics"><span>完成交易 <b>{{ trust.completedTradeCount }}</b></span><span>好评率 <b>{{ trust.positiveRate }}%</b></span><span>爽约 <b>{{ trust.noShowCount }}</b></span><span>生效处理 <b>{{ trust.activeViolationCount }}</b></span></div></div></section>
-          <section class="points-card">
-            <div class="points-summary"><span>交易积分</span><strong>{{ trust.transactionPoints.points }}</strong><b>{{ trust.transactionPoints.label }}</b><small>论坛声望与交易积分相互独立；积分不可提现、不可兑换。</small></div>
-            <div class="points-progress"><div><b>{{ trust.historyLabel }}</b><span v-if="trust.transactionPoints.nextLevelAt">距“{{ trust.transactionPoints.nextLevelLabel }}”还差 {{ trust.transactionPoints.pointsToNextLevel }} 分</span><span v-else>已达到当前最高贡献等级</span></div><el-progress :percentage="trust.transactionPoints.progress" :show-text="false" /><ol v-if="trust.transactionPoints.recentEntries?.length"><li v-for="entry in trust.transactionPoints.recentEntries.slice(0,6)" :key="entry.id"><span>{{ entry.reason }}</span><b :class="{ negative: entry.delta < 0 }">{{ entry.delta > 0 ? '+' : '' }}{{ entry.delta }}</b><time>{{ formatDate(entry.createdAt) }}</time></li></ol><small v-else>完成交易、有效互助、真实评价和通过审核后会生成可追溯积分流水。</small></div>
-          </section>
-          <section class="contact-settings"><div><h3>交易联系方式</h3><p>默认不公开。只有卖家接受购买意向并生成有效预约后，交易双方才可查看。</p></div><el-select v-model="contactForm.method" style="width:130px"><el-option label="微信" value="wechat" /><el-option label="QQ" value="qq" /><el-option label="手机号" value="phone" /><el-option label="邮箱" value="email" /><el-option label="其他" value="other" /></el-select><el-input v-model="contactForm.value" maxlength="120" :placeholder="savedContactMasked ? `已保存：${savedContactMasked}` : '填写联系方式'" /><el-button type="primary" :loading="savingContact" @click="saveContact">加密保存</el-button></section>
-          <section class="notification-settings"><div><h3>市集提醒</h3><p>匹配结果只依据公开商品信息；面交提醒会在约定时间前 24 小时内发送。</p></div><label><span><b>求购与闲置匹配</b><small>出现高匹配度物品或求购时通知我</small></span><el-switch v-model="preferences.matchNotificationsEnabled" :loading="savingPreferences" @change="savePreferences" /></label><label><span><b>校内面交提醒</b><small>仅提醒已接受预约的交易双方</small></span><el-switch v-model="preferences.meetupRemindersEnabled" :loading="savingPreferences" @change="savePreferences" /></label></section>
-          <section v-if="trust.restrictions?.length" class="sub-section"><h3>信用处理记录</h3><div class="record-list"><article v-for="violation in trust.restrictions" :key="violation.id"><div class="wanted-mark">信</div><div class="record-copy"><div><strong>{{ violation.reason }}</strong><el-tag size="small" type="danger">{{ violationAction(violation.action) }}</el-tag></div><p>{{ violation.type }} · {{ violation.expiresAt ? `至 ${formatTime(violation.expiresAt)}` : '长期有效' }}</p><small v-if="violation.appeals?.length">申诉状态：{{ appealStatus(violation.appeals[0].status) }} {{ violation.appeals[0].handledNote || '' }}</small></div><div class="record-actions"><el-button v-if="!violation.appeals?.length" size="small" type="primary" plain @click="appeal(violation.id)">提交申诉</el-button></div></article></div></section>
-          <section v-if="trust.learningRestrictions?.length" class="sub-section"><h3>学习资料治理记录</h3><div class="record-list"><article v-for="violation in trust.learningRestrictions" :key="violation.id"><div class="wanted-mark">学</div><div class="record-copy"><div><strong>{{ violation.reason }}</strong><el-tag size="small" type="danger">{{ violation.action }}</el-tag></div><p>{{ violation.severity }} · {{ violation.expiresAt ? `至 ${formatTime(violation.expiresAt)}` : '长期有效' }}</p></div></article></div></section>
-          <el-alert v-if="!trust.restrictions?.length && !trust.learningRestrictions?.length" type="success" :closable="false" show-icon title="当前没有生效中的市集或学习资料治理限制。" />
-        </template>
-        <el-empty v-else description="信用信息加载中" />
-      </el-tab-pane>
-
-      <el-tab-pane label="我的收藏" name="favorites">
-        <div v-if="data.favorites.length" class="favorite-grid"><article v-for="item in data.favorites" :key="item.id" @click="$router.push(`/market/item/${item.id}`)"><div><img v-if="item.cover" :src="item.cover" :alt="item.title" /><span v-else>📦</span></div><strong>{{ item.title }}</strong><b>¥{{ item.price }}</b></article></div><el-empty v-else description="还没有收藏商品" />
-      </el-tab-pane>
     </el-tabs>
-
-    <el-dialog v-model="meetupOpen" title="校内面交安排" width="460px"><el-form label-position="top"><el-form-item label="面交时间" required><el-date-picker v-model="meetup.time" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss.SSSZ" :disabled-date="disablePastMeetupDate" placeholder="选择 15 分钟后至 30 天内" style="width:100%" /></el-form-item><el-form-item label="面交地点" required><el-input v-model="meetup.location" maxlength="120" placeholder="建议选择校内公共区域" /></el-form-item><el-form-item label="备注"><el-input v-model="meetup.note" type="textarea" :rows="3" maxlength="500" /></el-form-item><el-alert type="info" :closable="false" title="保存后将通知对方；如再次改期，系统会按新时间重新安排提醒。" /></el-form><template #footer><el-button @click="meetupOpen = false">取消</el-button><el-button type="primary" @click="saveMeetup">保存</el-button></template></el-dialog>
-    <el-dialog v-model="reviewOpen" title="评价交易" width="440px"><div class="review-box"><el-rate v-model="review.rating" /><el-input v-model="review.content" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="分享本次交易体验" /></div><template #footer><el-button @click="reviewOpen = false">取消</el-button><el-button type="primary" @click="submitReview">提交评价</el-button></template></el-dialog>
-    <el-dialog v-model="contactOpen" title="交易双方联系方式" width="500px"><el-alert type="warning" :closable="false" show-icon title="仅用于当前已接受的交易。请勿发送验证码、密码或提前转账。" /><div v-if="orderContacts" class="contact-cards"><article><span>对方 · {{ orderContacts.counterpart.user.nickname }}</span><strong v-if="orderContacts.counterpart.contact">{{ contactMethod(orderContacts.counterpart.contact.method) }}：{{ orderContacts.counterpart.contact.value || orderContacts.counterpart.contact.valueMasked }}</strong><strong v-else>对方暂未保存联系方式</strong></article><article><span>我的联系方式</span><strong v-if="orderContacts.own.contact">{{ contactMethod(orderContacts.own.contact.method) }}：{{ orderContacts.own.contact.value || orderContacts.own.contact.valueMasked }}</strong><strong v-else>尚未保存，可到“校园身份与信用”中设置</strong></article></div><template #footer><el-button @click="contactOpen = false">关闭</el-button><el-button @click="tab = 'trust'; contactOpen = false">管理我的联系方式</el-button></template></el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElButton, ElMessage, ElMessageBox, ElTag } from "element-plus";
-import { canOpenMarketOrderContacts, marketApi, type MarketContactCardResult, type MarketItem, type MarketOrder, type MarketPreference, type MarketTradeAction, type MarketTrustProfile, type TradeIntent, type WantedPost, type WantedResponse, type WantedResponseAction } from "@/api/market";
-import { useAuthStore } from "@/stores/auth";
+import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  marketApi,
+  type MarketItem,
+  type WantedPost,
+  type WantedResponse,
+  type WantedResponseAction,
+} from "@/api/market";
 import { fmtRelative } from "@/utils/format";
 
-type MineData = { selling: MarketItem[]; favorites: MarketItem[]; orders: MarketOrder[]; wantedPosts: WantedPost[]; wantedResponses: WantedResponse[]; tradeIntents: TradeIntent[]; sellerTradeIntents: TradeIntent[]; conversationCount: number };
+type MineData = {
+  selling: MarketItem[];
+  wantedPosts: WantedPost[];
+  wantedResponses: WantedResponse[];
+};
+
 const route = useRoute();
 const router = useRouter();
-const auth = useAuthStore();
-const validTabs = new Set(["selling", "wanted", "intents", "reservations", "history", "trust", "favorites"]);
+const validTabs = new Set(["selling", "wanted"]);
 const initialTab = String(route.query.tab || "selling");
-const tab = ref(validTabs.has(initialTab) ? initialTab : initialTab === "offers" ? "intents" : initialTab === "orders" ? "reservations" : "selling");
+const tab = ref(validTabs.has(initialTab) ? initialTab : "selling");
 const sellingStatus = ref("all");
 const loading = ref(false);
-const actingKey = ref("");
-const data = reactive<MineData>({ selling: [], favorites: [], orders: [], wantedPosts: [], wantedResponses: [], tradeIntents: [], sellerTradeIntents: [], conversationCount: 0 });
-const sellingOptions = [{ label: "全部", value: "all" }, { label: "在售", value: "active" }, { label: "已预订", value: "reserved" }, { label: "已售出", value: "sold" }, { label: "草稿/已结束", value: "inactive" }];
-const filteredSelling = computed(() => data.selling.filter((item) => sellingStatus.value === "all" || (sellingStatus.value === "inactive" ? ["draft", "withdrawn", "hidden", "reviewing", "expired"].includes(item.status) : item.status === sellingStatus.value)));
-const activeOrders = computed(() => data.orders.filter((order) => ["reserved", "delivering", "paid", "refund_pending", "disputed"].includes(order.status)));
-const historyOrders = computed(() => data.orders.filter((order) => !activeOrders.value.some((active) => active.id === order.id)));
-const meetupOpen = ref(false);
-const reviewOpen = ref(false);
-const contactOpen = ref(false);
-const orderContacts = ref<MarketContactCardResult | null>(null);
-const trust = ref<MarketTrustProfile | null>(null);
-const preferences = reactive<Pick<MarketPreference, "matchNotificationsEnabled" | "meetupRemindersEnabled">>({ matchNotificationsEnabled: true, meetupRemindersEnabled: true });
-const savingPreferences = ref(false);
-const savingContact = ref(false);
-const savedContactMasked = ref("");
-const contactForm = reactive({ method: "wechat" as "wechat" | "qq" | "phone" | "email" | "other", value: "" });
-const selectedOrder = ref<MarketOrder | null>(null);
-const meetup = reactive({ time: "", location: "", note: "" });
-const review = reactive({ rating: 5, content: "" });
-
-const ItemCover = defineComponent({ name: "ItemCover", props: { item: { type: Object as () => MarketItem, required: true } }, setup(props) { return () => h("div", { class: "item-cover" }, props.item.cover ? h("img", { src: props.item.cover, alt: props.item.title }) : h("span", "📦")); } });
-const OrderCard = defineComponent({
-  name: "OrderCard",
-  props: { order: { type: Object as () => MarketOrder, required: true }, history: Boolean },
+const data = reactive<MineData>({ selling: [], wantedPosts: [], wantedResponses: [] });
+const sellingOptions = [
+  { label: "全部", value: "all" },
+  { label: "在售", value: "active" },
+  { label: "已售出", value: "sold" },
+  { label: "草稿", value: "draft" },
+  { label: "已下架", value: "withdrawn" },
+];
+const inactiveItemStatuses = ["withdrawn", "expired", "hidden", "reviewing"];
+const editableItemStatuses = ["active", "draft", "expired", "withdrawn", "sold"];
+const relistItemStatuses = ["expired", "withdrawn", "sold"];
+const filteredSelling = computed(() => data.selling.filter((item) => {
+  if (sellingStatus.value === "all") return true;
+  if (sellingStatus.value === "withdrawn") return inactiveItemStatuses.includes(item.status);
+  return item.status === sellingStatus.value;
+}));
+const ItemCover = defineComponent({
+  name: "ItemCover",
+  props: { item: { type: Object as () => MarketItem, required: true } },
   setup(props) {
-    const button = (label: string, handler: () => void, options: Record<string, unknown> = {}) => h(ElButton, { size: "small", ...options, onClick: handler }, () => label);
-    return () => h("article", { class: "order-card" }, [
-      h("header", [h("span", `交易预约 #${props.order.id}`), h(ElTag, { size: "small", type: orderStatusType(props.order.status) }, () => orderStatus(props.order.status))]),
-      h("div", { class: "order-body" }, [h(ItemCover, { item: props.order.item! }), h("div", { class: "order-copy" }, [h("strong", props.order.item?.title || "历史商品"), h("p", ["约定价格 ", h("b", `¥${props.order.amount}`)]), h("small", `${props.order.buyerId === auth.user?.id ? "卖家" : "买家"}：${counterpartName(props.order)}`), props.order.meetupLocation ? h("small", `面交：${props.order.meetupLocation} ${props.order.meetupTime ? formatTime(props.order.meetupTime) : ""}`) : null, ["reserved", "delivering", "paid"].includes(props.order.status) ? h("div", { class: "order-next" }, orderNextStep(props.order)) : null, props.order.cancelReason ? h("small", `结束原因：${props.order.cancelReason}`) : null, props.order.noShowParty ? h("small", `爽约方：${props.order.noShowParty === "buyer" ? "买家" : "卖家"}`) : null]),
-      ]),
-      h("footer", [canOpenMarketOrderContacts(props.order) ? button("联系方式", () => void openContacts(props.order), { type: "primary", plain: true }) : null, props.order.conversationId ? button("交易沟通", () => void router.push({ name: "market-messages", query: { conversation: props.order.conversationId } })) : null, ["reserved", "delivering"].includes(props.order.status) ? button("时间地点", () => openMeetup(props.order)) : null, ["reserved", "delivering"].includes(props.order.status) && props.order.buyerId === auth.user?.id && !props.order.buyerConfirmedAt ? button("买家确认收到", () => void confirmTrade(props.order, "buyer_confirm"), { type: "success" }) : null, ["reserved", "delivering"].includes(props.order.status) && props.order.sellerId === auth.user?.id && !props.order.sellerConfirmedAt ? button("卖家确认交付", () => void confirmTrade(props.order, "seller_confirm"), { type: "success" }) : null, props.order.status === "reserved" ? button("登记爽约", () => void reportNoShow(props.order), { type: "danger", plain: true }) : null, ["reserved", "delivering"].includes(props.order.status) ? button("取消预约", () => void cancelTrade(props.order), { type: "danger", plain: true }) : null, props.order.status === "completed" && !hasReviewed(props.order) ? button("评价交易", () => openReview(props.order), { type: "primary", plain: true }) : null, button("举报交易", () => void reportTrade(props.order), { type: "danger", plain: true })]),
-    ]);
+    return () => h("div", { class: "item-cover" }, props.item.cover
+      ? h("img", { src: props.item.cover, alt: props.item.title })
+      : h("span", "📦"));
   },
 });
 
 onMounted(load);
-function syncTab() { void router.replace({ query: { ...route.query, tab: tab.value } }); }
-async function load() { loading.value = true; try { const [mine, myTrust, preference] = await Promise.all([marketApi.mine({ suppressErrorMessage: true }), marketApi.myTrust({ suppressErrorMessage: true }), marketApi.preferences({ suppressErrorMessage: true }).catch(() => null)]); Object.assign(data, mine); trust.value = myTrust; if (preference) Object.assign(preferences, preference); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "交易数据加载失败"); } finally { loading.value = false; } }
 
-async function itemLifecycle(item: MarketItem, action: "renew" | "withdraw" | "mark_sold" | "relist") { if (action === "withdraw") await ElMessageBox.confirm("下架后待处理意向会失效，确定继续？", "下架商品", { type: "warning" }); await marketApi.updateItemLifecycle(item.id, action); ElMessage.success(action === "withdraw" ? "商品已下架" : "商品已重新上架"); await load(); }
-async function wantedLifecycle(post: WantedPost, action: "renew" | "cancel" | "complete") { if (action === "cancel") await ElMessageBox.confirm("结束后未处理响应会一并关闭，确定继续？", "结束求购", { type: "warning" }); await marketApi.updateWantedLifecycle(post.id, action); ElMessage.success(action === "renew" ? "求购已续期" : "求购已结束"); await load(); }
-async function handleWantedResponse(id: number, action: WantedResponseAction) { await marketApi.updateWantedResponse(id, action); ElMessage.success("操作成功"); await load(); }
-async function handleIntent(id: number, action: MarketTradeAction) { if (action === "accept") await ElMessageBox.confirm("接受后商品会锁定，并生成 72 小时校内预约。", "接受购买意向", { type: "warning" }); actingKey.value = `intent-${id}`; try { await marketApi.updateTradeIntent(id, action); ElMessage.success(action === "accept" ? "已接受意向，预约已经创建" : "操作成功"); await load(); if (action === "accept") tab.value = "reservations"; } finally { actingKey.value = ""; } }
+function syncTab() {
+  void router.replace({ query: { ...route.query, tab: tab.value } });
+}
 
-function openMeetup(order: MarketOrder) { selectedOrder.value = order; meetup.time = order.meetupTime || ""; meetup.location = order.meetupLocation || ""; meetup.note = ""; meetupOpen.value = true; }
-function disablePastMeetupDate(date: Date) { const today = new Date(); today.setHours(0, 0, 0, 0); const lastDay = new Date(Date.now() + 30 * 24 * 60 * 60_000); lastDay.setHours(23, 59, 59, 999); return date < today || date > lastDay; }
-async function saveMeetup() { if (!selectedOrder.value) return; if (!meetup.time) return void ElMessage.warning("请选择面交时间"); if (!meetup.location.trim()) return void ElMessage.warning("请填写校内面交地点"); const time = new Date(meetup.time).getTime(); if (time < Date.now() + 15 * 60_000 || time > Date.now() + 30 * 24 * 60 * 60_000) return void ElMessage.warning("面交时间须在 15 分钟后至 30 天内"); await marketApi.updateOrder(selectedOrder.value.id, { action: "set_meetup", meetupTime: meetup.time, meetupLocation: meetup.location, note: meetup.note }); meetupOpen.value = false; ElMessage.success("面交安排已更新并通知对方"); await load(); }
-async function confirmTrade(order: MarketOrder, action: "buyer_confirm" | "seller_confirm") { await ElMessageBox.confirm("请仅在商品已当面验收或交付后确认。商品款由双方直接结算，与靠浦无关。", "确认交易", { type: "warning" }); await marketApi.updateOrder(order.id, { action }); ElMessage.success("确认成功；双方都确认后交易完成"); await load(); }
-async function cancelTrade(order: MarketOrder) { const { value } = await ElMessageBox.prompt("请填写取消原因，方便对方了解情况。", "取消交易预约", { inputPattern: /\S+/, inputErrorMessage: "请填写取消原因", confirmButtonText: "确认取消" }); await marketApi.updateOrder(order.id, { action: "cancel", reason: value }); ElMessage.success("预约已取消，商品已恢复可用状态"); await load(); }
-async function reportNoShow(order: MarketOrder) { const { value } = await ElMessageBox.prompt("请如实说明约定时间、地点和对方未出现的情况。记录后预约会结束，对方可以申诉。", "登记爽约", { inputPattern: /\S{4,}/, inputErrorMessage: "请至少填写 4 个字符", confirmButtonText: "确认登记", type: "warning" }); await marketApi.updateOrder(order.id, { action: "report_no_show", reason: value }); ElMessage.success("爽约情况已记录"); await load(); }
-function hasReviewed(order: MarketOrder) { return Array.isArray(order.reviews) && order.reviews.some((entry: any) => entry.authorId === auth.user?.id); }
-function openReview(order: MarketOrder) { selectedOrder.value = order; review.rating = 5; review.content = ""; reviewOpen.value = true; }
-async function submitReview() { if (!selectedOrder.value) return; await marketApi.reviewOrder(selectedOrder.value.id, review); reviewOpen.value = false; ElMessage.success("评价已提交"); await load(); }
-async function openContacts(order: MarketOrder) { orderContacts.value = null; contactOpen.value = true; try { orderContacts.value = await marketApi.orderContactCards(order.id); } catch { contactOpen.value = false; } }
-async function saveContact() { if (contactForm.value.trim().length < 3) return void ElMessage.warning("请填写有效联系方式"); savingContact.value = true; try { const result = await marketApi.saveContactCard(contactForm); savedContactMasked.value = result.valueMasked; contactForm.value = ""; ElMessage.success("联系方式已加密保存，仅在接受交易后向对方开放"); } finally { savingContact.value = false; } }
-async function savePreferences() { savingPreferences.value = true; try { Object.assign(preferences, await marketApi.updatePreferences(preferences)); ElMessage.success("市集提醒设置已保存"); } finally { savingPreferences.value = false; } }
-async function appeal(violationId: number) { const { value } = await ElMessageBox.prompt("请说明你认为处理有误的事实、时间和可核验依据。", "提交申诉", { inputValidator: (text) => String(text || "").trim().length >= 10 || "请至少填写 10 个字符", confirmButtonText: "提交申诉" }); await marketApi.appealViolation(violationId, value); ElMessage.success("申诉已提交"); await load(); }
-async function reportTrade(order: MarketOrder) { const { value } = await ElMessageBox.prompt("请简要说明本次交易中的违规或风险情况。", "举报交易", { inputPattern: /\S{2,80}/, inputErrorMessage: "请填写 2–80 个字符", confirmButtonText: "提交举报", type: "warning" }); await marketApi.reportOrder(order.id, { reason: value }); ElMessage.success("交易举报已提交"); }
+async function load() {
+  loading.value = true;
+  try {
+    const result = await marketApi.mine({ suppressErrorMessage: true });
+    data.selling = result.selling;
+    data.wantedPosts = result.wantedPosts;
+    data.wantedResponses = result.wantedResponses;
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "交易数据加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
 
-function counterpartName(order: MarketOrder) { return (order.buyerId === auth.user?.id ? order.seller : order.buyer)?.nickname || "校园用户"; }
-function itemStatus(value: string) { return ({ active: "在售", negotiating: "洽谈中", reserved: "已预订", sold: "已售出", draft: "草稿", reviewing: "审核中", expired: "已过期", withdrawn: "已下架", hidden: "已隐藏" } as Record<string, string>)[value] || value; }
-function itemStatusType(value: string) { return value === "sold" ? "success" : value === "active" ? "primary" : value === "reviewing" ? "warning" : "info"; }
-function wantedStatus(value: string) { return ({ reviewing: "审核中", active: "求购中", responded: "已有响应", matched: "已匹配", completed: "已求到", cancelled: "已结束", expired: "已过期", removed: "已移除" } as Record<string, string>)[value] || value; }
-function wantedStatusType(value: string) { return value === "completed" ? "success" : ["active", "responded", "matched"].includes(value) ? "primary" : value === "reviewing" ? "warning" : "info"; }
-function intentStatus(value: string) { return ({ pending: "等待处理", accepted: "已接受", rejected: "未接受", cancelled: "已撤回", expired: "已过期" } as Record<string, string>)[value] || value; }
-function intentStatusType(value: string) { return value === "accepted" ? "success" : value === "pending" ? "warning" : "info"; }
-function orderStatus(value: string) { return ({ reserved: "已预订", delivering: "待双方确认", completed: "已完成", cancelled: "已取消", expired: "已超时", no_show: "爽约结束", disputed: "争议处理中", pending_payment: "历史待支付", paid: "历史已支付", refund_pending: "历史退款处理中", refunded: "历史已退款" } as Record<string, string>)[value] || value; }
-function orderStatusType(value: string) { return value === "completed" ? "success" : ["reserved", "delivering"].includes(value) ? "primary" : value === "disputed" ? "danger" : "info"; }
-function orderNextStep(order: MarketOrder) { if (!order.meetupTime || !order.meetupLocation) return "下一步：与对方约定校内面交时间和地点"; const minutes = Math.round((new Date(order.meetupTime).getTime() - Date.now()) / 60_000); if (minutes > 24 * 60) return `下一步：面交前再次确认，距约定约 ${Math.ceil(minutes / 1440)} 天`; if (minutes > 60) return `即将面交：距约定约 ${Math.ceil(minutes / 60)} 小时`; if (minutes > 0) return `即将面交：距约定约 ${minutes} 分钟`; return "约定时间已到：请核对是否完成，并由双方分别确认"; }
-function contactMethod(value: string) { return ({ wechat: "微信", qq: "QQ", phone: "手机号", email: "邮箱", other: "其他" } as Record<string, string>)[value] || value; }
-function violationAction(value: string) { return ({ warning: "警告", restrict_publish: "限制发布", restrict_trade: "限制交易" } as Record<string, string>)[value] || value; }
-function appealStatus(value: string) { return ({ pending: "待处理", approved: "已通过", rejected: "未通过" } as Record<string, string>)[value] || value; }
-function formatDate(value: string) { return new Date(value).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }); }
-function formatTime(value: string) { return new Date(value).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
+function openPointPromotion(targetType: "market_item" | "wanted_post", targetId: number) {
+  void router.push({
+    name: "market-promotions",
+    query: { mode: "points", targetType, targetId: String(targetId) },
+  });
+}
+
+async function itemLifecycle(item: MarketItem, action: "withdraw" | "relist") {
+  if (action === "withdraw") {
+    await ElMessageBox.confirm("下架后商品不再公开展示，历史私聊仍会保留。确定继续？", "下架商品", { type: "warning" });
+  }
+  await marketApi.updateItemLifecycle(item.id, action);
+  ElMessage.success(action === "withdraw" ? "商品已下架" : "商品已重新上架");
+  await load();
+}
+
+async function wantedLifecycle(post: WantedPost, action: "cancel" | "complete") {
+  if (action === "cancel") {
+    await ElMessageBox.confirm("结束后未处理响应会一并关闭，确定继续？", "结束求购", { type: "warning" });
+  }
+  await marketApi.updateWantedLifecycle(post.id, action);
+  ElMessage.success("求购已结束");
+  await load();
+}
+
+async function handleWantedResponse(id: number, action: WantedResponseAction) {
+  await marketApi.updateWantedResponse(id, action);
+  ElMessage.success("操作成功");
+  await load();
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("zh-CN");
+}
+
+function itemStatus(value: string) {
+  return ({
+    active: "在售",
+    sold: "已售出",
+    draft: "草稿",
+    withdrawn: "已下架",
+    expired: "已过期",
+    hidden: "平台下架",
+    reviewing: "审核中",
+    negotiating: "洽谈中",
+  } as Record<string, string>)[value] || value;
+}
+
+function itemStatusType(value: string) {
+  return value === "active" ? "success" : value === "sold" ? "info" : value === "reviewing" ? "warning" : "info";
+}
+
+function wantedStatus(value: string) {
+  return ({
+    active: "求购中",
+    responded: "已有响应",
+    completed: "已完成",
+    cancelled: "已结束",
+    expired: "已过期",
+    reviewing: "审核中",
+    removed: "已下架",
+  } as Record<string, string>)[value] || value;
+}
+
+function wantedStatusType(value: string) {
+  return value === "active" ? "success" : value === "responded" ? "warning" : "info";
+}
+
+function intentStatus(value: string) {
+  return ({ pending: "待处理", accepted: "已发起私聊", rejected: "未采用", cancelled: "已撤回", expired: "已过期" } as Record<string, string>)[value] || value;
+}
+
+function intentStatusType(value: string) {
+  return value === "accepted" ? "success" : value === "pending" ? "warning" : "info";
+}
+
 </script>
 
 <style scoped>
-.mine-page{display:flex;flex-direction:column;gap:18px}.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.page-head>div:last-child{display:flex;gap:7px}.page-head span{color:var(--cpu-primary);font-size:10px;letter-spacing:.13em}.page-head h1{margin:5px 0;font-size:27px}.page-head p{margin:0;color:var(--cpu-text-secondary);font-size:12px}.market-tabs{padding:10px 18px 20px}.section-tools{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.record-list,.order-list{display:flex;flex-direction:column;gap:10px}.record-list article{display:flex;align-items:center;gap:13px;padding:12px;border:1px solid var(--cpu-border-soft);border-radius:11px}.item-cover,.wanted-mark{display:grid;place-items:center;width:75px;height:68px;overflow:hidden;flex:0 0 auto;border-radius:8px;background:var(--cpu-surface-soft);font-size:26px}.item-cover img{width:100%;height:100%;object-fit:cover}.wanted-mark{color:#b45309;background:#fef3c7;font-size:20px;font-weight:800}.record-copy{min-width:0;flex:1}.record-copy>div{display:flex;align-items:center;gap:8px}.record-copy>div strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.record-copy p{margin:5px 0;font-size:12px}.record-copy p b{color:#ef4444}.record-copy small{display:block;overflow:hidden;color:var(--cpu-text-secondary);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.record-actions{display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap}.sub-section{margin-top:22px;padding-top:18px;border-top:1px solid var(--cpu-border-soft)}.sub-section.first{margin-top:0;padding-top:0;border:0}.sub-section h3{margin:0 0 10px;font-size:15px}.market-tabs :deep(.el-alert){margin-bottom:12px}.order-card{overflow:hidden;border:1px solid var(--cpu-border-soft);border-radius:12px}.order-card header{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;color:var(--cpu-text-secondary);background:var(--cpu-surface-soft);font-size:10px}.order-body{display:flex;gap:12px;padding:13px}.order-copy{display:flex;flex-direction:column;gap:5px}.order-copy p{margin:0;font-size:12px}.order-copy b{color:#ef4444}.order-copy small{color:var(--cpu-text-secondary);font-size:10px}.order-next{margin-top:3px;padding:6px 8px;border-left:3px solid var(--cpu-primary);border-radius:5px;color:var(--cpu-primary);background:var(--cpu-primary-soft);font-size:10px}.order-card footer{display:flex;justify-content:flex-end;gap:5px;padding:9px 12px;border-top:1px solid var(--cpu-border-soft);flex-wrap:wrap}.favorite-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.favorite-grid article{display:flex;flex-direction:column;gap:6px;padding:9px;border:1px solid var(--cpu-border-soft);border-radius:10px;cursor:pointer}.favorite-grid article>div{display:grid;place-items:center;height:120px;overflow:hidden;border-radius:7px;background:var(--cpu-surface-soft);font-size:32px}.favorite-grid img{width:100%;height:100%;object-fit:cover}.favorite-grid strong{height:34px;overflow:hidden;font-size:11px}.favorite-grid b{color:#ef4444}.review-box{display:flex;flex-direction:column;gap:14px}.trust-hero{display:flex;align-items:center;gap:22px;padding:18px;border:1px solid var(--cpu-border-soft);border-radius:13px;background:var(--cpu-surface-soft)}.trust-score{display:flex;align-items:center;justify-content:center;width:112px;height:112px;flex:0 0 auto;flex-direction:column;border:7px solid color-mix(in srgb,var(--cpu-primary) 24%,white);border-radius:50%;background:var(--cpu-card)}.trust-score strong{color:var(--cpu-primary);font-size:34px}.trust-score span{font-size:10px}.trust-hero h3,.contact-settings h3,.notification-settings h3{margin:0 0 6px}.trust-hero p,.contact-settings p,.notification-settings p{margin:0;color:var(--cpu-text-secondary);font-size:11px}.trust-metrics{display:flex;gap:18px;margin-top:14px;flex-wrap:wrap;font-size:11px}.trust-metrics b{color:var(--cpu-primary)}.contact-settings{display:flex;align-items:center;gap:10px;margin-top:14px;padding:15px;border:1px solid var(--cpu-border-soft);border-radius:12px}.contact-settings>div{min-width:230px;flex:1}.contact-settings>.el-input{max-width:280px}.notification-settings{display:grid;grid-template-columns:minmax(220px,1fr) repeat(2,minmax(180px,.65fr));gap:10px;margin-top:14px;padding:15px;border:1px solid var(--cpu-border-soft);border-radius:12px}.notification-settings>div{align-self:center}.notification-settings label{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-radius:9px;background:var(--cpu-surface-soft)}.notification-settings label>span{display:flex;flex-direction:column;gap:3px}.notification-settings label b{font-size:11px}.notification-settings label small{color:var(--cpu-text-secondary);font-size:9px;line-height:1.4}.contact-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.contact-cards article{display:flex;min-height:76px;justify-content:center;flex-direction:column;gap:8px;padding:13px;border:1px solid var(--cpu-border-soft);border-radius:10px}.contact-cards span{color:var(--cpu-text-secondary);font-size:10px}.contact-cards strong{font-size:12px}@media(max-width:980px){.notification-settings{grid-template-columns:1fr 1fr}.notification-settings>div{grid-column:1/-1}}@media(max-width:820px){.page-head{align-items:flex-start;flex-direction:column}.page-head>div:last-child{width:100%;flex-wrap:wrap}.page-head>div:last-child .el-button{flex:1}.favorite-grid{grid-template-columns:repeat(2,1fr)}.record-list article{align-items:flex-start;flex-wrap:wrap}.record-copy{min-width:calc(100% - 90px)}.record-actions{width:100%}.market-tabs{padding:8px 10px 16px}.contact-settings{align-items:stretch;flex-direction:column}.contact-settings>div,.contact-settings>.el-input{min-width:0;max-width:none}.contact-cards{grid-template-columns:1fr}}@media(max-width:520px){.section-tools{align-items:flex-start;flex-direction:column;gap:8px}.section-tools :deep(.el-segmented){max-width:100%;overflow-x:auto}.item-cover,.wanted-mark{width:62px;height:58px}.record-copy{min-width:calc(100% - 76px)}.trust-hero{align-items:flex-start;flex-direction:column}.trust-score{width:90px;height:90px}.notification-settings{grid-template-columns:1fr}.notification-settings>div{grid-column:auto}.order-body{align-items:flex-start}.order-card footer .el-button{flex:1}}
-.points-card{display:grid;grid-template-columns:210px minmax(0,1fr);gap:18px;margin-top:14px;padding:16px;border:1px solid var(--cpu-border-soft);border-radius:12px}.points-summary{display:flex;flex-direction:column;padding-right:18px;border-right:1px solid var(--cpu-border-soft)}.points-summary span,.points-summary small,.points-progress span,.points-progress>small{color:var(--cpu-text-secondary);font-size:9px}.points-summary strong{margin:2px 0;color:var(--cpu-primary);font-size:36px}.points-summary b{font-size:13px}.points-summary small{margin-top:8px;line-height:1.5}.points-progress>div{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:10px}.points-progress ol{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;margin:12px 0 0;padding:0;list-style:none}.points-progress li{display:grid;grid-template-columns:minmax(0,1fr) auto 55px;gap:6px;color:var(--cpu-text-secondary);font-size:9px}.points-progress li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.points-progress li b{color:#059669}.points-progress li b.negative{color:#dc2626}.points-progress time{text-align:right}@media(max-width:720px){.points-card{grid-template-columns:1fr}.points-summary{padding-right:0;padding-bottom:12px;border-right:0;border-bottom:1px solid var(--cpu-border-soft)}.points-progress ol{grid-template-columns:1fr}}
+.mine-page{max-width:1180px;margin:0 auto;padding:28px 20px 56px}.page-head{margin-bottom:22px}.page-head>div:first-child>span{color:var(--cpu-primary);font-size:10px;font-weight:800;letter-spacing:.16em}.page-head h1{margin:8px 0 4px;font-size:34px}.page-head p{margin:0;color:var(--cpu-text-secondary)}.market-tabs{padding:16px 28px 28px;border-radius:18px}.section-tools{display:flex;align-items:center;justify-content:space-between;margin:8px 0 20px}.record-list{display:grid;gap:12px}.record-list article{display:flex;align-items:center;gap:18px;padding:16px;border:1px solid var(--cpu-border-soft);border-radius:14px;background:var(--cpu-card)}.record-copy{flex:1;min-width:0}.record-copy>div{display:flex;align-items:center;gap:10px}.record-copy strong{font-size:16px}.record-copy p{margin:8px 0;color:var(--cpu-text)}.record-copy small{display:block;color:var(--cpu-text-secondary)}.record-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.record-actions .el-button{margin-left:0}.item-cover{width:88px;height:72px;flex:0 0 auto;display:grid;place-items:center;overflow:hidden;border-radius:12px;background:var(--cpu-surface-soft);font-size:30px}.item-cover img{width:100%;height:100%;object-fit:cover}.wanted-mark{width:54px;height:54px;display:grid;place-items:center;border-radius:16px;background:var(--cpu-primary-soft);color:var(--cpu-primary);font-size:22px;font-weight:800}.tab-explanation{margin:8px 0 16px}.sub-section{margin-top:28px}.sub-section h3{margin:0 0 12px}@media(max-width:800px){.mine-page{padding:16px 10px}.market-tabs{padding:10px}.section-tools{align-items:flex-start;gap:10px;overflow:auto}.record-list article{align-items:flex-start;flex-wrap:wrap}.record-copy{min-width:calc(100% - 124px)}.record-actions{width:100%}}
 </style>

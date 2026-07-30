@@ -3,8 +3,8 @@ import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 
 export const TRANSACTION_POINT_RULES = {
-  physicalTradeBuyerCompleted: 20,
-  physicalTradeSellerCompleted: 20,
+  physicalTradeBuyerCompleted: 10,
+  physicalTradeSellerCompleted: 10,
   learningTradeBuyerCompleted: 10,
   learningTradeCreatorCompleted: 20,
   wantedResponseAccepted: 8,
@@ -14,10 +14,6 @@ export const TRANSACTION_POINT_RULES = {
   learningPositiveRatingReceived: 5,
   learningMaterialApproved: 15,
   validReport: 5,
-  acceptedOrderCancelled: -5,
-  violationWarning: -10,
-  violationModerate: -25,
-  violationSerious: -50,
 } as const;
 
 export const TRANSACTION_POINT_EVENT_LABELS: Record<string, string> = {
@@ -32,42 +28,23 @@ export const TRANSACTION_POINT_EVENT_LABELS: Record<string, string> = {
   learning_positive_rating_received: "资料收到四星及以上评价",
   learning_material_approved: "学习资料审核通过",
   valid_report: "有效举报",
-  accepted_order_cancelled: "接受交易后取消",
-  market_violation: "市集违规扣分",
-  market_violation_restored: "市集申诉通过返还",
-  learning_violation: "学习资料违规扣分",
-  learning_violation_restored: "学习资料申诉通过返还",
+  content_boost_spent: "内容推流",
 };
 
-const LEVELS = [
-  { min: 0, code: "new_partner", label: "校园新伙伴" },
-  { min: 50, code: "participant", label: "交易参与者" },
-  { min: 150, code: "trusted_contributor", label: "可信贡献者" },
-  { min: 350, code: "campus_collaborator", label: "校园协作者" },
-  { min: 700, code: "kaopu_pioneer", label: "靠浦先锋" },
-] as const;
-
 type DatabaseClient = Prisma.TransactionClient | typeof prisma;
+const TRANSACTION_POINT_LOCK_SCOPE = 1_205_011;
 
 export function transactionPointLevel(points: number) {
   const safePoints = Math.max(0, Math.floor(points || 0));
-  const index = [...LEVELS].reverse().findIndex((level) => safePoints >= level.min);
-  const currentIndex = LEVELS.length - 1 - index;
-  const current = LEVELS[Math.max(0, currentIndex)];
-  const next = LEVELS[currentIndex + 1] ?? null;
-  const span = next ? next.min - current.min : 1;
-  const progress = next
-    ? Math.max(0, Math.min(100, Math.round(((safePoints - current.min) / span) * 100)))
-    : 100;
   return {
     points: safePoints,
-    code: current.code,
-    label: current.label,
-    currentFloor: current.min,
-    nextLevelAt: next?.min ?? null,
-    nextLevelLabel: next?.label ?? null,
-    pointsToNextLevel: next ? Math.max(0, next.min - safePoints) : 0,
-    progress,
+    code: "points",
+    label: "积分",
+    currentFloor: 0,
+    nextLevelAt: null,
+    nextLevelLabel: null,
+    pointsToNextLevel: 0,
+    progress: 0,
   };
 }
 
@@ -76,7 +53,8 @@ function eventLabel(event: string) {
 }
 
 async function lockPointBalance(tx: Prisma.TransactionClient, userId: number) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('kaopu-transaction-points'), ${userId})`;
+  const lockKey = BigInt(TRANSACTION_POINT_LOCK_SCOPE) * 4_294_967_296n + BigInt(userId);
+  await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(${lockKey})`;
 }
 
 export type TransactionPointInput = {
@@ -177,9 +155,8 @@ export async function awardTransactionPointsBatchInTransaction(
 }
 
 export function violationPointPenalty(level: string) {
-  if (["serious", "critical", "high"].includes(level)) return TRANSACTION_POINT_RULES.violationSerious;
-  if (["moderate", "medium"].includes(level)) return TRANSACTION_POINT_RULES.violationModerate;
-  return TRANSACTION_POINT_RULES.violationWarning;
+  void level;
+  return 0;
 }
 
 export async function restoreViolationPointsInTransaction(

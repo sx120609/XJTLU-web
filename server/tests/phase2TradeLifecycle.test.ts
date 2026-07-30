@@ -106,34 +106,45 @@ test("lifecycle sweep rechecks a reservation after locking before expiring it", 
   assert.equal(result.reservations, 0);
 });
 
-test("stage 2 exposes separate wanted, intent, reservation and moderation routes", () => {
+test("current physical trade exposes direct chat, dual confirmation and moderation routes", () => {
   const market = [
     readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/routes/marketItemWrite.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/routes/marketWantedWrite.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/routes/marketWantedResponse.ts", import.meta.url), "utf8"),
-    readFileSync(new URL("../src/routes/marketTrade.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/routes/marketConversation.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/routes/marketOrder.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/routes/marketAdmin.ts", import.meta.url), "utf8"),
-    readFileSync(new URL("../src/services/marketTradeService.ts", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/services/marketConversationService.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/services/marketItemWriteService.ts", import.meta.url), "utf8"),
     readFileSync(new URL("../src/services/marketOrderFulfillmentService.ts", import.meta.url), "utf8"),
   ].join("\n");
+  const rootMarketRoute = readFileSync(new URL("../src/routes/market.ts", import.meta.url), "utf8");
   const router = readFileSync(new URL("../../web/src/router/index.ts", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../../web/src/views/market/Detail.vue", import.meta.url), "utf8");
   const mine = readFileSync(new URL("../../web/src/views/market/Mine.vue", import.meta.url), "utf8");
   assert.match(market, /\w+Router\.post\(\s*"\/wanted"/);
   assert.match(market, /\w+Router\.post\(\s*"\/wanted\/:id\/responses"/);
-  assert.match(market, /\w+Router\.post\(\s*"\/items\/:id\/intents"/);
-  assert.match(market, /status: "reserved"/);
+  assert.match(market, /\w+Router\.post\(\s*"\/items\/:id\/conversations"/);
+  assert.match(market, /\w+Router\.post\(\s*"\/conversations\/:id\/confirm-completion"/);
+  assert.match(market, /\w+Router\.get\(\s*"\/conversations\/unread-count"/);
+  assert.match(market, /status: "negotiating"/);
+  assert.doesNotMatch(rootMarketRoute, /marketTradeRouter/);
   assert.match(market, /\w+Router\.patch\(\s*"\/orders\/:id"/);
-  assert.match(market, /"set_meetup",[\s\S]*"buyer_confirm",[\s\S]*"seller_confirm",[\s\S]*"cancel",[\s\S]*"report_no_show"/);
+  assert.match(market, /"buyer_confirm",[\s\S]*"seller_confirm",[\s\S]*"cancel"/);
+  assert.doesNotMatch(market, /"set_meetup"/);
+  assert.doesNotMatch(market, /"report_no_show"/);
   assert.match(market, /buyerConfirmedAt && updated\.sellerConfirmedAt/);
+  assert.match(market, /physical_trade_buyer_completed/);
+  assert.match(market, /physical_trade_seller_completed/);
   assert.match(market, /acquireMarketOrderLock\(tx, orderId\)/);
   assert.match(market, /\w+Router\.patch\(\s*"\/admin\/wanted\/:id"/);
   assert.match(market, /\["active", "expired", "withdrawn", "sold"\]\.includes\(current\.status\)/);
   assert.match(detail, /\['expired', 'withdrawn', 'sold'\]\.includes\(item\.status\)[^\n]+重新上架/);
-  assert.match(mine, /\['expired','withdrawn','sold'\]\.includes\(item\.status\)[^\n]+重新上架/);
+  assert.match(mine, /const relistItemStatuses = \["expired", "withdrawn", "sold"\]/);
+  assert.match(mine, /relistItemStatuses\.includes\(item\.status\)[^\n]+重新上架/);
+  assert.match(mine, /\{ label: "全部", value: "all" \}[\s\S]*\{ label: "在售", value: "active" \}[\s\S]*\{ label: "已售出", value: "sold" \}[\s\S]*\{ label: "草稿", value: "draft" \}[\s\S]*\{ label: "已下架", value: "withdrawn" \}/);
+  assert.doesNotMatch(mine, /联系方式|续期 21 天/);
   assert.match(router, /path: "market\/wanted\/:id"/);
   assert.match(router, /path: "market\/seller\/:id"/);
 });
