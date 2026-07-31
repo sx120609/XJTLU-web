@@ -7,6 +7,7 @@ import { getFeatures } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
 import { authOptional } from "../middleware/auth";
 import { refreshExpiredPromotions, serializeItemPromotions, serializeWantedPromotion } from "../services/promotion";
+import { decodeTopicForViewer } from "../services/forumPresentation";
 
 export const searchRouter = Router();
 searchRouter.use(authOptional);
@@ -98,7 +99,7 @@ searchRouter.get("/", async (req, res, next) => {
           take: 10,
           include: {
             board: { select: { slug: true, name: true } },
-            author: { select: { nickname: true } },
+            author: { select: { id: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
             tags: { include: { tag: true } },
           },
         }),
@@ -143,13 +144,13 @@ searchRouter.get("/", async (req, res, next) => {
         createdAt: post.createdAt,
         promotion: serializeWantedPromotion(post),
       })),
-      topics: topics.map((topic: any) => ({
+      topics: topics.map((topic: any) => decodeTopicForViewer({
         ...topic,
-        metadata: safeJson(topic.metadata),
+        metadata: JSON.stringify(safeJson(topic.metadata)),
         tags: Array.isArray(topic.tags)
           ? topic.tags.map((item: any) => item?.tag ? { id: item.tag.id, name: item.tag.name } : item).filter((item: any) => item?.name)
           : [],
-      })),
+      }, req.user)),
       courses: [],
       services: services.map(normalizeServiceCard),
     });

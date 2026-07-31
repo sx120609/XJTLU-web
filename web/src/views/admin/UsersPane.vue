@@ -256,6 +256,9 @@
         <el-form-item label="院系（选填）">
           <el-input v-model="createForm.college" maxlength="40" />
         </el-form-item>
+        <el-form-item label="专业（选填）">
+          <el-input v-model="createForm.major" maxlength="80" />
+        </el-form-item>
         <el-form-item label="入学年份（选填）">
           <el-input-number v-model="createForm.enrollYear" :min="2000" :max="2100" :step="1" style="width:100%" />
         </el-form-item>
@@ -370,6 +373,7 @@ const createForm = reactive({
   nickname: "",
   role: "user" as AdminUserRole,
   college: "",
+  major: "",
   enrollYear: undefined as number | undefined,
 });
 
@@ -459,7 +463,7 @@ function openCreate() {
   if (creating.value) return;
   Object.assign(createForm, {
     username: "", password: "", nickname: "",
-    role: "user", college: "", enrollYear: undefined,
+    role: "user", college: "", major: "", enrollYear: undefined,
   });
   createOpen.value = true;
 }
@@ -478,6 +482,7 @@ async function submitCreate() {
       nickname: createForm.nickname.trim(),
       role: createForm.role,
       college: createForm.college.trim() || undefined,
+      major: createForm.major.trim() || undefined,
       enrollYear: createForm.enrollYear,
     });
     ElMessage.success(`已创建账号 ${u}，密码请妥善转交给用户`);

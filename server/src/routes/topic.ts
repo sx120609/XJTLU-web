@@ -156,7 +156,7 @@ topicRouter.get("/", async (req, res, next) => {
             skip: (page - 1) * size,
             take: size,
             include: {
-               author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+               author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
                board: { select: { id: true, slug: true, name: true, color: true, type: true } },
                tags: { include: { tag: true } },
                ...topicLinkInclude,
@@ -186,7 +186,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     const topic = await prisma.topic.findUnique({
       where: { id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, bio: true, status: true, mutedUntil: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
         favorites: requesterId ? { where: { userId: requesterId }, select: { id: true } } : false,
@@ -372,7 +372,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       where: { id: topic.id },
       include: {
         board: { select: { slug: true, name: true, type: true, color: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
         tags: { include: { tag: true } },
         ...topicLinkInclude,
       },
@@ -608,7 +608,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
         board: { select: { id: true, slug: true, name: true, color: true, type: true } },
         tags: { include: { tag: true } },
         ...topicLinkInclude,
@@ -667,7 +667,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
       where: { topicId: id, hidden: false },
       orderBy: { floor: "asc" },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
         weiwallMap: { select: { externalAuthorName: true, externalAuthorAvatar: true, externalAuthorUuid: true } },
       },
     });

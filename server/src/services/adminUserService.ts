@@ -37,6 +37,7 @@ export const adminUserPatchSchema = z.object({
   status: adminUserStatusSchema.optional(),
   role: adminUserRoleSchema.optional(),
   nickname: z.string().trim().min(1).max(20).optional(),
+  major: z.string().trim().max(80).optional(),
   aiReviewWhitelisted: z.boolean().optional(),
   mutedUntil: z.string().trim().max(64).nullable().optional(),
   anonymousCredits: z.number().int().min(0).max(999).optional(),
@@ -53,6 +54,7 @@ export const adminUserCreateSchema = z.object({
   nickname: z.string().trim().min(1).max(20),
   role: adminUserRoleSchema.optional().default("user"),
   college: z.string().trim().max(40).optional(),
+  major: z.string().trim().max(80).optional(),
   enrollYear: z.number().int().min(2000).max(2100).optional(),
 }).strict();
 
@@ -93,6 +95,7 @@ const adminUserSelect = {
   email: true,
   avatar: true,
   college: true,
+  major: true,
   enrollYear: true,
   role: true,
   studentSso: true,
@@ -401,6 +404,7 @@ export async function updateAdminUser(
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (patch.role !== undefined) data.role = patch.role;
     if (patch.nickname !== undefined) data.nickname = patch.nickname;
+    if (patch.major !== undefined) data.major = patch.major;
     if (patch.aiReviewWhitelisted !== undefined) {
       data.aiReviewWhitelisted = patch.aiReviewWhitelisted;
     }
@@ -467,6 +471,7 @@ export async function createAdminUser(
           nickname: input.nickname,
           role: input.role,
           college: input.college || undefined,
+          major: input.major || undefined,
           enrollYear: input.enrollYear,
         },
       });
@@ -476,6 +481,7 @@ export async function createAdminUser(
         nickname: user.nickname,
         role: user.role,
         college: user.college,
+        major: user.major,
         enrollYear: user.enrollYear,
         createdAt: user.createdAt,
       };

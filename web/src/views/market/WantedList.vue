@@ -30,7 +30,7 @@
           <p>{{ post.description }}</p>
           <div class="budget"><small>{{ isEnglish ? "Budget" : "预算" }}</small><strong>¥{{ post.budgetMin }}<template v-if="post.budgetMax !== post.budgetMin">–{{ post.budgetMax }}</template></strong></div>
           <div class="wanted-tags"><span v-if="post.brandModel">{{ post.brandModel }}</span><span v-if="post.condition">{{ post.condition }}</span><span>{{ post.campus || (isEnglish ? 'On campus' : '校内') }}</span></div>
-          <footer><span><UserAvatar :size="25" :src="post.author?.avatar" :name="post.author?.nickname" /> {{ post.author?.nickname || (isEnglish ? 'Campus user' : '校园用户') }} <i>{{ post.isAnonymous ? (isEnglish ? 'Anonymous' : '匿名发布') : (isEnglish ? 'Verified' : '已认证') }}</i></span><b>{{ post.responseCount }} {{ isEnglish ? "responses" : "个响应" }}</b></footer>
+          <footer><span><UserAvatar :size="25" :src="post.author?.avatar" :name="post.author?.nickname" /> {{ post.author?.nickname || (isEnglish ? 'Campus user' : '校园用户') }}<small v-if="!post.isAnonymous && post.author?.major">· {{ post.author.major }}</small> <i>{{ post.isAnonymous ? (isEnglish ? 'Anonymous' : '匿名发布') : (isEnglish ? 'Verified' : '已认证') }}</i></span><b>{{ post.responseCount }} {{ isEnglish ? "responses" : "个响应" }}</b></footer>
         </article>
       </div>
       <el-empty v-else :description="isEnglish ? 'No matching wanted requests' : '暂时没有符合条件的求购'"><el-button type="primary" plain @click="$router.push('/publish/wanted')">{{ isEnglish ? "Post request" : "发布求购" }}</el-button></el-empty>

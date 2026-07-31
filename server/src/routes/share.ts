@@ -68,7 +68,7 @@ async function loadShareTopic(idParam: string) {
     where: { id },
     include: {
       board: { select: { name: true, slug: true, type: true, color: true, icon: true } },
-      author: { select: { nickname: true } },
+      author: { select: { nickname: true, major: true } },
       tags: { include: { tag: true } },
     },
   });
@@ -86,7 +86,9 @@ function resolvePublicOrigin(req: Request) {
 
 function buildTopicDescription(topic: any) {
   const boardPart = topic.board?.name ? `来自 ${topic.board.name} · ` : "";
-  const authorPart = topic.isAnonymous ? (topic.anonymousAlias || "匿名同学") : (topic.author?.nickname || "同学");
+  const authorPart = topic.isAnonymous
+    ? (topic.anonymousAlias || "匿名同学")
+    : `${topic.author?.nickname || "同学"}${topic.author?.major ? ` · ${topic.author.major}` : ""}`;
   const content = stripText(topic.content);
   const brief = content ? truncateText(content, 72) : "点击查看完整内容";
   return `${boardPart}${authorPart}：${brief}`;
@@ -213,7 +215,9 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   const boardName = topic.board?.name || siteName;
   const boardIcon = topic.board?.icon || "💬";
   const boardColor = topic.board?.color || "#168776";
-  const authorName = topic.isAnonymous ? (topic.anonymousAlias || "匿名同学") : (topic.author?.nickname || "同学");
+  const authorName = topic.isAnonymous
+    ? (topic.anonymousAlias || "匿名同学")
+    : `${topic.author?.nickname || "同学"}${topic.author?.major ? ` · ${topic.author.major}` : ""}`;
   const subtitle = `${boardName} · ${authorName}`;
   const footer = `${topic.replyCount || 0} 条回复 · ${topic.viewCount || 0} 浏览`;
   const titleLines = wrapText(topic.title, 15, 3);

@@ -127,6 +127,7 @@ model User {
   avatar                      String?
   bio                         String? // 自我介绍
   college                     String? // 自报院系（可选，仅展示用）
+  major                       String? // 专业（可选，非匿名内容中公开展示）
   enrollYear                  Int? // 自报入学年份（可选）
   role                        String    @default("user") // user / mod / admin / bot
   // 是否通过学校 SSO 登录认证（学号身份已验证）。alice 等示例账号为 false

@@ -28,6 +28,7 @@ export function buildSelfUser(u: any) {
     avatar: u.avatar,
     bio: u.bio,
     college: u.college,
+    major: u.major,
     enrollYear: u.enrollYear,
     role: u.role,
     studentSso: u.studentSso,
@@ -65,6 +66,7 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
     avatar: u.avatar,
     bio: u.bio,
     college: u.college,
+    major: u.major,
     enrollYear: u.enrollYear,
     role: u.role,
     postCount: u.postCount,
@@ -98,6 +100,7 @@ export function buildUserPreview(u: any, viewer?: Viewer) {
   if ("reputation" in u) result.reputation = u.reputation;
 
   if ("bio" in u) result.bio = u.bio;
+  if ("major" in u) result.major = u.major;
   if (canSeeUsername(viewer, u.id)) result.username = u.username;
   if (canSeeModerationFields(viewer)) {
     result.status = u.status;

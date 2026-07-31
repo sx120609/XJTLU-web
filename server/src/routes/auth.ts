@@ -41,6 +41,7 @@ const registerSchema = z.object({
   password: z.string().min(6, "密码至少 6 位").max(64),
   nickname: z.string().min(1, "请填写昵称").max(20),
   college: z.string().max(40).optional(),
+  major: z.string().max(80).optional(),
   enrollYear: z.number().int().min(2000).max(2100).optional(),
 });
 
@@ -91,7 +92,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
 authRouter.post("/register", validate(registerSchema), async (req, res, next) => {
   try {
     if (!isDev) throw Errors.forbidden("仅支持学校账号登录");
-    const { username, password, nickname, college, enrollYear } = req.body;
+    const { username, password, nickname, college, major, enrollYear } = req.body;
     const exists = await prisma.user.findUnique({ where: { username } });
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await hashPassword(password);
@@ -102,6 +103,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
         passwordHash,
         nickname,
         college,
+        major,
         enrollYear,
         lastSeenAt: new Date(),
         lastLoginAt: new Date(),

@@ -568,6 +568,7 @@ export type AdminUser = {
   email: string | null;
   avatar: string | null;
   college: string | null;
+  major: string | null;
   enrollYear: number | null;
   role: AdminUserRole;
   studentSso: boolean;
@@ -610,6 +611,7 @@ export type AdminUserPatch = {
   status?: AdminUserStatus;
   role?: AdminUserRole;
   nickname?: string;
+  major?: string;
   aiReviewWhitelisted?: boolean;
   mutedUntil?: string | null;
   anonymousCredits?: number;
@@ -636,12 +638,13 @@ export type AdminUserCreateInput = {
   nickname: string;
   role?: AdminUserRole;
   college?: string;
+  major?: string;
   enrollYear?: number;
 };
 
 export type AdminUserCreateResult = Pick<
   AdminUser,
-  "id" | "username" | "nickname" | "role" | "college" | "enrollYear" | "createdAt"
+  "id" | "username" | "nickname" | "role" | "college" | "major" | "enrollYear" | "createdAt"
 >;
 
 export type AdminUserListParams = {

@@ -52,6 +52,7 @@
     margin-bottom: 14px;
     .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; }
     .meta-author { flex: 1; }
+    .author-major { margin-left: 6px; color: var(--cpu-text-secondary); font-size: 12px; }
     .name { font-size: 14px; font-weight: 500; color: var(--cpu-text); display: flex; gap: 6px; align-items: center; }
     .name a { color: var(--cpu-primary); text-decoration: none; }
     .real-author-line {

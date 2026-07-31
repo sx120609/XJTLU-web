@@ -75,6 +75,7 @@
             <el-tag v-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">{{ isEnglish ? "External feed" : "逛逛同步" }}</el-tag>
             <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">{{ isEnglish ? "Notice sync" : "公告同步" }}</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">{{ isEnglish ? "Administrator" : "管理员" }}</el-tag>
+            <span v-if="!topic.isAnonymous && topic.author?.major" class="author-major">· {{ topic.author.major }}</span>
             <UserModerationActions
               v-if="topicModerationUser"
               :user="topicModerationUser"
@@ -267,6 +268,7 @@
               <span class="floor">#{{ entry.item.floor }}</span>
               <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
               <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+              <span v-if="!entry.item.isAnonymous && entry.item.author?.major" class="author-major">· {{ entry.item.author.major }}</span>
               <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">{{ isEnglish ? "Anonymous" : "匿名" }}</el-tag>
               <UserModerationActions
                 v-if="replyModerationUser(entry.item)"
@@ -900,7 +902,10 @@ const shareCardSoftOrb = computed(() => hexToRgba(shareCardAccent.value, 0.13));
 const shareCardSoftLine = computed(() => hexToRgba(shareCardAccent.value, 0.22));
 const shareCardSubtitle = computed(() => {
   const board = boardDisplayName.value;
-  const author = topic.value?.author?.nickname || (isEnglish.value ? "Student" : "同学");
+  const authorName = topic.value?.author?.nickname || (isEnglish.value ? "Student" : "同学");
+  const author = !topic.value?.isAnonymous && topic.value?.author?.major
+    ? `${authorName} · ${topic.value.author.major}`
+    : authorName;
   return `${board} · ${author}`;
 });
 const shareCardStats = computed(() => isEnglish.value

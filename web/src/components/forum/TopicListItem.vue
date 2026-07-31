@@ -34,6 +34,7 @@
       </div>
       <div class="line2">
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
+        <span v-if="!topic.isAnonymous && topic.author?.major" class="major">· {{ topic.author.major }}</span>
         <span v-if="topic.isAnonymous" class="anon">{{ isEnglish ? "Anonymous" : "匿名" }}</span>
         <span v-if="topic.metadata?.externalPlatform === 'weiwall'" class="bot">📮 {{ isEnglish ? "External feed" : "逛逛同步" }}</span>
         <span v-else-if="topic.author?.role === 'bot'" class="bot">🤖 {{ isEnglish ? "Notice sync" : "公告同步" }}</span>
@@ -167,6 +168,7 @@ function openTopic() {
 }
 .line2 span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .line2 .author { color: var(--cpu-primary); }
+.line2 .major { color: var(--cpu-text-secondary); }
 .line2 .anon { color: #7c3aed; font-weight: 600; }
 .line2 .bot { color: #ef4444; }
 .line2 .edited { color: #b45309; }

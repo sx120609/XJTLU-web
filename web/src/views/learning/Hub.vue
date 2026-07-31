@@ -31,7 +31,7 @@
         </header>
         <div v-if="topics.length" class="topic-list cpu-card">
           <router-link v-for="topic in topics" :key="topic.id" :to="`/forum/topic/${topic.id}`">
-            <div><b>{{ topic.title }}</b><span>{{ topic.author?.nickname || t("common.classmate") }} · {{ topic.replyCount }} {{ isEnglish ? "replies" : "回复" }}</span></div><em>→</em>
+            <div><b>{{ topic.title }}</b><span>{{ topic.author?.nickname || t("common.classmate") }}<small v-if="!topic.isAnonymous && topic.author?.major"> · {{ topic.author.major }}</small> · {{ topic.replyCount }} {{ isEnglish ? "replies" : "回复" }}</span></div><em>→</em>
           </router-link>
         </div>
         <el-empty v-else :image-size="64" :description="t('learning.noQna')" />

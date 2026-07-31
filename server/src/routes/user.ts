@@ -61,7 +61,7 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
   try {
     const body = req.body as Record<string, unknown>;
     const allowed: Record<string, unknown> = {};
-    for (const k of ["nickname", "bio", "college", "enrollYear", "avatar"]) {
+    for (const k of ["nickname", "bio", "college", "major", "enrollYear", "avatar"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
     }
     if (body.preferredLocale !== undefined) {
@@ -145,7 +145,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
       take: 30,
       include: {
         board: { select: { slug: true, name: true, color: true, type: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
         tags: { include: { tag: true } },
       },
     });

@@ -80,7 +80,7 @@ homeRouter.get("/summary", async (req, res, next) => {
             take: 10,
             include: {
               board: { select: { slug: true, name: true, color: true, type: true } },
-              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+              author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
               tags: { include: { tag: true } },
             },
           }) : Promise.resolve([]),
@@ -113,7 +113,7 @@ homeRouter.get("/summary", async (req, res, next) => {
     const promotionNow = new Date();
     const topicInclude = {
       board: { select: { slug: true, name: true, color: true, type: true } },
-      author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+      author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
       tags: { include: { tag: true } },
       linkedWantedPost: {
         include: { urgentPromotionOrder: { select: { id: true, status: true, type: true, startsAt: true, expiresAt: true } } },
@@ -265,7 +265,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
           take: size,
           include: {
             board: { select: { slug: true, name: true, color: true, type: true } },
-            author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+            author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
             tags: { include: { tag: true } },
           },
         }),
@@ -288,7 +288,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
   if (!orderedIds.length) return [];
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
     tags: { include: { tag: true } },
   } as const;
   const rows = await prisma.topic.findMany({
@@ -308,7 +308,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, major: true, role: true, status: true, mutedUntil: true } },
     tags: { include: { tag: true } },
   } as const;
   const [recent, older] = await Promise.all([

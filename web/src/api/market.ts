@@ -110,6 +110,7 @@ export interface MarketUser {
   username?: string;
   nickname: string;
   avatar?: string | null;
+  major?: string | null;
   role: string;
   studentSso?: boolean;
   marketPositiveRate?: number;

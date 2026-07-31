@@ -3,7 +3,7 @@ import { request, type RequestOptions } from "./request";
 const XJTLU_SSO_TIMEOUT_MS = 55_000;
 
 export interface LoginPayload { username: string; password: string }
-export interface RegisterPayload { username: string; password: string; nickname: string; college?: string; enrollYear?: number }
+export interface RegisterPayload { username: string; password: string; nickname: string; college?: string; major?: string; enrollYear?: number }
 export interface UserInfo {
   id: number;
   username: string;
@@ -11,6 +11,7 @@ export interface UserInfo {
   avatar?: string | null;
   bio?: string | null;
   college?: string | null;
+  major?: string | null;
   enrollYear?: number | null;
   role: string;
   studentSso?: boolean;

@@ -132,6 +132,7 @@
               <div class="seller-line">
                 <UserAvatar :size="25" :src="item.seller?.avatar" :name="item.seller?.nickname" />
                 <span>{{ item.seller?.nickname || (isEnglish ? "Campus user" : "校园用户") }}</span>
+                <small v-if="item.seller?.major">· {{ item.seller.major }}</small>
                 <i>{{ isEnglish ? "Verified" : "已认证" }}</i>
                 <time>{{ fmtRelative(item.createdAt) }}</time>
               </div>
@@ -313,4 +314,5 @@ function hydrateFiltersFromRoute() {
 .toolbar-actions{display:flex;align-items:center;gap:8px}.mobile-filter-btn{display:none}@media(max-width:850px){.filter-panel{display:none}.filter-panel.is-mobile-open{display:grid}.mobile-filter-btn{display:inline-flex}}@media(max-width:560px){.goods-toolbar{align-items:flex-start;gap:8px}.toolbar-actions{align-items:stretch;flex-direction:column-reverse}.mobile-filter-btn,.sort-select{width:130px}}
 :global(html[data-theme="dark"]) .goods-card:hover{box-shadow:0 12px 28px rgba(0,0,0,.34)}
 :global(html[data-theme="dark"]) .price-line em{color:#fbbf24;background:rgba(245,158,11,.16)}
+.seller-line small{color:var(--cpu-text-secondary);font-size:9px}
 </style>

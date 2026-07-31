@@ -37,8 +37,8 @@ export interface Topic {
   tags?: Array<{ id: number; name: string }>;
   createdAt: string;
   updatedAt: string;
-  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
-  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; reputation?: number };
+  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; major?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
+  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; major?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; reputation?: number };
   board?: { id?: number; slug: string; name: string; color?: string; icon?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
   imageReview?: {
     enabled: boolean;
@@ -68,8 +68,8 @@ export interface Reply {
   floor: number;
   likeCount: number;
   createdAt: string;
-  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
-  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; reputation?: number };
+  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; major?: string | null; role: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
+  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; major?: string | null; role: string; status?: string; mutedUntil?: string | null; reputation?: number };
   imageReview?: {
     enabled: boolean;
     totalCount: number;

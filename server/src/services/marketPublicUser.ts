@@ -6,6 +6,7 @@ export const MARKET_PUBLIC_USER_SELECT = {
   id: true,
   nickname: true,
   avatar: true,
+  major: true,
   role: true,
   studentSso: true,
   createdAt: true,

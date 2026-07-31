@@ -21,6 +21,7 @@
       <p class="bio">{{ user?.bio || (isEnglish ? "No bio yet" : "这个人很懒，什么都没写") }}</p>
       <ul class="kv">
         <li><span>{{ isEnglish ? "School" : "院系" }}</span><span>{{ user?.college || "—" }}</span></li>
+        <li><span>{{ isEnglish ? "Major" : "专业" }}</span><span>{{ user?.major || "—" }}</span></li>
         <li><span>{{ isEnglish ? "Entry year" : "入学" }}</span><span>{{ user?.enrollYear || "—" }}</span></li>
         <li><span>{{ isEnglish ? "Posts" : "发帖" }}</span><span>{{ user?.postCount }}</span></li>
         <li><span>{{ isEnglish ? "Replies" : "回复" }}</span><span>{{ user?.replyCount }}</span></li>
@@ -137,7 +138,6 @@
       <div class="favorites-head">
         <div>
           <h3 class="cpu-section-title">{{ t("profile.favorites") }}</h3>
-          <p>{{ isEnglish ? "Favorites are separate from likes. Manage saved posts, items, and learning materials here." : "收藏是全站资料库，与点赞分开；帖子、商品和学习资料都在这里管理。" }}</p>
         </div>
         <span>{{ favoriteCounts.all }} {{ isEnglish ? "saved" : "项" }}</span>
       </div>
@@ -197,6 +197,9 @@
         </el-form-item>
         <el-form-item label="院系">
           <el-input v-model="editForm.college" maxlength="40" :disabled="saving" />
+        </el-form-item>
+        <el-form-item label="专业">
+          <el-input v-model="editForm.major" maxlength="80" :disabled="saving" />
         </el-form-item>
         <el-form-item label="入学年份">
           <el-input-number v-model="editForm.enrollYear" :min="2010" :max="2030" style="width:100%" :disabled="saving" />
@@ -293,7 +296,7 @@ const favoriteCounts = reactive<Record<ProfileFavoriteType, number>>({
 });
 let profileLoadSeq = 0;
 
-const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
+const editForm = reactive({ nickname: "", bio: "", college: "", major: "", enrollYear: undefined as any });
 
 const passwordDialog = ref(false);
 const savingPw = ref(false);
@@ -334,6 +337,7 @@ watch(editing, (v) => {
     editForm.nickname = user.value.nickname;
     editForm.bio = user.value.bio || "";
     editForm.college = user.value.college || "";
+    editForm.major = user.value.major || "";
     editForm.enrollYear = user.value.enrollYear ?? undefined;
   }
 });
@@ -459,6 +463,7 @@ async function saveEdit() {
       nickname,
       bio: editForm.bio.trim(),
       college: editForm.college.trim(),
+      major: editForm.major.trim(),
     } as any);
     auth.user = u;
     ElMessage.success("已保存");

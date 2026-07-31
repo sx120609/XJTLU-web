@@ -29,6 +29,7 @@
         <p class="bio">{{ user.bio || (isEnglish ? "No bio yet" : "这个人还没写简介") }}</p>
         <div class="meta">
           <span v-if="user.college">{{ user.college }}</span>
+          <span v-if="user.major">{{ user.major }}</span>
           <span v-if="user.enrollYear">{{ isEnglish ? `Class of ${user.enrollYear}` : `${user.enrollYear} 级` }}</span>
           <span>{{ isEnglish ? "Posts" : "发帖" }} {{ user.postCount }}</span>
           <span>{{ isEnglish ? "Replies" : "回复" }} {{ user.replyCount }}</span>

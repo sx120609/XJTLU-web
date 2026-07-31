@@ -26,7 +26,7 @@ test("market public user objects never expose the XJTLU login name", () => {
   assert.equal("username" in MARKET_PUBLIC_USER_SELECT, false);
   assert.deepEqual(
     Object.keys(MARKET_PUBLIC_USER_SELECT),
-    ["id", "nickname", "avatar", "role", "studentSso", "createdAt"],
+    ["id", "nickname", "avatar", "major", "role", "studentSso", "createdAt"],
   );
 });
 

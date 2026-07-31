@@ -49,6 +49,9 @@
           <el-form-item :label="isEnglish ? 'School (optional)' : '院系（选填）'">
             <el-input v-model="form.college" :placeholder="isEnglish ? 'Example: School of Pharmacy' : '例如 药学院'" maxlength="40" :disabled="loading" />
           </el-form-item>
+          <el-form-item :label="isEnglish ? 'Major (optional)' : '专业（选填）'">
+            <el-input v-model="form.major" :placeholder="isEnglish ? 'Example: Computer Science' : '例如 计算机科学与技术'" maxlength="80" :disabled="loading" />
+          </el-form-item>
           <el-form-item :label="isEnglish ? 'Entry year (optional)' : '入学年份（选填）'">
             <el-input-number v-model="form.enrollYear" :min="2010" :max="2030" :step="1" style="width:100%" :disabled="loading" />
           </el-form-item>
@@ -108,7 +111,7 @@ const isDev = computed(() => import.meta.env.DEV);
 
 const form = reactive({
   username: "", password: "", nickname: "",
-  college: "", enrollYear: undefined as number | undefined,
+  college: "", major: "", enrollYear: undefined as number | undefined,
 });
 
 const rules = computed<FormRules>(() => ({
@@ -150,6 +153,7 @@ async function submit() {
       password: form.password,
       nickname: form.nickname,
       college: form.college || undefined,
+      major: form.major || undefined,
       enrollYear: form.enrollYear,
     });
     ElMessage.success(isEnglish.value ? `Welcome, ${auth.user?.nickname}! Registration complete.` : `欢迎，${auth.user?.nickname}！注册成功`);
