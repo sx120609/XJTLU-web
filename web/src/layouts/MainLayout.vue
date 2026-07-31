@@ -45,13 +45,18 @@
 
         <div class="top-right">
           <el-dropdown trigger="click" @command="setLanguage">
-            <button type="button" class="locale-switch-btn" :aria-label="t('common.language')">
+            <button
+              type="button"
+              class="locale-switch-btn"
+              :aria-label="t('common.language')"
+              :disabled="languageSwitching"
+            >
               {{ isEnglish ? "EN" : "中" }}
             </button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="en-US" :class="{ 'is-current-appearance': isEnglish }">English</el-dropdown-item>
-                <el-dropdown-item command="zh-CN" :class="{ 'is-current-appearance': isChinese }">中文</el-dropdown-item>
+                <el-dropdown-item command="en-US" :disabled="languageSwitching" :class="{ 'is-current-appearance': isEnglish }">English</el-dropdown-item>
+                <el-dropdown-item command="zh-CN" :disabled="languageSwitching" :class="{ 'is-current-appearance': isChinese }">中文</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -188,8 +193,8 @@
       <div class="drawer-appearance">
         <span>{{ t("common.language") }}</span>
         <div class="appearance-segmented" role="radiogroup" :aria-label="t('common.language')">
-          <button type="button" role="radio" :class="{ active: isEnglish }" :aria-checked="isEnglish" @click="setLanguage('en-US')">English</button>
-          <button type="button" role="radio" :class="{ active: isChinese }" :aria-checked="isChinese" @click="setLanguage('zh-CN')">中文</button>
+          <button type="button" role="radio" :disabled="languageSwitching" :class="{ active: isEnglish }" :aria-checked="isEnglish" @click="setLanguage('en-US')">English</button>
+          <button type="button" role="radio" :disabled="languageSwitching" :class="{ active: isChinese }" :aria-checked="isChinese" @click="setLanguage('zh-CN')">中文</button>
         </div>
       </div>
       <div class="drawer-account">
@@ -277,6 +282,7 @@ const router = useRouter();
 const route = useRoute();
 const q = ref("");
 const mobileMenuOpen = ref(false);
+const languageSwitching = ref(false);
 const keyboardOpen = ref(false);
 const mobileViewportHeight = ref(0);
 const mobileViewportWidth = ref(0);
@@ -573,9 +579,18 @@ function setAppearanceMode(command: string | number | object) {
 async function setLanguage(command: string | number | object) {
   const next = String(command);
   if (next !== "en-US" && next !== "zh-CN") return;
+  if (languageSwitching.value) return;
+  if ((next === "en-US" && isEnglish.value) || (next === "zh-CN" && isChinese.value)) return;
+
+  languageSwitching.value = true;
+  mobileMenuOpen.value = false;
   setLocale(next as AppLocale);
-  if (auth.isLoggedIn) {
-    await auth.updateProfile({ preferredLocale: next as AppLocale }).catch(() => undefined);
+  try {
+    if (auth.isLoggedIn) {
+      await auth.updateProfile({ preferredLocale: next as AppLocale }).catch(() => undefined);
+    }
+  } finally {
+    window.location.reload();
   }
 }
 </script>

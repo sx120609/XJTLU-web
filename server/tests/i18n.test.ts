@@ -62,6 +62,7 @@ test("board catalog and notifications localize without changing stored data", ()
 test("web and account locale contracts default to Chinese without exposing preferences publicly", () => {
   const webI18n = readFileSync(new URL("../../web/src/i18n/index.ts", import.meta.url), "utf8");
   const webHtml = readFileSync(new URL("../../web/index.html", import.meta.url), "utf8");
+  const mainLayout = readFileSync(new URL("../../web/src/layouts/MainLayout.vue", import.meta.url), "utf8");
   const requestSource = readFileSync(new URL("../../web/src/api/request.ts", import.meta.url), "utf8");
   const publicUser = readFileSync(new URL("../src/utils/publicUser.ts", import.meta.url), "utf8");
   const appSource = readFileSync(new URL("../src/app.ts", import.meta.url), "utf8");
@@ -76,6 +77,10 @@ test("web and account locale contracts default to Chinese without exposing prefe
   assert.match(webHtml, /靠浦 · 重塑校园生活的可能/);
   assert.match(webHtml, /Reimagine campus life/);
   assert.doesNotMatch(webHtml, /stored === "system"|mode === "system"/);
+  assert.match(mainLayout, /const languageSwitching = ref\(false\)/);
+  assert.match(mainLayout, /setLocale\(next as AppLocale\)/);
+  assert.match(mainLayout, /await auth\.updateProfile\(\{ preferredLocale: next as AppLocale \}\)/);
+  assert.match(mainLayout, /finally\s*\{\s*window\.location\.reload\(\)/);
   assert.match(requestSource, /\["Accept-Language"\]\s*=\s*getActiveLocale\(\)/);
   assert.match(appSource, /localizeApiMessage\("接口不存在", requestLocale\(req\)\)/);
   assert.match(learningLabels, /Y1S1: "Year 1 · Semester 1"/);
