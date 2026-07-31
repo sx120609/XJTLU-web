@@ -220,9 +220,12 @@ test("iteration one keeps schema, migration, API and three frontend roles aligne
   const migration = readFileSync(new URL("../prisma/migrations/20260729010000_learning_commerce_v1/migration.sql", import.meta.url), "utf8");
   const router = readFileSync(new URL("../src/routes/learningCommerce.ts", import.meta.url), "utf8");
   const service = readFileSync(new URL("../src/services/learningCommerceService.ts", import.meta.url), "utf8");
+  const materialsRouter = readFileSync(new URL("../src/routes/learningMaterials.ts", import.meta.url), "utf8");
+  const privateTypesMigration = readFileSync(new URL("../prisma/migrations/20260731020000_private_learning_material_types/migration.sql", import.meta.url), "utf8");
   const webApi = readFileSync(new URL("../../web/src/api/learningMaterials.ts", import.meta.url), "utf8");
   const webRouter = readFileSync(new URL("../../web/src/router/index.ts", import.meta.url), "utf8");
   const creator = readFileSync(new URL("../../web/src/views/market/LearningCreatorCenter.vue", import.meta.url), "utf8");
+  const publish = readFileSync(new URL("../../web/src/views/market/LearningMaterialPublish.vue", import.meta.url), "utf8");
   const orders = readFileSync(new URL("../../web/src/views/market/LearningOrders.vue", import.meta.url), "utf8");
   const admin = readFileSync(new URL("../../web/src/views/admin/LearningCommerceAdminPane.vue", import.meta.url), "utf8");
 
@@ -231,6 +234,7 @@ test("iteration one keeps schema, migration, API and three frontend roles aligne
   assert.match(schema, /model LearningPaymentEvidence/);
   assert.match(schema, /disputed/);
   assert.match(schema, /refundedAt/);
+  assert.match(schema, /@@unique\(\[createdById, normalizedName\]\)/);
   assert.match(migration, /SET "commerceMode" = 'legacy_free'/);
   assert.match(migration, /CREATE UNIQUE INDEX "LearningCollectionMethod_one_active_per_provider"/);
   assert.match(migration, /INSERT INTO "LearningCommerceOrder"/);
@@ -255,6 +259,22 @@ test("iteration one keeps schema, migration, API and three frontend roles aligne
   assert.match(webRouter, /learning\/materials/);
   assert.match(creator, /学习资料发布中心/);
   assert.match(creator, /myItems/);
+  assert.match(creator, /collection-qr-cta/);
+  assert.doesNotMatch(creator, /平台不代收资料款/);
+  assert.match(publish, /带 \* 的字段为必填项/);
+  assert.doesNotMatch(publish, /总页数/);
+  assert.doesNotMatch(publish, /原创或授权类型/);
+  assert.doesNotMatch(publish, /版本更新说明/);
+  assert.doesNotMatch(publish, /V1 付费资料至少包含一份 PDF/);
+  assert.doesNotMatch(publish, /买家直接向你的收款码付款/);
+  assert.match(publish, /publishedMaterialProfileErrors|formRef\.value\?\.validate/);
+  assert.match(publish, /不会进入其他用户的类型列表/);
+  assert.match(materialsRouter, /该自定义资料类型仅创建者可用/);
+  assert.match(materialsRouter, /status: "approved", enabled: true, createdById: userId/);
+  assert.match(materialsRouter, /source: "seller", createdById: userId, status: \{ notIn: \["rejected", "merged"\] \}/);
+  assert.match(privateTypesMigration, /UPDATE "LearningMaterialType"/);
+  assert.match(privateTypesMigration, /"source" = 'seller'/);
+  assert.match(privateTypesMigration, /CREATE UNIQUE INDEX "LearningMaterialType_createdById_normalizedName_key"/);
   assert.doesNotMatch(creator, /申请成为创作者|提交认证申请/);
   assert.match(orders, /确认到账并交付/);
   assert.match(admin, /资料版本审核/);

@@ -24,8 +24,8 @@ test("learning materials expose exactly eight single-select study stages", () =>
 
 test("course codes are canonical and publishing enforces identity, originality and rights fields", () => {
   assert.equal(normalizeCourseCode(" cpt 111 "), "CPT111");
-  assert.deepEqual(publishedMaterialProfileErrors({ courseCode: "CPT111", typeId: 1, applicableSemester: "Y1S1", originalityKind: "original", originalityStatement: "本人整理的课程复习提纲", rightsConfirmed: true }), []);
-  assert.deepEqual(publishedMaterialProfileErrors({ rightsConfirmed: true }), ["请填写课程代码", "请选择资料类型", "请选择适用学期", "请选择资料来源与原创类型", "请填写原创或授权情况说明"]);
+  assert.deepEqual(publishedMaterialProfileErrors({ courseCode: "CPT111", typeId: 1, applicableSemester: "Y1S1", originalityStatement: "本人整理的课程复习提纲", rightsConfirmed: true }), []);
+  assert.deepEqual(publishedMaterialProfileErrors({ rightsConfirmed: true }), ["请填写课程代码", "请选择资料类型", "请选择适用学期", "请填写原创或授权情况说明"]);
   assert.equal(learningMaterialProfileInputSchema.safeParse({ courseCode: "课程一" }).success, false);
 });
 
@@ -50,6 +50,28 @@ test("seller-created types normalize and reject unsafe or duplicate-shaped names
   assert.equal(validateCustomMaterialTypeName("课程案例集"), "");
   assert.match(validateCustomMaterialTypeName("作业答案"), /不允许/);
   assert.match(validateCustomMaterialTypeName("A"), /2～20/);
+});
+
+test("published material keeps the statement and rights checks while removing the type selector requirement", () => {
+  assert.deepEqual(
+    publishedMaterialProfileErrors({
+      courseCode: "CPT111",
+      typeId: 1,
+      applicableSemester: "Y1S1",
+      originalityStatement: "本人整理的课程复习提纲",
+      rightsConfirmed: true,
+    }),
+    [],
+  );
+  assert.match(
+    publishedMaterialProfileErrors({
+      courseCode: "CPT111",
+      typeId: 1,
+      applicableSemester: "Y1S1",
+      rightsConfirmed: true,
+    }).join("、"),
+    /原创或授权情况说明/,
+  );
 });
 
 test("order support blocks obvious diversion and identifies financial issues", () => {

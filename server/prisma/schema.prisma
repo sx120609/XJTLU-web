@@ -1922,7 +1922,7 @@ model MarketCategory {
 model LearningMaterialType {
   id             Int      @id @default(autoincrement())
   name           String
-  normalizedName String   @unique
+  normalizedName String
   source         String   @default("builtin") // builtin / seller
   status         String   @default("approved") // pending / approved / rejected / merged
   enabled        Boolean  @default(true)
@@ -1939,6 +1939,7 @@ model LearningMaterialType {
 
   @@index([status, enabled, sort])
   @@index([createdById, status])
+  @@unique([createdById, normalizedName])
 }
 
 model LearningMaterialProfile {

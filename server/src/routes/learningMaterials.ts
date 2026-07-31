@@ -360,11 +360,27 @@ export function serializeLearningMaterialItem(item: any, viewerId?: number) {
 }
 
 async function ensureDefaultTypes() {
-  await Promise.all(DEFAULT_LEARNING_MATERIAL_TYPES.map((name, index) => prisma.learningMaterialType.upsert({
-    where: { normalizedName: normalizeMaterialTypeName(name) },
-    update: { name, source: "builtin", sort: (index + 1) * 10 },
-    create: { name, normalizedName: normalizeMaterialTypeName(name), source: "builtin", status: "approved", enabled: true, sort: (index + 1) * 10 },
-  })));
+  await Promise.all(DEFAULT_LEARNING_MATERIAL_TYPES.map(async (name, index) => {
+    const normalizedName = normalizeMaterialTypeName(name);
+    const existing = await prisma.learningMaterialType.findFirst({
+      where: { normalizedName, source: "builtin", createdById: null },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.learningMaterialType.update({
+        where: { id: existing.id },
+        data: { name, source: "builtin", status: "approved", enabled: true, sort: (index + 1) * 10 },
+      });
+    } else {
+      try {
+        await prisma.learningMaterialType.create({
+          data: { name, normalizedName, source: "builtin", status: "approved", enabled: true, sort: (index + 1) * 10 },
+        });
+      } catch (error) {
+        if ((error as { code?: string })?.code !== "P2002") throw error;
+      }
+    }
+  }));
 }
 
 async function requireVerifiedMaterialUser(userId: number, role: string) {
@@ -378,18 +394,38 @@ async function requireVerifiedMaterialUser(userId: number, role: string) {
   if (user.status === "banned") throw Errors.forbidden("账号已被封禁");
 }
 
-async function getUsableType(typeId: number | null | undefined, userId: number, allowMissing: boolean) {
+async function getUsableType(
+  typeId: number | null | undefined,
+  userId: number,
+  allowMissing: boolean,
+  allowStaff = false,
+) {
   if (!typeId) {
     if (allowMissing) return null;
     throw Errors.badRequest("请选择资料类型");
   }
   const type = await prisma.learningMaterialType.findUnique({ where: { id: typeId } });
   if (!type || !type.enabled || type.status === "rejected" || type.status === "merged") throw Errors.badRequest("请选择有效的资料类型");
+  if (type.source === "seller" && type.createdById !== userId && !allowStaff) {
+    throw Errors.badRequest("该自定义资料类型仅创建者可用");
+  }
   if (type.status !== "approved") {
     if (allowMissing && type.status === "pending" && type.createdById === userId) return type;
     throw Errors.badRequest("该自定义资料类型仍在审核中，审核通过后才能正式发布");
   }
   return type;
+}
+
+function visibleTypeWhere(userId?: number) {
+  return userId
+    ? {
+      enabled: true,
+      OR: [
+        { source: "builtin", status: "approved" },
+        { source: "seller", createdById: userId, status: { notIn: ["rejected", "merged"] } },
+      ],
+    }
+    : { enabled: true, source: "builtin", status: "approved" };
 }
 
 function profileData(input: LearningMaterialProfileInput, existingRightsConfirmedAt?: Date | null) {
@@ -409,10 +445,10 @@ function profileData(input: LearningMaterialProfileInput, existingRightsConfirme
   };
 }
 
-async function assertPublishableProfile(input: LearningMaterialProfileInput, userId: number) {
+async function assertPublishableProfile(input: LearningMaterialProfileInput, userId: number, allowStaff = false) {
   const errors = publishedMaterialProfileErrors(input);
   if (errors.length) throw Errors.badRequest(errors[0]);
-  await getUsableType(input.typeId, userId, false);
+  await getUsableType(input.typeId, userId, false, allowStaff);
 }
 
 learningMaterialsRouter.get("/meta", async (req, res, next) => {
@@ -434,13 +470,7 @@ learningMaterialsRouter.get("/meta", async (req, res, next) => {
         },
       }),
       prisma.learningMaterialType.findMany({
-        where: {
-          enabled: true,
-          OR: [
-            { status: "approved" },
-            ...(req.user ? [{ createdById: req.user.userId, status: "pending" }] : []),
-          ],
-        },
+        where: visibleTypeWhere(req.user?.userId),
         orderBy: [{ status: "asc" }, { sort: "asc" }, { id: "asc" }],
       }),
       prisma.marketSafetyRule.findMany({
@@ -477,13 +507,7 @@ learningMaterialsRouter.get("/types", async (req, res, next) => {
   try {
     await ensureDefaultTypes();
     const list = await prisma.learningMaterialType.findMany({
-      where: {
-        enabled: true,
-        OR: [
-          { status: "approved" },
-          ...(req.user ? [{ createdById: req.user.userId, status: "pending" }] : []),
-        ],
-      },
+      where: visibleTypeWhere(req.user?.userId),
       orderBy: [{ status: "asc" }, { sort: "asc" }, { id: "asc" }],
     });
     ok(res, list);
@@ -502,18 +526,29 @@ learningMaterialsRouter.post("/types", authRequired, validate(customTypeSchema),
     const error = validateCustomMaterialTypeName(name);
     if (error) throw Errors.badRequest(error);
     const normalizedName = normalizeMaterialTypeName(name);
-    const existing = await prisma.learningMaterialType.findUnique({ where: { normalizedName } });
+    const builtin = await prisma.learningMaterialType.findFirst({
+      where: { normalizedName, source: "builtin", status: "approved", enabled: true },
+    });
+    if (builtin) return ok(res, builtin);
+    const existing = await prisma.learningMaterialType.findFirst({ where: { normalizedName, createdById: userId } });
     if (existing) {
-      if (existing.status === "approved" || existing.createdById === userId) return ok(res, existing);
-      throw Errors.conflict("该资料类型已经存在或正在审核");
+      if (existing.enabled && existing.status !== "rejected" && existing.status !== "merged") return ok(res, existing);
+      throw Errors.conflict("你已创建过同名资料类型");
     }
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recentCount = await prisma.learningMaterialType.count({ where: { createdById: userId, createdAt: { gte: since } } });
     if (recentCount >= 5) throw Errors.forbidden("每天最多创建 5 个自定义资料类型");
-    const created = await prisma.learningMaterialType.create({
-      data: { name, normalizedName, source: "seller", status: "pending", enabled: true, createdById: userId, sort: 1000 },
-    });
-    ok(res, created);
+    try {
+      const created = await prisma.learningMaterialType.create({
+        data: { name, normalizedName, source: "seller", status: "approved", enabled: true, createdById: userId, sort: 1000 },
+      });
+      ok(res, created);
+    } catch (createError) {
+      if ((createError as { code?: string })?.code !== "P2002") throw createError;
+      const concurrent = await prisma.learningMaterialType.findFirst({ where: { normalizedName, createdById: userId } });
+      if (!concurrent) throw createError;
+      ok(res, concurrent);
+    }
   } catch (error) { next(error); }
 });
 
@@ -541,7 +576,16 @@ learningMaterialsRouter.get("/items", async (req, res, next) => {
     if (semester) profileWhere.applicableSemester = semester;
     if (college) profileWhere.college = { contains: college, mode: "insensitive" };
     if (major) profileWhere.major = { contains: major, mode: "insensitive" };
-    if (typeId > 0) profileWhere.typeId = typeId;
+    if (typeId > 0) {
+      const requestedType = await prisma.learningMaterialType.findUnique({ where: { id: typeId }, select: { source: true, createdById: true, enabled: true, status: true } });
+      if (!requestedType || !requestedType.enabled || requestedType.status === "rejected" || requestedType.status === "merged") {
+        throw Errors.badRequest("资料类型不可用");
+      }
+      if (requestedType.source === "seller" && requestedType.createdById !== req.user?.userId) {
+        throw Errors.badRequest("该自定义资料类型仅创建者可用");
+      }
+      profileWhere.typeId = typeId;
+    }
     if (format) profileWhere.declaredFormats = { contains: `"${format}"` };
     where.learningMaterial = { is: profileWhere };
     if (q) {
@@ -686,8 +730,9 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
     if (publisher.status !== "active") throw Errors.forbidden("当前资料发布权限受限，请先查看治理记录并申诉");
     await Promise.all([ensureDefaultTypes(), ensureLearningMaterialCategory()]);
     const input = req.body as z.infer<typeof materialItemInputSchema>;
-    await getUsableType(input.profile.typeId, userId, input.draft);
-    if (!input.draft) await assertPublishableProfile(input.profile, userId);
+    const isStaff = ["admin", "mod"].includes(req.user!.role);
+    await getUsableType(input.profile.typeId, userId, input.draft, isStaff);
+    if (!input.draft) await assertPublishableProfile(input.profile, userId, isStaff);
     if (!input.draft) throw Errors.badRequest("请先保存草稿并上传资料文件，再正式发布");
     const category = await prisma.marketCategory.findUnique({ where: { slug: CATEGORY } });
     if (!category?.enabled) throw Errors.badRequest("特色学习资料专区当前不可发布");
@@ -784,7 +829,8 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
     if (!["admin", "mod"].includes(req.user!.role) && (input.status === "active" || input.draft === false)) {
       throw Errors.badRequest("付费资料必须提交版本审核，不能直接公开发布");
     }
-    const isPublishing = ["admin", "mod"].includes(req.user!.role) && input.status === "active";
+    const isStaff = ["admin", "mod"].includes(req.user!.role);
+    const isPublishing = isStaff && input.status === "active";
     const nextProfile: LearningMaterialProfileInput = input.profile || {
       courseCode: current.learningMaterial?.courseCode || "",
       college: current.learningMaterial?.college || "",
@@ -799,8 +845,8 @@ learningMaterialsRouter.patch("/items/:id", authRequired, validate(materialItemP
       originalityStatement: current.learningMaterial?.originalityStatement || "",
       rightsConfirmed: Boolean(current.learningMaterial?.rightsConfirmedAt),
     };
-    await getUsableType(nextProfile.typeId, userId, !isPublishing);
-    if (isPublishing) await assertPublishableProfile(nextProfile, userId);
+    await getUsableType(nextProfile.typeId, userId, !isPublishing, isStaff);
+    if (isPublishing) await assertPublishableProfile(nextProfile, userId, isStaff);
     if (isPublishing && !current.learningMaterial?.activeVersion && !current.digitalDeliveryEncrypted) {
       throw Errors.badRequest("正式发布前请先上传并发布至少一个资料文件版本");
     }

@@ -641,6 +641,9 @@ export async function submitMaterialVersionReview(
     if (!materialType || materialType.status !== "approved" || !materialType.enabled) {
       throw Errors.badRequest("所选资料类型尚未通过审核");
     }
+    if (materialType.source === "seller" && materialType.createdById !== item.sellerId && !["admin", "mod"].includes(actor.role)) {
+      throw Errors.badRequest("该自定义资料类型仅创建者可用");
+    }
     const method = await tx.learningCollectionMethod.findFirst({
       where: { creatorId: item.sellerId, status: "active" },
     });
