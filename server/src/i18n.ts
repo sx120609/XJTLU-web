@@ -60,7 +60,7 @@ const boardEnglish: Record<string, { name: string; description: string }> = {
 
 export function normalizeLocale(value: unknown): AppLocale {
   const first = String(value || "").split(",")[0]?.trim().toLowerCase();
-  return first?.startsWith("zh") ? "zh-CN" : "en-US";
+  return first?.startsWith("en") ? "en-US" : "zh-CN";
 }
 
 export function requestLocale(req: Pick<Request, "headers">): AppLocale {

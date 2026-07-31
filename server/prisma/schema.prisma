@@ -152,7 +152,7 @@ model User {
   anonymousCreditsFrozen      Boolean   @default(false)
   sponsorTotalCents           Int       @default(0)
   transactionPoints           Int       @default(0)
-  preferredLocale             String    @default("en-US")
+  preferredLocale             String    @default("zh-CN")
   // 市集好评率由管理员根据投诉审核结果维护，普通用户评价不直接改写。
   marketPositiveRate          Int       @default(100)
   marketPositiveRateReason    String    @default("")

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-US" data-locale="en-US">
+<html lang="zh-CN" data-locale="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -29,9 +29,9 @@
     <script>
       (() => {
         const localeKey = "kaopu-locale";
-        let locale = "en-US";
+        let locale = "zh-CN";
         try {
-          if (localStorage.getItem(localeKey) === "zh-CN") locale = "zh-CN";
+          if (localStorage.getItem(localeKey) === "en-US") locale = "en-US";
         } catch {}
         const root = document.documentElement;
         root.lang = locale;
@@ -130,20 +130,20 @@
         box-shadow: 0 14px 42px rgba(139, 124, 246, 0.2);
       }
     </style>
-    <title>Kaopu · Reimagine campus life</title>
-    <meta name="description" content="Kaopu helps XJTLU students trade, learn, and connect on campus." />
+    <title>靠浦 · 重塑校园生活的可能</title>
+    <meta name="description" content="靠浦，为西交利物浦大学学生重塑校园生活的更多可能。" />
   </head>
   <body>
-    <div class="app-launch-screen" id="boot-screen" aria-label="Kaopu">
+    <div class="app-launch-screen" id="boot-screen" aria-label="靠浦正在启动">
       <img class="app-launch-logo" src="/brand/kaopu-mark.svg?v=20260713" alt="" />
       <h1 class="app-launch-title">靠浦</h1>
       <p class="app-launch-subtitle"><span class="launch-en">Reimagine campus life</span><span class="launch-zh">重塑校园生活的可能</span></p>
     </div>
     <script>
-      if (document.documentElement.dataset.locale === "zh-CN") {
-        document.title = "靠浦 · 重塑校园生活的可能";
-        document.querySelector('meta[name="description"]')?.setAttribute("content", "靠浦，为西交利物浦大学学生重塑校园生活的更多可能。");
-        document.getElementById("boot-screen")?.setAttribute("aria-label", "靠浦正在启动");
+      if (document.documentElement.dataset.locale === "en-US") {
+        document.title = "Kaopu · Reimagine campus life";
+        document.querySelector('meta[name="description"]')?.setAttribute("content", "Kaopu helps XJTLU students trade, learn, and connect on campus.");
+        document.getElementById("boot-screen")?.setAttribute("aria-label", "Kaopu");
       }
     </script>
     <div id="app">

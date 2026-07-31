@@ -10,12 +10,13 @@ import {
   requestLocale,
 } from "../src/i18n";
 
-test("English is the fallback locale and Chinese is selected explicitly", () => {
+test("Chinese is the fallback locale and English is selected explicitly", () => {
   assert.deepEqual(SUPPORTED_LOCALES, ["en-US", "zh-CN"]);
-  assert.equal(normalizeLocale(undefined), "en-US");
+  assert.equal(normalizeLocale(undefined), "zh-CN");
   assert.equal(normalizeLocale("en-GB,en;q=0.9"), "en-US");
   assert.equal(normalizeLocale("zh-TW,zh;q=0.9"), "zh-CN");
-  assert.equal(requestLocale({ headers: {} }), "en-US");
+  assert.equal(normalizeLocale("fr-FR,fr;q=0.9"), "zh-CN");
+  assert.equal(requestLocale({ headers: {} }), "zh-CN");
   assert.equal(requestLocale({ headers: { "accept-language": "zh-CN" } }), "zh-CN");
 });
 
@@ -58,7 +59,7 @@ test("board catalog and notifications localize without changing stored data", ()
   });
 });
 
-test("web and account locale contracts default to English without exposing preferences publicly", () => {
+test("web and account locale contracts default to Chinese without exposing preferences publicly", () => {
   const webI18n = readFileSync(new URL("../../web/src/i18n/index.ts", import.meta.url), "utf8");
   const webHtml = readFileSync(new URL("../../web/index.html", import.meta.url), "utf8");
   const requestSource = readFileSync(new URL("../../web/src/api/request.ts", import.meta.url), "utf8");
@@ -66,18 +67,23 @@ test("web and account locale contracts default to English without exposing prefe
   const appSource = readFileSync(new URL("../src/app.ts", import.meta.url), "utf8");
   const learningLabels = readFileSync(new URL("../../web/src/utils/learningMaterialLocale.ts", import.meta.url), "utf8");
   const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
-  const migration = readFileSync(new URL("../prisma/migrations/20260730050000_user_preferred_locale/migration.sql", import.meta.url), "utf8");
+  const preferenceMigration = readFileSync(new URL("../prisma/migrations/20260730050000_user_preferred_locale/migration.sql", import.meta.url), "utf8");
+  const defaultMigration = readFileSync(new URL("../prisma/migrations/20260731010000_default_locale_zh_cn/migration.sql", import.meta.url), "utf8");
 
-  assert.match(webI18n, /DEFAULT_LOCALE:\s*AppLocale\s*=\s*"en-US"/);
-  assert.match(webHtml, /<html lang="en-US" data-locale="en-US">/);
+  assert.match(webI18n, /DEFAULT_LOCALE:\s*AppLocale\s*=\s*"zh-CN"/);
+  assert.match(webHtml, /<html lang="zh-CN" data-locale="zh-CN">/);
+  assert.match(webHtml, /let locale = "zh-CN"/);
+  assert.match(webHtml, /靠浦 · 重塑校园生活的可能/);
   assert.match(webHtml, /Reimagine campus life/);
   assert.doesNotMatch(webHtml, /stored === "system"|mode === "system"/);
   assert.match(requestSource, /\["Accept-Language"\]\s*=\s*getActiveLocale\(\)/);
   assert.match(appSource, /localizeApiMessage\("接口不存在", requestLocale\(req\)\)/);
   assert.match(learningLabels, /Y1S1: "Year 1 · Semester 1"/);
   assert.match(learningLabels, /课程笔记: "Course notes"/);
-  assert.match(schema, /preferredLocale\s+String\s+@default\("en-US"\)/);
-  assert.match(migration, /CHECK \("preferredLocale" IN \('en-US', 'zh-CN'\)\)/);
+  assert.match(schema, /preferredLocale\s+String\s+@default\("zh-CN"\)/);
+  assert.match(preferenceMigration, /CHECK \("preferredLocale" IN \('en-US', 'zh-CN'\)\)/);
+  assert.match(defaultMigration, /ALTER COLUMN "preferredLocale" SET DEFAULT 'zh-CN'/);
+  assert.match(defaultMigration, /SET "preferredLocale" = 'zh-CN'/);
 
   const selfBuilder = publicUser.slice(
     publicUser.indexOf("export function buildSelfUser"),

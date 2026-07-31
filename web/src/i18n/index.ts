@@ -4,7 +4,7 @@ export const SUPPORTED_LOCALES = ["en-US", "zh-CN"] as const;
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
 
 const LOCALE_STORAGE_KEY = "kaopu-locale";
-const DEFAULT_LOCALE: AppLocale = "en-US";
+const DEFAULT_LOCALE: AppLocale = "zh-CN";
 
 const messages = {
   "en-US": {
