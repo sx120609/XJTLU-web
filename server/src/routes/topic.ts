@@ -26,7 +26,6 @@ import {
   requestManualTopicReview,
   reviewTopicContent,
   shouldBypassAiReviewForUser,
-  shouldRunAiReview,
   syncTopicAiTags,
 } from "../services/topicAiReview";
 import { autoFormatTopicContent } from "../services/topicAiFormat";
@@ -280,7 +279,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
 
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const shouldReview = shouldRunAiReview() && !bypassAiReview;
+    const shouldReview = !bypassAiReview;
     const aiResult = shouldReview
       ? await reviewTopicContent({
           title,
@@ -518,7 +517,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         where: { id: t.boardId },
         select: { name: true, type: true },
       });
-      if (shouldRunAiReview() && !bypassAiReview) {
+      if (!bypassAiReview) {
         const aiResult = await reviewTopicContent({
           title: nextTitle,
           content: nextContent,

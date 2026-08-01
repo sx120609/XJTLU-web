@@ -6,7 +6,6 @@ import {
   ensureUserCanSubmitTopic,
   reviewTopicContent,
   shouldBypassAiReviewForUser,
-  shouldRunAiReview,
 } from "./topicAiReview";
 import {
   cents,
@@ -113,7 +112,7 @@ export async function createMarketWantedPost(actor: MarketWantedActor, input: Ma
     throw Errors.badRequest("求购内容包含市集禁售或高风险信息，请修改后再发布");
   }
   const bypass = await shouldBypassAiReviewForUser(authorId, actor.role);
-  const review = shouldRunAiReview() && !bypass
+  const review = !bypass
     ? await reviewTopicContent({
       title: input.title,
       content: input.description,

@@ -5,6 +5,7 @@ import { validate } from "../middleware/validate";
 import {
   adminUserListQuerySchema,
   adminUserPasswordSchema,
+  assertPersonalUserTarget,
   deleteAdminUser,
   listAdminUsers,
   resetAdminUserPassword,
@@ -66,6 +67,7 @@ managementUsersRouter.patch(
   async (req, res, next) => {
     try {
       const principal = actor(req);
+      await assertPersonalUserTarget(id(req.params.id));
       const patch = req.body;
       const sensitive = patch.aiReviewWhitelisted !== undefined
         || patch.anonymousCredits !== undefined
@@ -86,6 +88,7 @@ managementUsersRouter.patch(
     try {
       const principal = actor(req);
       const userId = id(req.params.id);
+      await assertPersonalUserTarget(userId);
       const result = await resetAdminUserPassword(legacyActor(req), userId, req.body.newPassword);
       await recordManagementAudit(principal, "management.user.password_reset", "user", userId, "重置个人用户密码", {}, req.ip || "");
       ok(res, result);
@@ -100,6 +103,7 @@ managementUsersRouter.delete(
     try {
       const principal = actor(req);
       const userId = id(req.params.id);
+      await assertPersonalUserTarget(userId);
       const result = await deleteAdminUser(legacyActor(req), userId);
       await recordManagementAudit(principal, "management.user.delete", "user", userId, "删除个人用户", result, req.ip || "");
       ok(res, result);

@@ -6,7 +6,7 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
-import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
+import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshTopicReplyStats, refreshUserReplyCount } from "../services/forumStats";
 import { acquireForumTopicLock } from "../services/forumTopicLockService";
@@ -81,7 +81,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             : (existingAnonymousReply?.anonymousAlias || createAnonymousAlias())
         )
       : null;
-    if (shouldRunAiReview() && !bypassAiReview) {
+    if (!bypassAiReview) {
       const aiResult = await reviewReplyContent({
         topicTitle: topic.title,
         boardName: (topic as any).board?.name ?? "",

@@ -11,25 +11,39 @@ test("BOSS can create administrators and replace their permissions", async (t) =
   const { prisma } = await import("../src/prisma");
   const { hashPassword } = await import("../src/utils/password");
   const { encryptManagementSecret } = await import("../src/utils/managementCrypto");
-  const { generateTotp } = await import("../src/utils/totp");
+  const { issueManagementSession, revokeManagementSession } = await import("../src/services/managementAuthService");
 
   const suffix = Date.now().toString(36);
   const bossTotpSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-  const boss = await prisma.adminAccount.create({
+  const existingBoss = await prisma.adminAccount.findFirst({ where: { accountType: "boss", status: "active" } });
+  const boss = existingBoss ?? await prisma.adminAccount.create({
     data: {
       username: `boss_test_${suffix}`,
       passwordHash: await hashPassword("boss-test-password"),
-      displayName: "BOSS 测试账号",
+      displayName: "BOSS test account",
       accountType: "boss",
       status: "active",
       mfaEnabled: true,
       mfaSecretCiphertext: encryptManagementSecret(bossTotpSecret),
     },
   });
+  const ownsBoss = !existingBoss;
   let adminId: number | null = null;
+  let bossSessionId = "";
   t.after(async () => {
-    if (adminId) await prisma.adminAccount.delete({ where: { id: adminId } });
-    await prisma.adminAccount.delete({ where: { id: boss.id } });
+    if (adminId) {
+      await prisma.managementAuditLog.deleteMany({
+        where: {
+          OR: [
+            { actorId: adminId },
+            { targetType: "admin_account", targetId: String(adminId) },
+          ],
+        },
+      });
+      await prisma.adminAccount.delete({ where: { id: adminId } });
+    }
+    if (bossSessionId) await revokeManagementSession(bossSessionId);
+    if (ownsBoss) await prisma.adminAccount.delete({ where: { id: boss.id } });
   });
 
   const app = createApp();
@@ -50,13 +64,9 @@ test("BOSS can create administrators and replace their permissions", async (t) =
     return { response, body: await response.json() as { data: any; message: string } };
   }
 
-  const bossLogin = await call("/auth/login", "POST", "", {
-    username: boss.username,
-    password: "boss-test-password",
-    otp: generateTotp(bossTotpSecret),
-  });
-  assert.equal(bossLogin.response.status, 200, bossLogin.body.message);
-  const bossToken = bossLogin.body.data.token as string;
+  const bossSession = await issueManagementSession(boss, { ip: "127.0.0.1", get: () => "" } as any);
+  bossSessionId = bossSession.sessionId;
+  const bossToken = bossSession.token;
 
   const catalog = await call("/permissions", "GET", bossToken);
   assert.equal(catalog.response.status, 200);

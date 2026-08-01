@@ -96,11 +96,6 @@ export async function ensureUserCanSubmitTopic(userId: number) {
   }
 }
 
-export function shouldRunAiReview() {
-  const config = getSiteConfig();
-  return Boolean(config.aiReviewEnabled && config.aiReviewApiKey.trim());
-}
-
 type AiReviewLogContext = {
   kind: "topic" | "reply" | "topic-edit";
   targetId?: number | null;
@@ -213,7 +208,7 @@ function buildAiReviewUnavailableResult(
     status: "blocked_ai",
     riskLevel: "medium",
     riskScore: Math.max(1, Number(config.aiReviewThreshold || 70)),
-    reason: "AI 审核服务暂不可用，已转人工复核",
+    reason: "AI 审核服务暂不可用，请申请人工复核",
     detail: JSON.stringify({
       unavailable: true,
       scope,
@@ -233,14 +228,11 @@ export async function reviewTopicContent(input: {
 }): Promise<TopicAiReviewResult> {
   const config = getSiteConfig();
   if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
-    return {
-      status: "auto_passed",
-      riskLevel: "low",
-      riskScore: 0,
-      reason: "AI 审核未开启",
-      detail: "",
-      model: config.aiReviewModel,
-    };
+    return buildAiReviewUnavailableResult(
+      config,
+      "topic",
+      new Error("AI 审核未启用或 API 密钥未配置"),
+    );
   }
 
   let content = "";
@@ -306,14 +298,11 @@ export async function reviewReplyContent(input: {
 }): Promise<TopicAiReviewResult> {
   const config = getSiteConfig();
   if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
-    return {
-      status: "auto_passed",
-      riskLevel: "low",
-      riskScore: 0,
-      reason: "AI 审核未开启",
-      detail: "",
-      model: config.aiReviewModel,
-    };
+    return buildAiReviewUnavailableResult(
+      config,
+      "reply",
+      new Error("AI 审核未启用或 API 密钥未配置"),
+    );
   }
 
   let content = "";

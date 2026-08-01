@@ -71,6 +71,23 @@ export type AdminUserListQuery = z.infer<typeof adminUserListQuerySchema>;
 export type AdminUserPatch = z.infer<typeof adminUserPatchSchema>;
 export type AdminUserCreate = z.infer<typeof adminUserCreateSchema>;
 
+/**
+ * The independent management console must never mutate a legacy staff User.
+ * Legacy admin/mod accounts are migrated by the explicit cutover scripts,
+ * not through the personal-user governance endpoints.
+ */
+export async function assertPersonalUserTarget(userId: number) {
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true },
+  });
+  if (!target) throw Errors.notFound("个人用户不存在");
+  if (target.role !== "user") {
+    throw Errors.forbidden("管理后台仅能操作个人账号；旧管理员账号请通过 BOSS 迁移流程处理");
+  }
+  return target;
+}
+
 export type ProtectedAdminUserDependencies = {
   feedSources: number;
   sponsorOrders: number;

@@ -11,20 +11,22 @@ test("management user governance separates personal users and enforces capabilit
   const { prisma } = await import("../src/prisma");
   const { hashPassword } = await import("../src/utils/password");
   const { encryptManagementSecret } = await import("../src/utils/managementCrypto");
-  const { generateTotp } = await import("../src/utils/totp");
+  const { issueManagementSession, revokeManagementSession } = await import("../src/services/managementAuthService");
 
   const suffix = Date.now().toString(36);
   const bossTotpSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-  const boss = await prisma.adminAccount.create({
+  const existingBoss = await prisma.adminAccount.findFirst({ where: { accountType: "boss", status: "active" } });
+  const boss = existingBoss ?? await prisma.adminAccount.create({
     data: {
       username: `boss_users_${suffix}`,
       passwordHash: await hashPassword("boss-test-password"),
-      displayName: "BOSS 用户治理测试",
+      displayName: "BOSS test account",
       accountType: "boss",
       mfaEnabled: true,
       mfaSecretCiphertext: encryptManagementSecret(bossTotpSecret),
     },
   });
+  const ownsBoss = !existingBoss;
   const user = await prisma.user.create({
     data: {
       username: `personal_${suffix}`,
@@ -33,11 +35,33 @@ test("management user governance separates personal users and enforces capabilit
       role: "user",
     },
   });
+  const legacyStaff = await prisma.user.create({
+    data: {
+      username: `legacy_admin_${suffix}`,
+      passwordHash: await hashPassword("legacy-staff-password"),
+      nickname: "旧个人管理员",
+      role: "admin",
+    },
+  });
   let adminId: number | null = null;
+  let bossSessionId = "";
   t.after(async () => {
-    if (adminId) await prisma.adminAccount.delete({ where: { id: adminId } });
-    await prisma.adminAccount.delete({ where: { id: boss.id } });
+    if (adminId) {
+      await prisma.managementAuditLog.deleteMany({
+        where: {
+          OR: [
+            { actorId: adminId },
+            { targetType: "admin_account", targetId: String(adminId) },
+            { targetType: "user", targetId: { in: [String(user.id), String(legacyStaff.id)] } },
+          ],
+        },
+      });
+      await prisma.adminAccount.delete({ where: { id: adminId } });
+    }
+    if (bossSessionId) await revokeManagementSession(bossSessionId);
+    if (ownsBoss) await prisma.adminAccount.delete({ where: { id: boss.id } });
     await prisma.user.delete({ where: { id: user.id } });
+    await prisma.user.delete({ where: { id: legacyStaff.id } });
   });
 
   const app = createApp();
@@ -58,9 +82,9 @@ test("management user governance separates personal users and enforces capabilit
     return { response, body: await response.json() as { data: any; message: string } };
   }
 
-  const bossLogin = await call("/auth/login", "POST", "", { username: boss.username, password: "boss-test-password", otp: generateTotp(bossTotpSecret) });
-  assert.equal(bossLogin.response.status, 200, bossLogin.body.message);
-  const bossToken = bossLogin.body.data.token as string;
+  const bossSession = await issueManagementSession(boss, { ip: "127.0.0.1", get: () => "" } as any);
+  bossSessionId = bossSession.sessionId;
+  const bossToken = bossSession.token;
 
   const created = await call("/accounts", "POST", bossToken, {
     username: `admin_users_${suffix}`,
@@ -90,4 +114,12 @@ test("management user governance separates personal users and enforces capabilit
   const updated = await call(`/users/${user.id}`, "PATCH", refreshedAdminToken, { nickname: "已由治理管理员修改" });
   assert.equal(updated.response.status, 200, updated.body.message);
   assert.equal(updated.body.data.nickname, "已由治理管理员修改");
+  await call(`/accounts/${adminId}/permissions`, "PUT", bossToken, { permissions: ["users.read", "users.moderate", "users.sensitive"] });
+  const sensitiveLogin = await call("/auth/login", "POST", "", { username: `admin_users_${suffix}`, password: "admin-users-password" });
+  assert.equal(sensitiveLogin.response.status, 200);
+  const sensitiveToken = sensitiveLogin.body.data.token as string;
+  const legacyUpdate = await call(`/users/${legacyStaff.id}`, "PATCH", sensitiveToken, { nickname: "不应修改旧管理员" });
+  assert.equal(legacyUpdate.response.status, 403);
+  const legacyDelete = await call(`/users/${legacyStaff.id}`, "DELETE", sensitiveToken);
+  assert.equal(legacyDelete.response.status, 403);
 });
