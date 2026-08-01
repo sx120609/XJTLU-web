@@ -146,6 +146,17 @@ export type ManagementSystemHealth = {
   http?: unknown;
 };
 
+export type ManagementSiteConfig = {
+  aiReviewEnabled: boolean;
+  aiReviewProvider: string;
+  aiReviewApiUrl: string;
+  aiReviewModel: string;
+  aiReviewFallbackModels: string;
+  aiReviewThreshold: number;
+  hasAiReviewApiKey: boolean;
+  aiReviewApiKeyMasked: string;
+};
+
 type ApiEnvelope<T> = { code: number; data: T; message: string };
 type ManagementRequestOptions = AxiosRequestConfig & { suppressAuthRedirect?: boolean; suppressErrorMessage?: boolean };
 
@@ -254,8 +265,8 @@ export const managementApi = {
   deleteBoard: (id: number) => instance.delete<unknown, { ok: true; deletedBoardId: number }>(`/boards/${id}`),
   feeds: () => get<unknown[]>("/feeds"),
   announcements: () => get<unknown[]>("/announcements"),
-  siteConfig: () => get<Record<string, unknown>>("/site-config"),
-  updateSiteConfig: (data: Record<string, unknown>) => patch<Record<string, unknown>>("/site-config", data),
+  siteConfig: () => get<ManagementSiteConfig>("/site-config"),
+  updateSiteConfig: (data: Record<string, unknown>) => patch<ManagementSiteConfig>("/site-config", data),
   features: () => get<Record<string, boolean>>("/features"),
   updateFeatures: (data: Record<string, boolean>) => patch<Record<string, boolean>>("/features", data),
   systemHealth: () => get<ManagementSystemHealth>("/system/health"),

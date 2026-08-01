@@ -18,6 +18,25 @@
         </section>
       </el-tab-pane>
 
+      <el-tab-pane v-if="canSystem" label="AI 审核配置" name="ai-review">
+        <section class="panel ai-panel" v-loading="loading">
+          <div class="panel-title"><div><b>帖子 AI 审核</b><span>普通帖子和回复必须经过 AI；AI 未配置或不可用时会失败关闭并进入人工复核申请。</span></div><el-tag :type="siteConfig?.hasAiReviewApiKey && siteConfig.aiReviewEnabled ? 'success' : 'warning'">{{ siteConfig?.hasAiReviewApiKey && siteConfig.aiReviewEnabled ? "AI 已启用" : "人工兜底" }}</el-tag></div>
+          <el-alert v-if="siteConfig && siteConfig.aiReviewEnabled && !siteConfig.hasAiReviewApiKey" type="error" :closable="false" show-icon title="已开启 AI 审核但未配置 API Key；保存时必须同时填写 Key。" />
+          <el-form label-position="top" class="ai-form">
+            <el-form-item label="启用帖子 AI 审核"><el-switch v-model="aiForm.enabled" /></el-form-item>
+            <el-form-item label="服务商"><el-input v-model="aiForm.provider" maxlength="40" /></el-form-item>
+            <el-form-item label="API 地址"><el-input v-model="aiForm.apiUrl" maxlength="240" /></el-form-item>
+            <el-form-item label="模型"><el-input v-model="aiForm.model" maxlength="80" /></el-form-item>
+            <el-form-item label="备用模型（逗号分隔）"><el-input v-model="aiForm.fallbackModels" maxlength="400" /></el-form-item>
+            <el-form-item label="风险阈值（分数达到后转人工）"><el-input-number v-model="aiForm.threshold" :min="0" :max="100" /></el-form-item>
+            <el-form-item :label="siteConfig?.hasAiReviewApiKey ? `API Key（当前 ${siteConfig.aiReviewApiKeyMasked}，留空保持不变）` : 'API Key'">
+              <el-input v-model="aiForm.apiKey" type="password" show-password autocomplete="new-password" placeholder="仅在新增或更换时填写" />
+            </el-form-item>
+          </el-form>
+          <div class="ai-actions"><el-button type="primary" :loading="saving" @click="saveAiConfig">保存 AI 配置</el-button><span>Key 只会加密保存，接口不会返回明文。</span></div>
+        </section>
+      </el-tab-pane>
+
       <el-tab-pane v-if="canContent" label="板块" name="boards">
         <section class="panel" v-loading="loading">
           <div class="panel-title"><div><b>社区板块</b><span>系统板块只读，普通板块可由有权限的管理员维护</span></div><el-button type="primary" @click="openCreate">新建板块</el-button></div>
@@ -54,7 +73,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { managementApi, type ManagementBoard, type ManagementSystemHealth } from "@/api/management";
+import { managementApi, type ManagementBoard, type ManagementSiteConfig, type ManagementSystemHealth } from "@/api/management";
 import { useManagementStore } from "@/stores/management";
 
 const management = useManagementStore();
@@ -66,6 +85,8 @@ const saving = ref(false);
 const boards = ref<ManagementBoard[]>([]);
 const announcements = ref<Array<Record<string, any>>>([]);
 const health = ref<ManagementSystemHealth | null>(null);
+const siteConfig = ref<ManagementSiteConfig | null>(null);
+const aiForm = reactive({ enabled: false, provider: "deepseek", apiUrl: "", model: "", fallbackModels: "", threshold: 24, apiKey: "" });
 const dialogOpen = ref(false);
 const editing = ref<ManagementBoard | null>(null);
 const form = reactive({ slug: "", name: "", description: "", type: "normal" });
@@ -75,13 +96,44 @@ async function refresh() {
   loading.value = true;
   try {
     const tasks: Promise<unknown>[] = [];
-    if (canSystem.value) tasks.push(managementApi.systemHealth().then((value) => { health.value = value; }));
+    if (canSystem.value) {
+      tasks.push(managementApi.systemHealth().then((value) => { health.value = value; }));
+      tasks.push(managementApi.siteConfig().then((value) => {
+        siteConfig.value = value;
+        Object.assign(aiForm, {
+          enabled: value.aiReviewEnabled,
+          provider: value.aiReviewProvider,
+          apiUrl: value.aiReviewApiUrl,
+          model: value.aiReviewModel,
+          fallbackModels: value.aiReviewFallbackModels,
+          threshold: value.aiReviewThreshold,
+          apiKey: "",
+        });
+      }));
+    }
     if (canContent.value) {
       tasks.push(managementApi.boards().then((value) => { boards.value = value; }));
       tasks.push(managementApi.announcements().then((value) => { announcements.value = value as Array<Record<string, any>>; }));
     }
     await Promise.all(tasks);
   } finally { loading.value = false; }
+}
+async function saveAiConfig() {
+  saving.value = true;
+  try {
+    const patch: Record<string, unknown> = {
+      aiReviewEnabled: aiForm.enabled,
+      aiReviewProvider: aiForm.provider,
+      aiReviewApiUrl: aiForm.apiUrl,
+      aiReviewModel: aiForm.model,
+      aiReviewFallbackModels: aiForm.fallbackModels,
+      aiReviewThreshold: aiForm.threshold,
+    };
+    if (aiForm.apiKey.trim()) patch.aiReviewApiKey = aiForm.apiKey.trim();
+    siteConfig.value = await managementApi.updateSiteConfig(patch);
+    aiForm.apiKey = "";
+    ElMessage.success("AI 审核配置已保存");
+  } finally { saving.value = false; }
 }
 function openCreate() { editing.value = null; Object.assign(form, { slug: "", name: "", description: "", type: "normal" }); dialogOpen.value = true; }
 function openEdit(row: ManagementBoard) { editing.value = row; Object.assign(form, { slug: row.slug, name: row.name, description: row.description || "", type: row.type }); dialogOpen.value = true; }
@@ -102,5 +154,10 @@ onMounted(refresh);
 
 <style scoped>
 .operations-page { display: grid; gap: 18px; }.page-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }.page-heading h1 { margin: 0 0 8px; font-size: 26px; }.page-heading p:not(.eyebrow) { color: #64748b; margin: 0; line-height: 1.6; }.eyebrow { margin: 0 0 7px; color: #6d5ce7; font-size: 11px; font-weight: 800; letter-spacing: .14em; }.panel { border: 1px solid #e3e8f1; border-radius: 16px; background: white; padding: 20px; box-shadow: 0 8px 26px rgba(15,23,42,.04); }.panel-title { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }.panel-title > div { display: grid; gap: 5px; }.panel-title span { color: #94a3b8; font-size: 12px; }.health-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }.health-grid div { display: grid; gap: 7px; padding: 18px; border-radius: 12px; background: #f7f8fc; }.health-grid span { color: #64748b; font-size: 12px; }.health-grid b { font-size: 22px; color: #342b96; }
-@media (max-width: 680px) { .page-heading { display: grid; }.health-grid { grid-template-columns: 1fr; } }
+.ai-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+.ai-form :deep(.el-input-number) { width: 100%; }
+.ai-form :deep(.el-form-item) { margin-bottom: 0; }
+.ai-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
+.ai-actions p { margin: 0; color: #64748b; font-size: 12px; line-height: 1.6; }
+@media (max-width: 680px) { .page-heading { display: grid; }.health-grid { grid-template-columns: 1fr; }.ai-form { grid-template-columns: 1fr; }.ai-actions { align-items: flex-start; flex-direction: column; } }
 </style>
