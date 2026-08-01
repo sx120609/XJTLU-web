@@ -21,16 +21,10 @@ import {
   MARKET_CAMPUSES,
   normalizeMarketCampus,
 } from "./marketCampus";
-import { amountCentsToMoney } from "./epay";
 import { acquireMarketItemLock } from "./marketItemLockService";
 import { acquireMarketCategoryLock } from "./marketCategoryLockService";
 import { notifyMatchesForItem } from "./marketMatching";
 import { evaluateMarketContent } from "./marketTrust";
-import {
-  reviewTopicContent,
-  shouldBypassAiReviewForUser,
-  shouldRunAiReview,
-} from "./topicAiReview";
 import { ensureUserCanSpeak } from "./userModeration";
 
 export const MARKET_ITEM_STATUSES = [
@@ -71,6 +65,9 @@ const ACTIVE_MARKET_ORDER_STATUSES = [
   "refund_pending",
   "disputed",
 ] as const;
+
+// V1 policy: all physical market listings, including printed study materials, go to staff review.
+const MARKET_ITEM_MANUAL_REVIEW_NOTE = "商品正在进行人工审核";
 
 const imageUrlSchema = z.string().trim().min(1).max(2048).refine(
   (value) => value.startsWith("/") || /^https?:\/\//i.test(value),
@@ -223,6 +220,10 @@ function safetyFields(item: {
   ];
 }
 
+function hasMarketItemSubmissionChange(input: MarketItemPatch) {
+  return Object.keys(input).some((key) => key !== "status");
+}
+
 async function notifyIfActivated(itemId: number) {
   await notifyMatchesForItem(itemId)
     .catch((error) => console.warn("[market] item matching notification failed", error));
@@ -269,36 +270,6 @@ export async function createMarketItem(
     throw Errors.badRequest("商品内容包含市集禁售或高风险信息，请修改后再发布");
   }
 
-  const metadata = {
-    marketItem: true,
-    price: Number(amountCentsToMoney(priceCents)),
-    condition: input.condition,
-    tradeMode: input.tradeMode,
-    deliveryType: "physical",
-    listingType: input.listingType,
-    category: input.category,
-    campus: input.campus,
-    location: input.location,
-    brand: input.brand,
-    model: input.model,
-    usageDuration: input.usageDuration,
-    flaws: input.flaws,
-    accessories: input.accessories,
-    testAllowed: input.testAllowed,
-    availableTime: input.availableTime,
-    images: input.images,
-  };
-  const bypass = await shouldBypassAiReviewForUser(userId, actor.role);
-  const review = shouldRunAiReview() && !bypass
-    ? await reviewTopicContent({
-      title: input.title,
-      content: input.description,
-      boardName: "校园市集",
-      boardType: "market",
-      metadata,
-    })
-    : null;
-  const hiddenByReview = safety.action === "review" || review?.status === "blocked_ai";
   const item = await prisma.$transaction(async (tx) => {
     await acquireMarketCategoryLock(tx, input.category);
     const lockedCategory = await getTransactionMarketCategory(
@@ -338,10 +309,10 @@ export async function createMarketItem(
       availableTime: input.availableTime,
       expiresAt: null,
       visibility: "public",
-      status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",
+      status: input.draft ? "draft" : "reviewing",
       moderationNote: safety.action === "review"
         ? (safety.matches[0]?.note || "市集规则命中人工复核")
-        : review?.status === "blocked_ai" ? review.reason : "",
+        : input.draft ? "" : MARKET_ITEM_MANUAL_REVIEW_NOTE,
       images: {
         create: input.images.map((url, sort) => ({ url, sort })),
       },
@@ -352,7 +323,7 @@ export async function createMarketItem(
   if (item.status === "active") await notifyIfActivated(item.id);
   return {
     ...serializeItem(item, userId),
-    review: review ? { status: review.status, reason: review.reason } : null,
+    review: null,
     safetyReview: safety.action === "review"
       ? { status: "reviewing", reason: "公开内容包含联系方式或需人工复核的信息" }
       : null,
@@ -455,9 +426,14 @@ export async function updateMarketItem(
     if (safety.action === "block") {
       throw Errors.badRequest("商品内容包含市集禁售或高风险信息，请修改后再发布");
     }
+    const sellerNeedsManualReview = !staff
+      && requestedStatus === "active"
+      && (current.status !== "active" || hasMarketItemSubmissionChange(input));
     const nextStatus = safety.action === "review" && requestedStatus === "active"
       ? "reviewing"
-      : requestedStatus;
+      : sellerNeedsManualReview
+        ? "reviewing"
+        : requestedStatus;
     const data: any = { ...input };
     delete data.catalog;
     delete data.images;
@@ -480,8 +456,10 @@ export async function updateMarketItem(
     } else if (nextStatus !== current.status || input.status !== undefined || input.draft !== undefined) {
       data.soldAt = null;
     }
-    if (safety.action === "review" && requestedStatus === "active") {
-      data.moderationNote = safety.matches[0]?.note || "市集规则命中人工复核";
+    if (nextStatus === "reviewing" && (current.status !== "reviewing" || safety.action === "review")) {
+      data.moderationNote = safety.action === "review"
+        ? (safety.matches[0]?.note || "市集规则命中人工复核")
+        : MARKET_ITEM_MANUAL_REVIEW_NOTE;
     }
 
     if (input.images) {
@@ -548,13 +526,13 @@ export async function transitionMarketItemLifecycle(
         throw Errors.badRequest("商品内容包含市集禁售或高风险信息，请编辑后再上架");
       }
       data = {
-        status: safety.action === "review" ? "reviewing" : "active",
+        status: safety.action === "review" || !isMarketItemStaff(actor.role) ? "reviewing" : "active",
         expiresAt: null,
         renewedAt: new Date(),
         soldAt: null,
-        ...(safety.action === "review"
-          ? { moderationNote: safety.matches[0]?.note || "市集规则命中人工复核" }
-          : {}),
+        moderationNote: safety.action === "review"
+          ? (safety.matches[0]?.note || "市集规则命中人工复核")
+          : isMarketItemStaff(actor.role) ? "" : MARKET_ITEM_MANUAL_REVIEW_NOTE,
       };
     } else if (action === "withdraw") {
       if (!["active", "negotiating", "expired"].includes(current.status)) {
@@ -614,11 +592,15 @@ export async function moderateMarketItemInTransaction(
   itemId: number,
   input: MarketItemAdminInput,
   acquireLock = true,
+  allowedCurrentStatuses?: readonly string[],
 ) {
   if (!isMarketItemStaff(actor.role)) throw Errors.forbidden("需要管理员权限");
   if (acquireLock) await acquireMarketItemLock(tx, itemId);
   const current = await tx.marketItem.findUnique({ where: { id: itemId } });
   if (!current) throw Errors.notFound("商品不存在");
+  if (allowedCurrentStatuses && !allowedCurrentStatuses.includes(current.status)) {
+    throw Errors.conflict("商品已经离开待审核状态，请刷新后重试");
+  }
   const activeOrder = await findActiveMarketItemOrder(tx, itemId);
   if (activeOrder && input.status !== "hidden") {
     throw Errors.conflict("商品存在进行中的订单，只能先隐藏，不能覆盖交易状态");

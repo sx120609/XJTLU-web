@@ -310,6 +310,20 @@ const xjtluPortalSessionIdleMs = parseIntegerEnv(
   browserSessionIdleMs,
   2 * 365 * 24 * 60 * 60 * 1000,
 );
+const managementSessionIdleMs = parseIntegerEnv(
+  "MANAGEMENT_SESSION_IDLE_MS",
+  process.env.MANAGEMENT_SESSION_IDLE_MS,
+  30 * 60 * 1000,
+  5 * 60 * 1000,
+  24 * 60 * 60 * 1000,
+);
+const managementSessionAbsoluteMs = parseIntegerEnv(
+  "MANAGEMENT_SESSION_ABSOLUTE_MS",
+  process.env.MANAGEMENT_SESSION_ABSOLUTE_MS,
+  12 * 60 * 60 * 1000,
+  managementSessionIdleMs,
+  30 * 24 * 60 * 60 * 1000,
+);
 
 export const config = {
   port: Number(process.env.PORT ?? 3011),
@@ -319,8 +333,12 @@ export const config = {
   xjtluSsoBeginIpLimit: parseIntegerEnv("XJTLU_SSO_BEGIN_IP_LIMIT", process.env.XJTLU_SSO_BEGIN_IP_LIMIT, 600, 1, 100_000),
   xjtluSsoSubmitIpLimit: parseIntegerEnv("XJTLU_SSO_SUBMIT_IP_LIMIT", process.env.XJTLU_SSO_SUBMIT_IP_LIMIT, 300, 1, 100_000),
   xjtluSsoSubmitAccountLimit: parseIntegerEnv("XJTLU_SSO_SUBMIT_ACCOUNT_LIMIT", process.env.XJTLU_SSO_SUBMIT_ACCOUNT_LIMIT, 8, 1, 1_000),
+  managementLoginGlobalLimit: parseIntegerEnv("MANAGEMENT_LOGIN_GLOBAL_LIMIT", process.env.MANAGEMENT_LOGIN_GLOBAL_LIMIT, 500, 10, 100_000),
+  managementLoginIpLimit: parseIntegerEnv("MANAGEMENT_LOGIN_IP_LIMIT", process.env.MANAGEMENT_LOGIN_IP_LIMIT, 30, 3, 10_000),
+  managementLoginSourceAccountLimit: parseIntegerEnv("MANAGEMENT_LOGIN_SOURCE_ACCOUNT_LIMIT", process.env.MANAGEMENT_LOGIN_SOURCE_ACCOUNT_LIMIT, 8, 3, 1_000),
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
+  managementJwtExpiresIn: process.env.MANAGEMENT_JWT_EXPIRES_IN ?? "8h",
   nodeEnv,
   jwxtProxyUrl: process.env.JWXT_PROXY_URL ?? "",
   jwxtProxyAuth: process.env.JWXT_PROXY_AUTH ?? "",
@@ -360,6 +378,8 @@ export const config = {
   browserSessionIdleMs,
   browserSessionAbsoluteMs,
   xjtluPortalSessionIdleMs,
+  managementSessionIdleMs,
+  managementSessionAbsoluteMs,
   corsAllowedOrigins: parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS),
   androidAppDownloadUrl: (
     process.env.ANDROID_APP_DOWNLOAD_URL

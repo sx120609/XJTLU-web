@@ -322,11 +322,16 @@ async function submit(draft: boolean) {
       : await marketApi.createItem(payload);
     clearPublishDraft(draftType.value, auth.user?.id);
     let promotionWarning = "";
+    const pendingManualReview = !draft && item.status === "reviewing";
     let successMessage = draft
       ? (isEnglish.value ? "Draft saved" : "草稿已保存")
-      : isMaterialsMode.value
-        ? (isEnglish.value ? "Learning material published" : "学习资料已发布")
-        : (isEnglish.value ? "Item published" : "商品已发布");
+      : pendingManualReview
+        ? isMaterialsMode.value
+          ? (isEnglish.value ? "Learning material submitted for manual review" : "学习资料已提交人工审核")
+          : (isEnglish.value ? "Item submitted for manual review" : "商品已提交人工审核")
+        : isMaterialsMode.value
+          ? (isEnglish.value ? "Learning material published" : "学习资料已发布")
+          : (isEnglish.value ? "Item published" : "商品已发布");
     if (!draft && !editingId && selectedPromotionPlan.value) {
       if (item.status === "active") {
         try {

@@ -100,6 +100,11 @@ export type ForumImageReviewAsset = {
     nickname: string;
     username: string;
   } | null;
+  manualReviewedByAdmin: {
+    id: number;
+    displayName: string;
+    username: string;
+  } | null;
 };
 
 export function startForumImageModerationPoller() {
@@ -321,6 +326,13 @@ export async function listForumImageAssetsForContent(content: string): Promise<F
         username: true,
       },
     },
+    manualReviewedByAdmin: {
+      select: {
+        id: true,
+        displayName: true,
+        username: true,
+      },
+    },
   } as const;
 
   const initialRows = await prisma.forumImageAsset.findMany({
@@ -363,15 +375,26 @@ export async function listForumImageAssetsForContent(content: string): Promise<F
             username: row!.manualReviewedBy.username,
           }
         : null,
+      manualReviewedByAdmin: row!.manualReviewedByAdmin
+        ? {
+            id: row!.manualReviewedByAdmin.id,
+            displayName: row!.manualReviewedByAdmin.displayName,
+            username: row!.manualReviewedByAdmin.username,
+          }
+        : null,
     }));
 }
 
 export async function applyManualForumImageReview(input: {
   assetId: number;
-  reviewerId: number;
+  reviewerId?: number;
+  reviewerAdminId?: number;
   approved: boolean;
   note?: string | null;
 }) {
+  if ((input.reviewerId === undefined) === (input.reviewerAdminId === undefined)) {
+    throw new Error("Exactly one manual image reviewer identity is required");
+  }
   const existing = await prisma.forumImageAsset.findUnique({
     where: { id: input.assetId },
     select: {
@@ -400,7 +423,8 @@ export async function applyManualForumImageReview(input: {
       reviewedAt,
       nextRetryAt: null,
       lastError: null,
-      manualReviewedById: input.reviewerId,
+      manualReviewedById: input.reviewerId ?? null,
+      manualReviewedByAdminId: input.reviewerAdminId ?? null,
       manualReviewedAt: reviewedAt,
       manualReviewNote: note || null,
     },
@@ -409,6 +433,13 @@ export async function applyManualForumImageReview(input: {
         select: {
           id: true,
           nickname: true,
+          username: true,
+        },
+      },
+      manualReviewedByAdmin: {
+        select: {
+          id: true,
+          displayName: true,
           username: true,
         },
       },

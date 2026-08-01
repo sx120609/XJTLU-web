@@ -93,5 +93,7 @@ jobs:
         run: npm run prisma:generate --prefix server
       - name: Apply clean-database migrations
         run: npm run db:migrate --prefix server
+      - name: Verify migration baseline
+        run: npm run db:verify:baseline --prefix server
       - name: Run integration tests
         run: npm run test:integration --prefix server

@@ -1,5 +1,6 @@
 import type { JwtPayload } from "../utils/jwt";
 import type { BrowserSession } from "../services/browserSession";
+import type { ManagementPrincipal } from "../services/managementAuthService";
 
 declare global {
   namespace Express {
@@ -7,6 +8,7 @@ declare global {
       user?: JwtPayload;
       browserSessionId?: string;
       browserSession?: BrowserSession;
+      management?: ManagementPrincipal;
     }
   }
 }

@@ -75,7 +75,7 @@ cd ..
 
 只有目标数据库已经完整具备基线 Schema、且迁移记录与审计报告一致时，才按 [迁移基线手册](./database-migration-baseline.md) 执行 `migrate resolve`。状态不同必须先停止并比对，不能猜测标记。禁止在生产使用 `prisma migrate reset`、`db push` 或手工删除迁移记录。
 
-当前验收基准：13 段活动迁移，空库迁移后 94 张表。
+当前验收基准：`server/prisma/migrations` 中的全部活动迁移均已应用，且 `db:verify:baseline` 的空库重放、关键表和 Schema 一致性检查全部通过。
 
 ## 3. 管理员配置
 
@@ -116,9 +116,9 @@ npm run test:phase5:integration --prefix server
 
 - [ ] 已完成并验证 PostgreSQL 备份，记录恢复命令和负责人。
 - [ ] `server/.env` 使用生产数据库、独立 JWT 密钥、正确 CORS/反向代理配置。
-- [ ] 已执行 Prisma Client 生成、13 段迁移和迁移状态检查。
-- [ ] `npm test --prefix server` 通过（当前基准 83/83）。
-- [ ] `npm run test:integration --prefix server` 通过（当前基准 10/10）。
+- [ ] 已执行 Prisma Client 生成、全部活动迁移、迁移状态和空库基线检查。
+- [ ] `npm test --prefix server` 通过。
+- [ ] `npm run test:integration --prefix server` 通过。
 - [ ] `npm run build` 通过，前端生产构建无类型错误。
 - [ ] `/api/health`、首页、市集、求购、广场、学习中心、校园资源和管理后台可访问。
 - [ ] 移动端五项底部导航和桌面导航均正常，旧链接重定向正常。
@@ -172,3 +172,17 @@ npm run materials:check-db --prefix server
 - [阶段 6—10 核验](./phase-6-10-verification.md)
 - [商业边界与人工订单政策](./commercial-policy.md)
 - [灰度发布、回滚与数据核对](./release-runbook.md)
+## 8. BOSS 与管理后台初始化
+
+管理后台使用独立的 `AdminAccount`，不要把生产管理账号写入 `User`。首次上线按以下顺序执行：
+
+```bash
+cd server
+$env:BOSS_USERNAME="boss"
+$env:BOSS_PASSWORD="替换为至少 12 位随机密码"
+$env:BOSS_DISPLAY_NAME="平台 BOSS"
+$env:BOSS_TOTP_SECRET="替换为离线保存的 Base32 密钥"
+npm run manage:bootstrap-boss
+```
+
+BOSS 登录 `/manage/login` 时必须输入一次性验证码。登录后在 `/manage/accounts` 创建管理员、重置密码并分配权限；管理员不能创建账号、分配权限或管理 BOSS。旧个人 `admin/mod` 账号迁移前先执行 `npm run manage:migrate-legacy`，确认每个新管理员的密码和权限后，再显式设置 `LEGACY_ADMIN_CUTOVER=yes` 执行 `npm run manage:cutover-legacy`。迁移脚本不会复制旧密码，也不会在未满足条件时自动降级个人账号。

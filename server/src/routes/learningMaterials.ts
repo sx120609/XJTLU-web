@@ -12,11 +12,6 @@ import { Errors, ok } from "../utils/response";
 import { positiveRouteInteger, queryPage, querySize } from "../utils/query";
 import { isFeatureOn } from "../services/siteSettings";
 import { ensureUserCanSpeak } from "../services/userModeration";
-import {
-  reviewTopicContent,
-  shouldBypassAiReviewForUser,
-  shouldRunAiReview,
-} from "../services/topicAiReview";
 import { amountCentsToMoney } from "../services/epay";
 import {
   DEFAULT_LEARNING_MATERIAL_TYPES,
@@ -751,24 +746,7 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
     if (contentSafety.action === "block") {
       throw Errors.badRequest(contentSafety.matches[0]?.note || "该资料不符合付费学习资料内容规则");
     }
-    const metadata = {
-      marketItem: true,
-      learningMaterial: true,
-      category: CATEGORY,
-      deliveryType: "digital",
-      tradeMode: "online",
-      listingType: "sell",
-      price: Number(amountCentsToMoney(amount)),
-      images: input.images,
-      courseCode: normalizeCourseCode(input.profile.courseCode),
-      applicableSemester: input.profile.applicableSemester || "",
-      materialTypeId: input.profile.typeId || null,
-    };
-    const bypass = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const review = shouldRunAiReview() && !bypass
-      ? await reviewTopicContent({ title: input.title, content: input.description, boardName: "靠浦特色学习资料", boardType: "market", metadata })
-      : null;
-    const hiddenByReview = review?.status === "blocked_ai";
+    // V1 policy: learning material metadata and files are approved by staff, not text AI.
     const item = await prisma.marketItem.create({
       data: {
         sellerId: userId,
@@ -784,16 +762,16 @@ learningMaterialsRouter.post("/items", authRequired, validate(materialItemInputS
         tradeMode: "online",
         campus: "",
         location: "",
-        status: input.draft ? "draft" : hiddenByReview ? "reviewing" : "active",
+        status: input.draft ? "draft" : "reviewing",
         moderationNote: contentSafety.action === "review"
           ? (contentSafety.matches[0]?.note || "内容需要人工复核")
-          : hiddenByReview ? review?.reason || "AI 内容复核未通过" : "",
+          : input.draft ? "" : "学习资料正在进行人工审核",
         images: { create: input.images.map((url, sort) => ({ url, sort })) },
         learningMaterial: { create: { ...profileData(input.profile), commerceMode: "paid" } },
       },
       include: materialItemInclude(userId),
     });
-    ok(res, { ...serializeLearningMaterialItem(item, userId), review: review ? { status: review.status, reason: review.reason } : null });
+    ok(res, { ...serializeLearningMaterialItem(item, userId), review: null });
   } catch (error) { next(error); }
 });
 

@@ -23,11 +23,25 @@ import { ehallRouter } from "./ehall";
 import { academicRouter } from "./academic";
 import { marketRouter } from "./market";
 import { productAnalyticsRouter } from "./productAnalytics";
+import { managementAuthRouter } from "./managementAuth";
+import { managementAccountsRouter } from "./managementAccounts";
+import { managementUsersRouter } from "./managementUsers";
+import { managementForumRouter } from "./managementForum";
+import { managementCommerceRouter } from "./managementCommerce";
+import { managementOverviewRouter } from "./managementOverview";
+import { managementOperationsRouter } from "./managementOperations";
 
 export const router = Router();
 
 // 公开路径
 router.use("/auth", authRouter);
+router.use("/manage/auth", managementAuthRouter);
+router.use("/manage", managementAccountsRouter);
+router.use("/manage", managementUsersRouter);
+router.use("/manage", managementForumRouter);
+router.use("/manage", managementCommerceRouter);
+router.use("/manage", managementOverviewRouter);
+router.use("/manage", managementOperationsRouter);
 router.use("/boards", authOptional, boardRouter);
 router.use("/topics", authOptional, topicRouter);
 router.use("/replies", authOptional, replyRouter);

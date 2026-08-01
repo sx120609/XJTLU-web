@@ -4,7 +4,7 @@
 
 阶段 0 审计发现仓库有 63 段历史迁移，而现有数据库的 `_prisma_migrations` 只登记了 2 段。旧迁移已原样归档到 `server/prisma/legacy-migrations`，不再自动执行。
 
-新的活动迁移链为 13 段：
+新的活动迁移链以 `server/prisma/migrations` 中的目录为准。最初建立基线时包含以下 13 段：
 
 1. 两段与现有数据库记录同名的兼容标记；
 2. `20260718000000_baseline`：完整 PostgreSQL 空库基线；
@@ -19,7 +19,7 @@
 11. `20260719020000_stage_9_operations_manual_revenue`：运营漏斗与盈利订单人工核验字段；
 12. `20260719030000_stage_10_sustainable_operations`：推广库存、人工售后留痕、商户周期复核、效果快照与运营索引。
 
-第一项包含 2 段兼容迁移，因此活动目录合计为 13 段。
+第一项包含 2 段兼容迁移，因此初始活动目录合计为 13 段；此后新增迁移继续按目录名顺序应用，不应依赖文档中的固定总数。
 
 ## 空数据库演练
 
@@ -31,7 +31,7 @@ npx prisma migrate deploy
 npx prisma validate
 ```
 
-验收要求：迁移全部成功，`npx prisma migrate status` 显示数据库与活动迁移一致。需要开发数据时再单独执行 `npm run db:seed`，不要在生产环境运行 seed。
+验收要求：迁移全部成功，`npx prisma migrate status` 显示数据库与活动迁移一致，并运行 `npm run db:verify:baseline` 验证空库重放结果与当前 Prisma Schema 一致。需要开发数据时再单独执行 `npm run db:seed`，不要在生产环境运行 seed。
 
 ## 接管已有数据库
 
@@ -86,4 +86,4 @@ Prisma 迁移不自动生成向下迁移。发生异常时：
 
 阶段 0.5 在应用现有实例迁移前，已使用本地 PostgreSQL 16.14 的 `pg_dump` 创建 `runtime/backups/pre-stage-0-5-20260718.dump`，并通过 `pg_restore --list` 校验到 819 个目录项。备份位于被忽略的运行时目录，不提交到 Git。
 
-随后已执行基线标记、`prisma migrate deploy`、`prisma migrate status` 和 `prisma validate`；当前实例显示 13 段活动迁移全部应用且 Schema 一致。空 Schema 从零演练得到 94 张表，并已清理临时验证 Schema。其他部署环境仍必须独立备份，不能复用本机执行结果。
+随后已执行基线标记、`prisma migrate deploy`、`prisma migrate status` 和 `prisma validate`。当前迁移数量、空库表数量和 Schema 一致性由 `npm run db:verify:baseline` 动态校验，不再维护容易过期的固定数字。其他部署环境仍必须独立备份，不能复用本机执行结果。

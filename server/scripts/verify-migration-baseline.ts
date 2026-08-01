@@ -11,6 +11,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 const baseUrl = process.env.DATABASE_URL;
 if (!baseUrl) throw new Error("DATABASE_URL 未配置，无法演练迁移基线");
 
+const schemaPath = path.resolve(process.cwd(), "prisma", "schema.prisma");
 const schemaName = `kaopu_migration_verify_${crypto.randomBytes(6).toString("hex")}`;
 assert.match(schemaName, /^kaopu_migration_verify_[a-f0-9]{12}$/);
 
@@ -45,6 +46,15 @@ async function main() {
   try {
     runPrisma(["migrate", "deploy"], verificationUrl);
     runPrisma(["migrate", "status"], verificationUrl);
+    runPrisma([
+      "migrate",
+      "diff",
+      "--from-schema-datasource",
+      schemaPath,
+      "--to-schema-datamodel",
+      schemaPath,
+      "--exit-code",
+    ], verificationUrl);
 
     const rows = await verificationClient.$queryRaw<Array<{ table_name: string }>>`
       SELECT table_name
@@ -52,15 +62,46 @@ async function main() {
       WHERE table_schema = current_schema()
     `;
     const tables = new Set(rows.map((row) => row.table_name));
-    for (const table of ["User", "Board", "MarketItem", "MarketOrder", "TradeIntent", "WantedPost", "WantedResponse", "MarketContactCard", "MarketPreference", "MarketMatchNotice", "MarketSafetyRule", "MarketViolation", "MarketAppeal", "AdminActionLog", "LearningMaterialProfile", "MerchantProfile", "PromotionPlan", "PromotionOrder", "PromotionEvent", "_prisma_migrations"]) {
+    const requiredTables = [
+      "User",
+      "Board",
+      "Topic",
+      "TopicFavorite",
+      "MarketItem",
+      "MarketOrder",
+      "TradeIntent",
+      "WantedPost",
+      "WantedResponse",
+      "MarketPreference",
+      "MarketMatchNotice",
+      "MarketSafetyRule",
+      "MarketViolation",
+      "MarketAppeal",
+      "MarketMessageAttachment",
+      "AdminActionLog",
+      "LearningMaterialProfile",
+      "LearningCommerceOrder",
+      "MerchantProfile",
+      "PromotionPlan",
+      "PromotionOrder",
+      "PromotionEvent",
+      "_prisma_migrations",
+    ];
+    for (const table of requiredTables) {
       assert.ok(tables.has(table), `基线缺少数据表：${table}`);
     }
-    assert.equal(tables.size, 94);
+    for (const retiredTable of ["MarketContactCard"]) {
+      assert.ok(!tables.has(retiredTable), `已退役数据表仍然存在：${retiredTable}`);
+    }
 
     const migrationCount = await verificationClient.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*)::bigint AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL
     `;
-    assert.equal(Number(migrationCount[0]?.count), expectedMigrationCount);
+    assert.equal(
+      Number(migrationCount[0]?.count),
+      expectedMigrationCount,
+      "空库已完成迁移数与活动迁移目录数不一致",
+    );
     console.log(`迁移基线空库演练通过：${tables.size} 张表，${expectedMigrationCount} 段迁移。`);
   } finally {
     await verificationClient.$disconnect().catch(() => undefined);

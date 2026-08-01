@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
+import { useManagementStore } from "@/stores/management";
 import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
 import {
@@ -95,6 +96,23 @@ export const router = createRouter({
     return { top: 0 };
   },
   routes: [
+    { path: "/manage/login", name: "manage-login", component: () => import("@/views/manage/Login.vue"), meta: { managementPublic: true, title: "管理登录" } },
+    {
+      path: "/manage",
+      component: () => import("@/views/manage/Layout.vue"),
+      meta: { management: true },
+      redirect: "/manage/dashboard",
+      children: [
+        { path: "dashboard", name: "manage-dashboard", component: () => import("@/views/manage/Dashboard.vue"), meta: { management: true, title: "管理工作台" } },
+        { path: "accounts", name: "manage-accounts", component: () => import("@/views/manage/Accounts.vue"), meta: { management: true, managementBoss: true, title: "管理员与权限" } },
+        { path: "forum", name: "manage-forum", component: () => import("@/views/manage/Forum.vue"), meta: { management: true, managementAnyPermission: ["forum.review", "forum.moderate"], title: "帖子审核" } },
+        { path: "market-reviews", name: "manage-market-reviews", component: () => import("@/views/manage/MarketReviews.vue"), meta: { management: true, managementPermission: "market.review", title: "实物商品审核" } },
+        { path: "learning-reviews", name: "manage-learning-reviews", component: () => import("@/views/manage/LearningReviews.vue"), meta: { management: true, managementPermission: "learning.review", title: "学习资料审核" } },
+        { path: "users", name: "manage-users", component: () => import("@/views/manage/Users.vue"), meta: { management: true, managementAnyPermission: ["users.read", "users.moderate", "users.sensitive"], title: "个人用户治理" } },
+        { path: "audit", name: "manage-audit", component: () => import("@/views/manage/Audit.vue"), meta: { management: true, managementPermission: "audit.read", title: "管理审计日志" } },
+        { path: "operations", name: "manage-operations", component: () => import("@/views/manage/Operations.vue"), meta: { management: true, managementAnyPermission: ["content.manage", "system.manage"], title: "内容与系统" } },
+      ],
+    },
     { path: "/login", name: "login", component: () => import("@/views/Login.vue"), meta: { public: true, title: "登录" } },
     { path: "/register", name: "register", component: () => import("@/views/Register.vue"), meta: { public: true, title: "注册" } },
     {
@@ -183,10 +201,42 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
+  const management = useManagementStore();
   const site = useSiteStore();
+  if (to.meta.title) document.title = `${localizeRouteTitle(to.meta.title)} · ${site.siteName}`;
+
+  if (to.meta.managementPublic) {
+    if (management.token && (management.principal || await management.fetchMe({ silent: true }))) {
+      return { name: "manage-dashboard" };
+    }
+    return true;
+  }
+
+  if (to.meta.management || to.path === "/manage" || to.path.startsWith("/manage/")) {
+    if (!management.token) {
+      return { name: "manage-login", query: { redirect: to.fullPath } };
+    }
+    if (!management.principal && !(await management.fetchMe({ silent: true }))) {
+      return { name: "manage-login", query: { redirect: to.fullPath } };
+    }
+    if (to.meta.managementBoss && !management.isBoss) {
+      return { name: "manage-dashboard" };
+    }
+    const required = typeof to.meta.managementPermission === "string" ? to.meta.managementPermission : "";
+    if (required && !management.hasPermission(required)) {
+      return { name: "manage-dashboard" };
+    }
+    const anyRequired = Array.isArray(to.meta.managementAnyPermission)
+      ? to.meta.managementAnyPermission.filter((item): item is string => typeof item === "string")
+      : [];
+    if (anyRequired.length && !anyRequired.some((code) => management.hasPermission(code))) {
+      return { name: "manage-dashboard" };
+    }
+    return true;
+  }
+
   // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测真实会话。
   if (!auth.ready) await auth.fetchMe({ probe: true });
-  if (to.meta.title) document.title = `${localizeRouteTitle(to.meta.title)} · ${site.siteName}`;
 
   const requestedManageTool = firstRouteValue(to.query.tool);
   if (to.name === "service-tools-manage" && requestedManageTool === "file_collect") {

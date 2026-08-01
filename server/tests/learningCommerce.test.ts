@@ -234,7 +234,7 @@ test("iteration one keeps schema, migration, API and three frontend roles aligne
   assert.match(schema, /model LearningPaymentEvidence/);
   assert.match(schema, /disputed/);
   assert.match(schema, /refundedAt/);
-  assert.match(schema, /@@unique\(\[createdById, normalizedName\]\)/);
+  assert.doesNotMatch(schema, /@@unique\(\[createdById, normalizedName\]\)/);
   assert.match(migration, /SET "commerceMode" = 'legacy_free'/);
   assert.match(migration, /CREATE UNIQUE INDEX "LearningCollectionMethod_one_active_per_provider"/);
   assert.match(migration, /INSERT INTO "LearningCommerceOrder"/);
@@ -274,7 +274,8 @@ test("iteration one keeps schema, migration, API and three frontend roles aligne
   assert.match(materialsRouter, /source: "seller", createdById: userId, status: \{ notIn: \["rejected", "merged"\] \}/);
   assert.match(privateTypesMigration, /UPDATE "LearningMaterialType"/);
   assert.match(privateTypesMigration, /"source" = 'seller'/);
-  assert.match(privateTypesMigration, /CREATE UNIQUE INDEX "LearningMaterialType_createdById_normalizedName_key"/);
+  assert.match(privateTypesMigration, /CREATE UNIQUE INDEX "LearningMaterialType_createdById_normalizedName_key"[\s\S]*WHERE "createdById" IS NOT NULL/);
+  assert.match(privateTypesMigration, /CREATE UNIQUE INDEX "LearningMaterialType_builtin_normalizedName_key"[\s\S]*WHERE "createdById" IS NULL/);
   assert.doesNotMatch(creator, /申请成为创作者|提交认证申请/);
   assert.match(orders, /确认到账并交付/);
   assert.match(admin, /资料版本审核/);

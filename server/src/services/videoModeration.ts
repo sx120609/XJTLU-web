@@ -126,6 +126,11 @@ export type ForumVideoReviewAsset = {
     nickname: string;
     username: string;
   } | null;
+  manualReviewedByAdmin: {
+    id: number;
+    displayName: string;
+    username: string;
+  } | null;
 };
 
 export type ForumVideoQueueRow = {
@@ -384,6 +389,13 @@ export async function listForumVideoAssetsForContent(content: string): Promise<F
         username: true,
       },
     },
+    manualReviewedByAdmin: {
+      select: {
+        id: true,
+        displayName: true,
+        username: true,
+      },
+    },
   } as const;
 
   const initialRows = await prisma.forumVideoAsset.findMany({
@@ -427,15 +439,26 @@ export async function listForumVideoAssetsForContent(content: string): Promise<F
             username: row!.manualReviewedBy.username,
           }
         : null,
+      manualReviewedByAdmin: row!.manualReviewedByAdmin
+        ? {
+            id: row!.manualReviewedByAdmin.id,
+            displayName: row!.manualReviewedByAdmin.displayName,
+            username: row!.manualReviewedByAdmin.username,
+          }
+        : null,
     }));
 }
 
 export async function applyManualForumVideoReview(input: {
   assetId: number;
-  reviewerId: number;
+  reviewerId?: number;
+  reviewerAdminId?: number;
   approved: boolean;
   note?: string | null;
 }) {
+  if ((input.reviewerId === undefined) === (input.reviewerAdminId === undefined)) {
+    throw new Error("Exactly one manual video reviewer identity is required");
+  }
   const existing = await prisma.forumVideoAsset.findUnique({
     where: { id: input.assetId },
     select: {
@@ -464,7 +487,8 @@ export async function applyManualForumVideoReview(input: {
       reviewedAt,
       nextRetryAt: null,
       lastError: null,
-      manualReviewedById: input.reviewerId,
+      manualReviewedById: input.reviewerId ?? null,
+      manualReviewedByAdminId: input.reviewerAdminId ?? null,
       manualReviewedAt: reviewedAt,
       manualReviewNote: note || null,
     },
@@ -473,6 +497,13 @@ export async function applyManualForumVideoReview(input: {
         select: {
           id: true,
           nickname: true,
+          username: true,
+        },
+      },
+      manualReviewedByAdmin: {
+        select: {
+          id: true,
+          displayName: true,
           username: true,
         },
       },

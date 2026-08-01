@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { installIntegrationPromotionPlans } from "./integrationPromotionPlans";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
@@ -22,7 +23,8 @@ test("stage 10 routes enforce inventory, renewal, after-service records, V1 merc
   ].map(([label, role]) => prisma.user.create({ data: { username: `phase10_${label}_${suffix}`, passwordHash: "not-used", nickname: `阶段十${label}_${suffix}`, role, studentSso: true, forumEnabled: true, aiReviewWhitelisted: true, dataAuthAgreedAt: new Date() } })));
   const [sellerA, sellerB, admin] = users;
   const userIds = users.map((user) => user.id);
-  const plan = await prisma.promotionPlan.findUniqueOrThrow({ where: { code: "listing_pin_7d" } });
+  const promotionPlans = await installIntegrationPromotionPlans(prisma);
+  const plan = promotionPlans.get("listing_pin_7d");
   const previousFeature = isFeatureOn("promotion");
   await setFeature("promotion", true);
   const preexistingActiveSlots = await prisma.promotionOrder.count({ where: { type: "listing_pin", status: "confirmed", startsAt: { lte: new Date() }, expiresAt: { gt: new Date() } } });
@@ -40,6 +42,7 @@ test("stage 10 routes enforce inventory, renewal, after-service records, V1 merc
     await prisma.merchantProfile.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.marketItem.deleteMany({ where: { sellerId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await promotionPlans.restore();
   });
 
   const app = express();

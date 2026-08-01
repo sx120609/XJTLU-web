@@ -22,6 +22,28 @@ test("market campus values are canonical while legacy client aliases stay compat
   assert.ok(marketCampusStorageAliases("TC").includes("太仓"));
 });
 
+test("v1 routes products and learning materials to manual review without product AI", () => {
+  const itemWriteService = readFileSync(
+    new URL("../src/services/marketItemWriteService.ts", import.meta.url),
+    "utf8",
+  );
+  const learningRoute = readFileSync(
+    new URL("../src/routes/learningMaterials.ts", import.meta.url),
+    "utf8",
+  );
+  const learningCommerce = readFileSync(
+    new URL("../src/services/learningCommerceService.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(itemWriteService, /reviewTopicContent|shouldRunAiReview|shouldBypassAiReviewForUser/);
+  assert.match(itemWriteService, /status: input\.draft \? "draft" : "reviewing"/);
+  assert.match(itemWriteService, /sellerNeedsManualReview/);
+  assert.match(itemWriteService, /!isMarketItemStaff\(actor\.role\) \? "reviewing" : "active"/);
+  assert.doesNotMatch(learningRoute, /reviewTopicContent|shouldRunAiReview|shouldBypassAiReviewForUser/);
+  assert.match(learningCommerce, /data: \{ status: "reviewing", moderationNote:/);
+});
+
 test("market public user objects never expose the XJTLU login name", () => {
   assert.equal("username" in MARKET_PUBLIC_USER_SELECT, false);
   assert.deepEqual(

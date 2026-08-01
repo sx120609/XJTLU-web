@@ -19,6 +19,7 @@ import {
 } from "./marketItemWriteService";
 import { acquireMarketItemLock } from "./marketItemLockService";
 import { nextWantedExpiry } from "./marketLifecycle";
+import { notifyMatchesForItem } from "./marketMatching";
 import { notifyMarketUser } from "./marketNotificationService";
 import { acquireMarketOrderLock } from "./marketOrderLockService";
 import { serializeMarketOrder } from "./marketOrderService";
@@ -474,6 +475,10 @@ export async function moderateMarketAdminItem(
     });
     return updated;
   });
+  if (item.status === "active") {
+    await notifyMatchesForItem(item.id)
+      .catch((error) => console.warn("[market] item matching notification failed", error));
+  }
   await notifyMarketUser(
     item.sellerId,
     "商品状态已更新",

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { installIntegrationPromotionPlans } from "./integrationPromotionPlans";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
@@ -13,6 +14,7 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
   const { errorHandler } = await import("../src/middleware/error");
   const { signToken } = await import("../src/utils/jwt");
   const { prisma } = await import("../src/prisma");
+  const promotionPlans = await installIntegrationPromotionPlans(prisma);
   const suffix = `${Date.now()}_${Math.floor(Math.random() * 100_000)}`;
   const [seller, admin] = await Promise.all([
     ["seller", "user"],
@@ -57,6 +59,7 @@ test("stage 9 real routes require a matching manual receipt before revenue activ
     await prisma.promotionOrder.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.marketItem.deleteMany({ where: { sellerId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await promotionPlans.restore();
   });
 
   const app = express();

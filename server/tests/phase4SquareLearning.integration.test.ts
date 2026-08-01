@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { approveMarketItem } from "./integrationManualReview";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
@@ -172,6 +173,8 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     availableTime: "工作日 18:00 后",
     images: ["/uploads/phase4-test.jpg"],
   });
+  assert.equal(listing.status, "reviewing");
+  await approveMarketItem(prisma, listing.id);
   assert.equal(listing.campus, "SIP");
   assert.equal(listing.tradeMode, "any");
   assert.equal(listing.expiresAt, null);
@@ -189,7 +192,8 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     tradeMode: "shipping",
     images: ["/uploads/phase4-optional-campus.jpg"],
   });
-  assert.equal(campusOptionalListing.status, "active");
+  assert.equal(campusOptionalListing.status, "reviewing");
+  await approveMarketItem(prisma, campusOptionalListing.id);
   assert.equal(campusOptionalListing.campus, "");
   assert.equal(campusOptionalListing.location, "");
   assert.equal(campusOptionalListing.availableTime, "");
@@ -206,6 +210,8 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     campus: "TC",
     images: ["/uploads/phase4-filter-test.jpg"],
   });
+  assert.equal(expensiveListing.status, "reviewing");
+  await approveMarketItem(prisma, expensiveListing.id);
   assert.equal(expensiveListing.expiresAt, null);
 
   const priceFiltered = await api("/market/items?minPrice=60&maxPrice=100&page=1&size=60", "GET", undefined, false);
@@ -320,7 +326,8 @@ test("real routes expose twelve square channels, linked discussions, scoped rule
     draft: false,
     status: "active",
   });
-  assert.equal(publishedDraft.status, "active");
+  assert.equal(publishedDraft.status, "reviewing");
+  await approveMarketItem(prisma, publishedDraft.id);
   assert.equal(publishedDraft.topicId, null);
   assert.equal(publishedDraft.campus, "SIP");
   assert.equal(publishedDraft.location, "");

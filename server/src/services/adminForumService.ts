@@ -116,6 +116,13 @@ export const adminTopicDeleteQuerySchema = z.object({
 export type AdminForumActor = {
   userId: number;
   role: string;
+  adminAccountId?: never;
+  accountType?: never;
+} | {
+  adminAccountId: number;
+  accountType: "boss" | "admin";
+  userId?: never;
+  role?: never;
 };
 export type AdminTopicListQuery = z.infer<typeof adminTopicListQuerySchema>;
 export type AdminReviewTargetParams = z.infer<typeof adminReviewTargetParamsSchema>;
@@ -125,15 +132,41 @@ export type AdminForumMediaPatch = z.infer<typeof adminForumMediaPatchSchema>;
 export type AdminForumVideoListQuery = z.infer<typeof adminForumVideoListQuerySchema>;
 
 function requireModerator(actor: AdminForumActor) {
+  if ("adminAccountId" in actor) return;
   if (actor.role !== "admin" && actor.role !== "mod") {
     throw Errors.forbidden("仅论坛管理员或超级管理员可操作");
   }
 }
 
 function requireAdmin(actor: AdminForumActor) {
+  if ("adminAccountId" in actor) return;
   if (actor.role !== "admin") {
     throw Errors.forbidden("仅超级管理员可操作");
   }
+}
+
+function presentationViewer(actor: AdminForumActor) {
+  return "adminAccountId" in actor
+    ? { userId: null, role: "admin" }
+    : actor;
+}
+
+function manualReviewerData(actor: AdminForumActor) {
+  return "adminAccountId" in actor
+    ? {
+        manualReviewedById: null,
+        manualReviewedByAdminId: actor.adminAccountId,
+      }
+    : {
+        manualReviewedById: actor.userId,
+        manualReviewedByAdminId: null,
+      };
+}
+
+function mediaReviewer(actor: AdminForumActor) {
+  return "adminAccountId" in actor
+    ? { reviewerAdminId: actor.adminAccountId }
+    : { reviewerId: actor.userId };
 }
 
 function isPendingManualReview(status: string) {
@@ -193,7 +226,7 @@ export async function listAdminTopics(
     page: query.page,
     size: query.size,
     total,
-    list: list.map((topic) => decodeTopicForViewer(topic, actor)),
+    list: list.map((topic) => decodeTopicForViewer(topic, presentationViewer(actor))),
   };
 }
 
@@ -373,7 +406,7 @@ export async function updateAdminTopic(
         throw Errors.badRequest("该帖子当前不处于待人工审核状态");
       }
       data.aiReviewStatus = patch.aiReviewStatus;
-      data.manualReviewedById = actor.userId;
+      Object.assign(data, manualReviewerData(actor));
       data.manualReviewedAt = new Date();
       data.manualReviewNote = patch.manualReviewNote ?? "";
       if (patch.aiReviewStatus === "approved_manual") {
@@ -580,7 +613,7 @@ export async function updateAdminReply(
 
     const data: Prisma.ReplyUncheckedUpdateInput = {
       aiReviewStatus: patch.aiReviewStatus,
-      manualReviewedById: actor.userId,
+      ...manualReviewerData(actor),
       manualReviewNote: patch.manualReviewNote ?? "",
     };
     if (patch.aiReviewStatus !== "manual_reviewing") {
@@ -613,6 +646,7 @@ export async function updateAdminReply(
         isAnonymous: true,
         aiReviewStatus: true,
         manualReviewedById: true,
+        manualReviewedByAdminId: true,
         manualReviewedAt: true,
         manualReviewNote: true,
       },
@@ -659,6 +693,7 @@ export async function updateAdminReply(
     floor: updated.floor,
     aiReviewStatus: updated.aiReviewStatus,
     manualReviewedById: updated.manualReviewedById,
+    manualReviewedByAdminId: updated.manualReviewedByAdminId,
     manualReviewedAt: updated.manualReviewedAt,
     manualReviewNote: updated.manualReviewNote,
   };
@@ -672,7 +707,7 @@ export async function reviewAdminForumImage(
   requireModerator(actor);
   const updated = await applyManualForumImageReview({
     assetId,
-    reviewerId: actor.userId,
+    ...mediaReviewer(actor),
     approved: patch.status === "approved",
     note: patch.manualReviewNote ?? "",
   });
@@ -697,7 +732,7 @@ export async function reviewAdminForumVideo(
   requireModerator(actor);
   const updated = await applyManualForumVideoReview({
     assetId,
-    reviewerId: actor.userId,
+    ...mediaReviewer(actor),
     approved: patch.status === "approved",
     note: patch.manualReviewNote ?? "",
   });

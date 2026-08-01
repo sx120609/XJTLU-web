@@ -113,7 +113,7 @@ test("admin forum routes delegate to transactional services without legacy handl
   assert.match(service, /refreshTopicReplyStats\(reply\.topicId, tx\)/);
   assert.match(service, /tx\.courseRating\.deleteMany/);
   assert.match(service, /refreshCourseRatingAggregates/);
-  assert.match(service, /manualReviewedById: actor\.userId/);
+  assert.match(service, /manualReviewerData\(actor\)/);
   assert.match(replyRoute, /acquireForumTopicLock\(tx, topicId\)/);
   assert.match(replyRoute, /orderBy: \[\{ floor: "desc" \}, \{ id: "desc" \}\]/);
   assert.match(settings, /GLOBAL_PINNED_TOPICS_LOCK_KEY/);

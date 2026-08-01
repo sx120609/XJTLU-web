@@ -44,6 +44,7 @@ import {
   awardTransactionPointsBatchInTransaction,
   awardTransactionPointsInTransaction,
 } from "./transactionPoints";
+import type { ManagementPrincipal } from "./managementAuthService";
 
 const CATEGORY = "digital_goods";
 const COMMAND_TTL_MS = 24 * 60 * 60 * 1000;
@@ -701,6 +702,14 @@ export async function listMaterialReviews(status?: string) {
     include: {
       submittedBy: { select: publicUserSelect },
       reviewedBy: { select: publicUserSelect },
+      reviewedByAdmin: {
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          accountType: true,
+        },
+      },
       version: {
         include: {
           files: {
@@ -731,15 +740,17 @@ export async function listMaterialReviews(status?: string) {
 }
 
 export async function decideMaterialReview(
-  actor: LearningCommerceActor,
+  actor: LearningCommerceActor | ManagementPrincipal,
   reviewId: number,
   input: {
     action: "approve" | "reject";
     reason: string;
     checklist: { rights: boolean; quality: boolean; fileSafety: boolean };
   },
+  managementIp = "",
 ) {
-  if (!["admin", "mod"].includes(actor.role)) throw Errors.forbidden("需要学习资料审核权限");
+  const managementActor = "adminAccountId" in actor;
+  if (!managementActor && !["admin", "mod"].includes(actor.role)) throw Errors.forbidden("需要学习资料审核权限");
   const result = await prisma.$transaction(async (tx) => {
     const current = await tx.learningMaterialReview.findUnique({
       where: { id: reviewId },
@@ -757,7 +768,8 @@ export async function decideMaterialReview(
       where: { id: reviewId },
       data: {
         status,
-        reviewedById: actor.userId,
+        reviewedById: managementActor ? null : actor.userId,
+        reviewedByAdminId: managementActor ? actor.adminAccountId : null,
         reviewedAt: now,
         reason: input.reason,
         checklist: JSON.stringify(input.checklist),
@@ -809,21 +821,36 @@ export async function decideMaterialReview(
         },
       });
     }
-    await tx.adminActionLog.create({
-      data: {
-        actorId: actor.userId,
-        action: `learning_material_${status}`,
-        targetType: "LearningMaterialReview",
-        targetId: String(reviewId),
-        summary: input.action === "approve" ? "批准付费学习资料" : "驳回付费学习资料",
-        detail: JSON.stringify({
-          itemId: current.version.profile.itemId,
-          versionId: current.versionId,
-          reason: input.reason,
-          checklist: input.checklist,
-        }),
-      },
+    const auditDetail = JSON.stringify({
+      itemId: current.version.profile.itemId,
+      versionId: current.versionId,
+      reason: input.reason,
+      checklist: input.checklist,
     });
+    if (managementActor) {
+      await tx.managementAuditLog.create({
+        data: {
+          actorId: actor.adminAccountId,
+          action: `management.learning.material_${status}`,
+          targetType: "learning_material_review",
+          targetId: String(reviewId),
+          summary: input.action === "approve" ? "批准付费学习资料" : "驳回付费学习资料",
+          detail: auditDetail,
+          ip: managementIp.slice(0, 128),
+        },
+      });
+    } else {
+      await tx.adminActionLog.create({
+        data: {
+          actorId: actor.userId,
+          action: `learning_material_${status}`,
+          targetType: "LearningMaterialReview",
+          targetId: String(reviewId),
+          summary: input.action === "approve" ? "批准付费学习资料" : "驳回付费学习资料",
+          detail: auditDetail,
+        },
+      });
+    }
     return {
       ...review,
       itemId: current.version.profile.itemId,

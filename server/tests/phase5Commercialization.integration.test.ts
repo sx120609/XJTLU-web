@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { installIntegrationPromotionPlans } from "./integrationPromotionPlans";
+import { approveMarketItem } from "./integrationManualReview";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
@@ -32,7 +34,8 @@ test("stage 5 real routes keep three content promotion flows and reject V1 merch
   })));
   const [seller, viewer, admin] = users;
   const userIds = users.map((user) => user.id);
-  const listingPlan = await prisma.promotionPlan.findUniqueOrThrow({ where: { code: "listing_pin_7d" } });
+  const promotionPlans = await installIntegrationPromotionPlans(prisma);
+  const listingPlan = promotionPlans.get("listing_pin_7d");
   const originalListingPrice = listingPlan.priceCents;
 
   t.after(async () => {
@@ -52,6 +55,7 @@ test("stage 5 real routes keep three content promotion flows and reject V1 merch
       const topicCount = await prisma.topic.count({ where: { boardId, hidden: false } });
       await prisma.board.update({ where: { id: boardId }, data: { topicCount } });
     }
+    await promotionPlans.restore();
   });
 
   const app = express();
@@ -141,6 +145,8 @@ test("stage 5 real routes keep three content promotion flows and reject V1 merch
     images: ["/uploads/phase5-test.jpg"],
   });
   const listing = await api("/market/items", sellerToken, "POST", listingPayload(`阶段五置顶商品 ${suffix}`));
+  assert.equal(listing.status, "reviewing");
+  await approveMarketItem(prisma, listing.id);
   const pinOrder = await api("/market/promotions/orders", sellerToken, "POST", { planCode: "listing_pin_7d", targetId: listing.id, note: "手工确认测试" });
   assert.equal(pinOrder.status, "pending");
   assert.equal(pinOrder.paymentMode, "manual");
@@ -154,6 +160,8 @@ test("stage 5 real routes keep three content promotion flows and reject V1 merch
   assert.equal(pinConfirmed.badgeLabel, "置顶");
 
   const normalListing = await api("/market/items", sellerToken, "POST", listingPayload(`阶段五普通商品 ${suffix}`));
+  assert.equal(normalListing.status, "reviewing");
+  await approveMarketItem(prisma, normalListing.id);
   const ownFavorite = await call(`/market/items/${listing.id}/favorite`, sellerToken, "POST", {});
   assert.equal(ownFavorite.response.status, 400);
   const concurrentItemFavorites = await Promise.all([

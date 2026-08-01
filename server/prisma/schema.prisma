@@ -264,6 +264,94 @@ model User {
   productActivityDays                    ProductActivityDaily[]
 }
 
+// ============ 独立管理身份（BOSS / 管理员）============
+// 管理账号与 User 故意分离：管理账号不能作为个人账号参与帖子、交易或资料业务。
+// accountType 仅允许 boss / admin；唯一 BOSS 由迁移中的数据库索引和服务层锁共同保证。
+model AdminAccount {
+  id                    Int      @id @default(autoincrement())
+  username              String   @unique
+  passwordHash          String
+  displayName           String
+  accountType           String   @default("admin")
+  status                String   @default("active")
+  mfaEnabled            Boolean  @default(false)
+  mfaSecretCiphertext   String?
+  mfaRecoveryCodesHash  String?
+  permissionVersion     Int      @default(1)
+  lastLoginAt           DateTime?
+  lastLoginIp           String?
+  createdById            Int?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  createdBy              AdminAccount?              @relation("AdminAccountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAccounts        AdminAccount[]             @relation("AdminAccountCreatedBy")
+  permissions            AdminAccountPermission[]
+  sessions               AdminSession[]
+  auditLogs              ManagementAuditLog[]       @relation("ManagementAuditActor")
+  grantedPermissions     AdminAccountPermission[]   @relation("ManagementPermissionGrantedBy")
+  reviewedTopics         Topic[]                    @relation("ManagementReviewedTopics")
+  reviewedReplies        Reply[]                    @relation("ManagementReviewedReplies")
+  reviewedImages         ForumImageAsset[]          @relation("ManagementReviewedImages")
+  reviewedVideos         ForumVideoAsset[]          @relation("ManagementReviewedVideos")
+  moderatedMarketItems    MarketItem[]               @relation("ManagementModeratedMarketItems")
+  reviewedLearningMaterials LearningMaterialReview[] @relation("ManagementLearningMaterialReviewReviewer")
+
+  @@index([accountType, status])
+  @@index([createdById])
+}
+
+model AdminAccountPermission {
+  id            Int      @id @default(autoincrement())
+  adminAccountId Int
+  permissionCode String
+  grantedById    Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  adminAccount  AdminAccount  @relation(fields: [adminAccountId], references: [id], onDelete: Cascade)
+  grantedBy     AdminAccount? @relation("ManagementPermissionGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@unique([adminAccountId, permissionCode])
+  @@index([permissionCode])
+  @@index([grantedById, createdAt])
+}
+
+model AdminSession {
+  id             String      @id
+  adminAccountId Int
+  tokenHash      String      @unique
+  clientLabel    String      @default("")
+  ip             String      @default("")
+  lastSeenAt     DateTime    @default(now())
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime    @default(now())
+
+  adminAccount AdminAccount @relation(fields: [adminAccountId], references: [id], onDelete: Cascade)
+
+  @@index([adminAccountId, revokedAt, expiresAt])
+  @@index([expiresAt])
+}
+
+model ManagementAuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    Int?
+  action     String
+  targetType String
+  targetId   String   @default("")
+  summary    String
+  detail     String   @default("{}")
+  ip         String   @default("")
+  createdAt  DateTime @default(now())
+
+  actor AdminAccount? @relation("ManagementAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([action, createdAt])
+}
+
 // ============ 论坛核心 ============
 
 model Board {
@@ -322,6 +410,7 @@ model Topic {
   aiModel            String?
   aiReviewedAt       DateTime?
   manualReviewedById Int?
+  manualReviewedByAdminId Int?
   manualReviewedAt   DateTime?
   manualReviewNote   String?
   isAnonymous        Boolean   @default(false)
@@ -350,6 +439,7 @@ model Topic {
   favorites        TopicFavorite[]
   tags             TopicTag[]
   manualReviewedBy User?            @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
+  manualReviewedByAdmin AdminAccount? @relation("ManagementReviewedTopics", fields: [manualReviewedByAdminId], references: [id], onDelete: SetNull)
   weiwallMap       WeiwallTopicMap?
   marketItem       MarketItem?
   linkedMarketItem MarketItem?      @relation("TopicLinkedMarketItem", fields: [linkedMarketItemId], references: [id], onDelete: SetNull)
@@ -363,6 +453,7 @@ model Topic {
   @@index([hidden, boostedUntil, createdAt])
   @@index([authorId])
   @@index([authorId, aiReviewStatus])
+  @@index([manualReviewedByAdminId])
   @@index([linkedMarketItemId, createdAt])
   @@index([linkedWantedPostId, createdAt])
 }
@@ -380,6 +471,7 @@ model Reply {
   aiModel            String?
   aiReviewedAt       DateTime?
   manualReviewedById Int?
+  manualReviewedByAdminId Int?
   manualReviewedAt   DateTime?
   manualReviewNote   String?
   // 楼中楼：parentReplyId 指向父级回复，null 表示直接对主帖
@@ -395,6 +487,7 @@ model Reply {
   topic            Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
   author           User             @relation(fields: [authorId], references: [id])
   manualReviewedBy User?            @relation("ManualReviewedReplies", fields: [manualReviewedById], references: [id], onDelete: SetNull)
+  manualReviewedByAdmin AdminAccount? @relation("ManagementReviewedReplies", fields: [manualReviewedByAdminId], references: [id], onDelete: SetNull)
   parentReply      Reply?           @relation("ReplyToReply", fields: [parentReplyId], references: [id])
   children         Reply[]          @relation("ReplyToReply")
   likes            Like[]
@@ -403,6 +496,7 @@ model Reply {
   @@index([topicId, floor])
   @@index([topicId, hidden, floor])
   @@index([manualReviewedById])
+  @@index([manualReviewedByAdminId])
 }
 
 model Like {
@@ -451,6 +545,7 @@ model ForumImageAsset {
   lastError          String?
   createdById        Int?
   manualReviewedById Int?
+  manualReviewedByAdminId Int?
   manualReviewedAt   DateTime?
   manualReviewNote   String?
   createdAt          DateTime  @default(now())
@@ -458,9 +553,11 @@ model ForumImageAsset {
 
   createdBy        User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
   manualReviewedBy User? @relation("ManualReviewedImages", fields: [manualReviewedById], references: [id], onDelete: SetNull)
+  manualReviewedByAdmin AdminAccount? @relation("ManagementReviewedImages", fields: [manualReviewedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([status, nextRetryAt, createdAt])
   @@index([createdById, createdAt])
+  @@index([manualReviewedByAdminId])
 }
 
 model ForumVideoAsset {
@@ -487,6 +584,7 @@ model ForumVideoAsset {
   lastError          String?
   createdById        Int?
   manualReviewedById Int?
+  manualReviewedByAdminId Int?
   manualReviewedAt   DateTime?
   manualReviewNote   String?
   createdAt          DateTime  @default(now())
@@ -494,9 +592,11 @@ model ForumVideoAsset {
 
   createdBy        User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
   manualReviewedBy User? @relation("ManualReviewedVideos", fields: [manualReviewedById], references: [id], onDelete: SetNull)
+  manualReviewedByAdmin AdminAccount? @relation("ManagementReviewedVideos", fields: [manualReviewedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([status, nextRetryAt, createdAt])
   @@index([createdById, createdAt])
+  @@index([manualReviewedByAdminId])
 }
 
 model AiReviewLog {
@@ -1132,6 +1232,7 @@ model MarketItem {
   sourceWantedPostId       Int?
   moderationNote           String    @default("")
   moderatedAt              DateTime?
+  moderatedByAdminId       Int?
   pinnedUntil              DateTime?
   pinnedPromotionOrderId   Int?      @unique
   homeFeaturedUntil        DateTime?
@@ -1169,12 +1270,14 @@ model MarketItem {
   pinnedPromotionOrder      PromotionOrder?            @relation("ActiveListingPin", fields: [pinnedPromotionOrderId], references: [id], onDelete: SetNull)
   homePromotionOrder        PromotionOrder?            @relation("ActiveHomeFeature", fields: [homePromotionOrderId], references: [id], onDelete: SetNull)
   matchNotices              MarketMatchNotice[]
+  moderatedByAdmin          AdminAccount?              @relation("ManagementModeratedMarketItems", fields: [moderatedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
   @@index([category, status, createdAt])
   @@index([sellerId, status, updatedAt])
   @@index([listingType, status, createdAt])
   @@index([listingType, status, hotScore, createdAt])
+  @@index([moderatedByAdminId, moderatedAt])
   @@index([listingType, status, boostedUntil, createdAt])
   @@index([priceCents])
   @@index([status, priceCents])
@@ -1551,7 +1654,7 @@ model MarketSafetyRule {
   note        String   @default("")
   createdById Int?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @default(now()) @updatedAt
 
   createdBy User? @relation("MarketSafetyRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -1767,7 +1870,7 @@ model MarketViolation {
   createdById     Int?
   revokedAt       DateTime?
   createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  updatedAt       DateTime  @default(now()) @updatedAt
 
   user       User           @relation("MarketViolationUser", fields: [userId], references: [id], onDelete: Cascade)
   item       MarketItem?    @relation(fields: [itemId], references: [id], onDelete: SetNull)
@@ -1791,7 +1894,7 @@ model MarketAppeal {
   handledNote String    @default("")
   handledAt   DateTime?
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  updatedAt   DateTime  @default(now()) @updatedAt
 
   violation MarketViolation @relation(fields: [violationId], references: [id], onDelete: Cascade)
   user      User            @relation("MarketAppealUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -1940,7 +2043,9 @@ model LearningMaterialType {
 
   @@index([status, enabled, sort])
   @@index([createdById, status])
-  @@unique([createdById, normalizedName])
+  // Partial unique indexes in 20260731020000_private_learning_material_types enforce
+  // uniqueness separately for built-in types and for each creator. Prisma cannot
+  // represent those PostgreSQL partial indexes in the schema.
 }
 
 model LearningMaterialProfile {
@@ -2219,6 +2324,7 @@ model LearningMaterialReview {
   submittedById Int
   submittedAt   DateTime                     @default(now())
   reviewedById  Int?
+  reviewedByAdminId Int?
   reviewedAt    DateTime?
   reason        String                       @default("")
   checklist     String                       @default("{}")
@@ -2228,11 +2334,13 @@ model LearningMaterialReview {
   version     LearningMaterialVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   submittedBy User                    @relation("LearningMaterialReviewSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
   reviewedBy  User?                   @relation("LearningMaterialReviewReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedByAdmin AdminAccount?       @relation("ManagementLearningMaterialReviewReviewer", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
 
   @@unique([versionId, round])
   @@index([versionId, status, createdAt])
   @@index([status, submittedAt])
   @@index([reviewedById, reviewedAt])
+  @@index([reviewedByAdminId, reviewedAt])
 }
 
 model LearningCommerceOrder {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { approveMarketItem } from "./integrationManualReview";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
@@ -132,7 +133,8 @@ test("stage 2 real routes complete direct-chat and wanted-response trades withou
     "POST",
     listingPayload(`Direct chat listing ${suffix}`, 88),
   );
-  assert.equal(listing.status, "active");
+  assert.equal(listing.status, "reviewing");
+  await approveMarketItem(prisma, listing.id);
   assert.equal(listing.seller.username, undefined);
 
   const favoriteRace = await Promise.all([1, 2].map(() => (
@@ -190,7 +192,8 @@ test("stage 2 real routes complete direct-chat and wanted-response trades withou
   const relisted = await api(`/items/${listing.id}/lifecycle`, sellerToken, "POST", {
     action: "relist",
   });
-  assert.equal(relisted.status, "active");
+  assert.equal(relisted.status, "reviewing");
+  await approveMarketItem(prisma, listing.id);
   assert.equal((await prisma.marketOrder.findUniqueOrThrow({ where: { id: order.id } })).status, "completed");
 
   const raceListing = await api(
@@ -199,6 +202,7 @@ test("stage 2 real routes complete direct-chat and wanted-response trades withou
     "POST",
     listingPayload(`Confirm cancel race ${suffix}`, 66),
   );
+  await approveMarketItem(prisma, raceListing.id);
   const raceConversation = await api(
     `/items/${raceListing.id}/conversations`,
     buyerToken,

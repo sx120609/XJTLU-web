@@ -50,7 +50,9 @@ test("profile, trade workspace, favorites, point promotion and chat share the V1
   assert.doesNotMatch(mine, /wantedLifecycle\([^)]*'renew'/);
   assert.match(profile, /id="trust"/);
   assert.match(profile, /id="favorites"/);
-  assert.match(profile, /帖子、商品和学习资料/);
+  assert.match(profile, /isEnglish\.value \? "Posts" : "帖子"[\s\S]*value: "topic"/);
+  assert.match(profile, /isEnglish\.value \? "Items" : "商品"[\s\S]*value: "market_item"/);
+  assert.match(profile, /isEnglish\.value \? "Learning" : "学习资料"[\s\S]*value: "learning_material"/);
   assert.doesNotMatch(profile, /商家/);
   assert.doesNotMatch(profile, /赞助本站|sponsorOptions|paymentsApi|USER_QQ_GROUP/);
   assert.doesNotMatch(profile, /跟随系统|value: "system"/);

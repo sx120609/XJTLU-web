@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { installIntegrationPromotionPlans } from "./integrationPromotionPlans";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
@@ -13,6 +14,7 @@ test("global favorites aggregate V1 content and exclude retired merchants", asyn
   const { errorHandler } = await import("../src/middleware/error");
   const { signToken } = await import("../src/utils/jwt");
   const { prisma } = await import("../src/prisma");
+  const promotionPlans = await installIntegrationPromotionPlans(prisma);
 
   const suffix = `${Date.now()}_${Math.floor(Math.random() * 100_000)}`;
   const [owner, viewer] = await Promise.all([
@@ -72,9 +74,7 @@ test("global favorites aggregate V1 content and exclude retired merchants", asyn
       },
     }),
   ]);
-  const plan = await prisma.promotionPlan.findFirstOrThrow({
-    where: { type: "merchant_homepage" },
-  });
+  const plan = promotionPlans.get("merchant_homepage_30d");
   const now = new Date();
   const merchant = await prisma.merchantProfile.create({
     data: {
@@ -122,6 +122,7 @@ test("global favorites aggregate V1 content and exclude retired merchants", asyn
     await prisma.marketItem.deleteMany({ where: { id: { in: [physicalItem.id, learningItem.id] } } });
     await prisma.topic.deleteMany({ where: { id: topic.id } });
     await prisma.user.deleteMany({ where: { id: { in: [owner.id, viewer.id] } } });
+    await promotionPlans.restore();
   });
 
   const app = express();

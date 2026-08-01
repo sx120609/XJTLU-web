@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { approveMarketItem } from "./integrationManualReview";
 
 process.env.NODE_ENV = "test";
 process.env.REDIS_ENABLED = "false";
@@ -105,7 +106,8 @@ test("stage 3 real routes enforce direct-chat privacy, trust restrictions, repor
 
   const listingPayload = (title: string) => ({ listingType: "sell", title, description: "阶段三真实接口安全交易测试", category: "other", price: 88, negotiable: true, condition: "good", tradeMode: "meetup", campus: "SIP", location: "中心楼大厅", brand: "测试品牌", model: "T3", usageDuration: "半年", flaws: "轻微使用痕迹", accessories: "原包装", testAllowed: true, availableTime: "工作日 18:00 后", images: ["/uploads/phase3-test.jpg"] });
   const listing = await api("/items", sellerToken, "POST", listingPayload(`阶段三隐私商品 ${suffix}`));
-  assert.equal(listing.status, "active");
+  assert.equal(listing.status, "reviewing");
+  await approveMarketItem(prisma, listing.id);
   assert.equal(listing.seller.username, undefined);
 
   const earlyConversation = await api(
@@ -244,6 +246,8 @@ test("stage 3 real routes enforce direct-chat privacy, trust restrictions, repor
   assert.equal(reviewListing.status, "reviewing");
 
   const secondListing = await api("/items", sellerToken, "POST", listingPayload(`阶段三限制测试商品 ${suffix}`));
+  assert.equal(secondListing.status, "reviewing");
+  await approveMarketItem(prisma, secondListing.id);
   const mismatchedViolation = await call("/admin/violations", adminToken, "POST", {
     userId: buyer.id,
     itemId: secondListing.id,
