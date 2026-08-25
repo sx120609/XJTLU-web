@@ -281,10 +281,28 @@ ensure_local_postgres_url_ready() {
   postgres_url_is_reachable "$refreshed" || err "PostgreSQL 已处理，但仍无法连接：$(mask_postgres_url "$refreshed")"
 }
 
+pm2_process_cwd() {
+  local name="$1"
+  pm2 jlist 2>/dev/null | node -e '
+    let input = "";
+    process.stdin.on("data", (chunk) => { input += chunk; });
+    process.stdin.on("end", () => {
+      const processInfo = JSON.parse(input).find((item) => item.name === process.argv[1]);
+      process.stdout.write(String(processInfo?.pm2_env?.pm_cwd || ""));
+    });
+  ' "$name" 2>/dev/null || true
+}
+
 maybe_restart_running_service() {
   if command -v pm2 >/dev/null 2>&1 && pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
+    local current_cwd
+    current_cwd="$(pm2_process_cwd "$SERVICE_NAME")"
+    if [ "$current_cwd" != "$ROOT_DIR/server" ]; then
+      warn "检测到同名 PM2 进程位于其他目录：${current_cwd:-未知}；跳过配置重启，完整部署时会切换到当前目录"
+      return 0
+    fi
     log "检测到 $SERVICE_NAME 正在运行，重启使新配置生效"
-    pm2 restart "$SERVICE_NAME" --update-env
+    NODE_ENV=production PORT="$PORT" pm2 restart "$SERVICE_NAME" --update-env
     pm2 save >/dev/null
   fi
 }
@@ -812,24 +830,38 @@ do_redis_init() {
   maybe_restart_running_service
 }
 
+start_main_pm2_process() {
+  (
+    cd "$ROOT_DIR/server"
+    NODE_ENV=production PORT="$PORT" pm2 start dist/index.js \
+      --name "$SERVICE_NAME" \
+      --interpreter node \
+      --time \
+      --max-memory-restart 600M \
+      --log-date-format "YYYY-MM-DD HH:mm:ss" \
+      --merge-logs
+  )
+}
+
+restart_main_pm2_process() {
+  pm2 describe "$SERVICE_NAME" >/dev/null 2>&1 || return 1
+  local current_cwd
+  current_cwd="$(pm2_process_cwd "$SERVICE_NAME")"
+  if [ "$current_cwd" = "$ROOT_DIR/server" ]; then
+    NODE_ENV=production PORT="$PORT" pm2 restart "$SERVICE_NAME" --update-env
+  else
+    warn "检测到同名 PM2 进程位于其他目录：${current_cwd:-未知}；替换为当前部署目录 $ROOT_DIR/server"
+    pm2 delete "$SERVICE_NAME"
+    start_main_pm2_process
+  fi
+}
+
 do_start() {
   assert_isolated_runtime_config
   ensure_node
   ensure_pm2
   log "通过 pm2 启动 $SERVICE_NAME（端口 $PORT）"
-  # 用 ecosystem-less 模式：直接 start 命令
-  cd server
-  if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
-    NODE_ENV=production PORT="$PORT" pm2 restart "$SERVICE_NAME" --update-env
-  else
-    NODE_ENV=production PORT=$PORT pm2 start "node dist/index.js" \
-      --name "$SERVICE_NAME" \
-      --time \
-      --max-memory-restart 600M \
-      --log-date-format "YYYY-MM-DD HH:mm:ss" \
-      --merge-logs
-  fi
-  cd ..
+  restart_main_pm2_process || start_main_pm2_process
   pm2 save >/dev/null
   echo ""
   log "✅ 部署完成"
@@ -915,7 +947,8 @@ do_restart() {
   assert_isolated_runtime_config
   ensure_node
   ensure_pm2
-  NODE_ENV=production PORT="$PORT" pm2 restart "$SERVICE_NAME" --update-env
+  restart_main_pm2_process
+  pm2 save >/dev/null
 }
 do_logs()    { ensure_pm2; pm2 logs "$SERVICE_NAME"; }
 do_status()  { ensure_pm2; pm2 status; }
