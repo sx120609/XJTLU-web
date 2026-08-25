@@ -392,7 +392,7 @@ postgres_psql() {
 
 postgres_restore_client_major() {
   local command="$1"
-  "$command" --version 2>/dev/null | sed -nE 's/.* ([0-9]+)(\.[0-9]+)*/\1/p' | head -n 1
+  "$command" --version 2>/dev/null | sed -nE 's/^[^0-9]*([0-9]+)(\.[0-9]+)*.*$/\1/p' | head -n 1
 }
 
 find_compatible_postgres_restore() {
