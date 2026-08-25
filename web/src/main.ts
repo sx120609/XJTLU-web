@@ -193,7 +193,6 @@ installFeedbackLayerGuard();
 installIosNativeImageBridge();
 installNativeAppMarker();
 applyInitialAppearance();
-initializeLocale();
 
 // 注册 Service Worker —— Chrome PWA "installable" 条件之一（manifest + SW + HTTPS）
 // 不满足时 beforeinstallprompt 不会触发，"添加到主屏幕"按钮就不会出现
@@ -216,6 +215,7 @@ if ("serviceWorker" in navigator) {
 
 const app = createApp(App);
 app.use(createPinia());
+initializeLocale();
 useAppearanceStore().hydrate();
 useAuthStore().hydrate();
 useManagementStore().hydrate();
